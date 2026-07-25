@@ -2,17 +2,16 @@
 # Polaris — установка одной командой через curl.
 #
 # Примеры:
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh | sudo bash
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh | sudo bash -s -- --repo https://github.com/OWNER/REPO.git
-#   curl -fsSL .../install.sh | sudo bash -s -- --token '123:ABC' --admin-id '987654321'
+#   curl -fsSL https://raw.githubusercontent.com/artinuwq/polaris-hub/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/artinuwq/polaris-hub/main/install.sh | sudo bash -s -- --token '123:ABC' --admin-id '987654321'
 #
 # Переменные окружения (альтернатива флагам):
 #   POLARIS_REPO, POLARIS_BRANCH, POLARIS_DIR, TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_IDS
 
 set -euo pipefail
 
-# >>> поменяйте на свой репозиторий, если ставите без --repo <<<
-DEFAULT_REPO="${POLARIS_REPO:-}"
+# Репозиторий по умолчанию (можно переопределить POLARIS_REPO / --repo)
+DEFAULT_REPO="${POLARIS_REPO:-https://github.com/artinuwq/polaris-hub.git}"
 DEFAULT_BRANCH="${POLARIS_BRANCH:-main}"
 DEFAULT_DIR="${POLARIS_DIR:-/opt/polaris-hub}"
 
@@ -32,7 +31,7 @@ Usage:
   curl -fsSL <raw-url>/install.sh | sudo bash -s -- [options]
 
 Options:
-  --repo URL          Git-репозиторий (обязательно, если не задан POLARIS_REPO)
+  --repo URL          Git-репозиторий (default: https://github.com/artinuwq/polaris-hub.git)
   --branch NAME       Ветка (default: main)
   --dir PATH          Каталог установки (default: /opt/polaris-hub)
   --token TOKEN       TELEGRAM_BOT_TOKEN (вместе с --admin-id включает non-interactive)
@@ -73,9 +72,7 @@ if [[ -n "$BOT_TOKEN" && -n "$ADMIN_ID" ]]; then
 fi
 
 if [[ -z "$REPO_URL" ]]; then
-  echo "Укажите репозиторий:" >&2
-  echo "  curl -fsSL .../install.sh | sudo bash -s -- --repo https://github.com/OWNER/REPO.git" >&2
-  echo "или: export POLARIS_REPO=https://github.com/OWNER/REPO.git" >&2
+  echo "Укажите репозиторий: --repo URL или POLARIS_REPO" >&2
   exit 1
 fi
 

@@ -7,8 +7,7 @@
 На Linux-сервере:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh \
-  | sudo bash -s -- --repo https://github.com/OWNER/REPO.git
+curl -fsSL https://raw.githubusercontent.com/artinuwq/polaris-hub/main/install.sh | sudo bash
 ```
 
 Скрипт скачает репозиторий в `/opt/polaris-hub`, поставит зависимости и спросит только:
@@ -20,24 +19,11 @@ curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh \
 ### Без вопросов
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh \
+curl -fsSL https://raw.githubusercontent.com/artinuwq/polaris-hub/main/install.sh \
   | sudo bash -s -- \
-      --repo https://github.com/OWNER/REPO.git \
       --token '123456:ABC-TOKEN' \
       --admin-id '987654321'
 ```
-
-### Через переменные окружения
-
-```bash
-export POLARIS_REPO=https://github.com/OWNER/REPO.git
-export TELEGRAM_BOT_TOKEN='123456:ABC-TOKEN'
-export TELEGRAM_ADMIN_IDS='987654321'
-
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh | sudo bash
-```
-
-Замените `OWNER/REPO` на ваш GitHub-репозиторий (ветка `main`).
 
 Проверка: `python3 /opt/polaris-hub/polaris/scripts/doctor.py`  
 Сервис: `systemctl status polaris`  
