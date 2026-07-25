@@ -190,9 +190,14 @@ if [[ "$NON_INTERACTIVE" -eq 1 ]]; then
   ARGS+=(--non-interactive --token "$BOT_TOKEN" --admin-id "$ADMIN_ID")
 fi
 
-# если скрипт скачан через curl под root — сервис от имени SUDO_USER / polaris
+# если скрипт скачан через curl под root — сервис от имени SUDO_USER
 if [[ -n "${SUDO_USER:-}" ]]; then
   ARGS+=(--user "$SUDO_USER")
+fi
+
+# curl|bash закрывает stdin — для вопросов берём ввод с реального терминала
+if [[ "$NON_INTERACTIVE" -eq 0 && -r /dev/tty ]]; then
+  exec python3 "$APP_DIR/scripts/install.py" "${ARGS[@]}" < /dev/tty
 fi
 
 exec python3 "$APP_DIR/scripts/install.py" "${ARGS[@]}"

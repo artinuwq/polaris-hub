@@ -42,14 +42,41 @@ def warn(msg: str) -> None:
     print(f"! {msg}")
 
 
+def read_prompt_line(prompt: str) -> str:
+    """Читать с терминала даже если stdin — pipe от curl|bash."""
+    if sys.stdin.isatty():
+        return input(prompt).strip()
+    tty_path = Path("/dev/tty")
+    if tty_path.exists():
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        with tty_path.open("r", encoding="utf-8", errors="replace") as tty:
+            return tty.readline().strip()
+    raise InstallError(
+        "Нет интерактивного ввода (curl|bash закрыл stdin).\n"
+        "Запустите так:\n"
+        "  curl -fsSL .../install.sh | sudo bash -s -- --token 'ТОКЕН' --admin-id 'ID'\n"
+        "или:\n"
+        "  cd /opt/polaris-hub/polaris && python3 scripts/install.py"
+    )
+
+
 def ask(prompt: str, default: str | None = None, secret: bool = False) -> str:
     suffix = f" [{default}]" if default not in (None, "") else ""
     full = f"{prompt}{suffix}: "
     while True:
         if secret:
-            value = getpass.getpass(full)
+            try:
+                value = getpass.getpass(full)
+            except Exception:
+                value = read_prompt_line(full)
         else:
-            value = input(full).strip()
+            try:
+                value = read_prompt_line(full)
+            except EOFError as exc:
+                raise InstallError(
+                    "Ввод прерван (EOF). Передайте --token и --admin-id в командной строке."
+                ) from exc
         if not value and default is not None:
             return default
         if value:
@@ -59,7 +86,10 @@ def ask(prompt: str, default: str | None = None, secret: bool = False) -> str:
 
 def ask_yes_no(prompt: str, default: bool = True) -> bool:
     hint = "Y/n" if default else "y/N"
-    value = input(f"{prompt} [{hint}]: ").strip().lower()
+    try:
+        value = read_prompt_line(f"{prompt} [{hint}]: ").lower()
+    except EOFError:
+        return default
     if not value:
         return default
     return value in {"y", "yes", "д", "да"}
