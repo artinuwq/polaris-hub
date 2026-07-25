@@ -115,11 +115,59 @@ def clone_repo(repo_url: str, target: Path, branch: str) -> Path:
     return found
 
 
+def ensure_venv_support() -> None:
+    """На Debian/Ubuntu без python3.X-venv ensurepip отсутствует."""
+    try:
+        import ensurepip  # noqa: F401
+    except ImportError as exc:
+        ver = f"{sys.version_info.major}.{sys.version_info.minor}"
+        hint = f"sudo apt install -y python3-venv python{ver}-venv"
+        if platform.system() == "Linux" and os.geteuid() == 0 and shutil.which("apt-get"):
+            info(f"Ставлю python{ver}-venv…")
+            run(
+                ["apt-get", "install", "-y", "python3-venv", f"python{ver}-venv"],
+                check=False,
+            )
+            try:
+                import importlib
+
+                importlib.invalidate_caches()
+                import ensurepip as _ensurepip  # noqa: F401
+                return
+            except ImportError:
+                pass
+        raise InstallError(
+            "Недоступен ensurepip (нужен пакет venv).\n"
+            f"На Ubuntu/Debian: {hint}\n"
+            "После этого снова запустите установку."
+        ) from exc
+
+
 def create_venv(app_root: Path) -> Path:
+    ensure_venv_support()
     venv_dir = app_root / ".venv"
+
+    python_bin = (
+        venv_dir / "Scripts" / "python.exe"
+        if platform.system() == "Windows"
+        else venv_dir / "bin" / "python"
+    )
+    # битый .venv после прошлой ошибки ensurepip
+    if venv_dir.exists() and not python_bin.exists():
+        warn(f"Удаляю повреждённый venv: {venv_dir}")
+        shutil.rmtree(venv_dir, ignore_errors=True)
+
     if not venv_dir.exists():
         info(f"Создаю venv: {venv_dir}")
-        venv.EnvBuilder(with_pip=True).create(venv_dir)
+        try:
+            venv.EnvBuilder(with_pip=True).create(venv_dir)
+        except Exception as exc:  # noqa: BLE001
+            shutil.rmtree(venv_dir, ignore_errors=True)
+            ver = f"{sys.version_info.major}.{sys.version_info.minor}"
+            raise InstallError(
+                f"Не удалось создать venv: {exc}\n"
+                f"На Ubuntu: sudo apt install -y python3-venv python{ver}-venv"
+            ) from exc
     else:
         ok(f"venv уже есть: {venv_dir}")
 
@@ -129,6 +177,9 @@ def create_venv(app_root: Path) -> Path:
     else:
         python = venv_dir / "bin" / "python"
         pip = venv_dir / "bin" / "pip"
+
+    if not python.exists():
+        raise InstallError(f"Python в venv не найден: {python}")
 
     run([str(python), "-m", "pip", "install", "--upgrade", "pip"])
     run([str(pip), "install", "-r", str(app_root / "requirements.txt")], cwd=app_root)

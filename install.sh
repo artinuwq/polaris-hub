@@ -83,11 +83,30 @@ echo "Dir:     $INSTALL_DIR"
 echo
 
 # --- системные пакеты ---
+py_minor() {
+  python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+}
+
+venv_ready() {
+  python3 - <<'PY' >/dev/null 2>&1
+import ensurepip
+import venv
+PY
+}
+
 install_packages() {
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
+    local ver
+    ver="$(py_minor 2>/dev/null || echo "")"
     apt-get update -y
-    apt-get install -y python3 python3-venv python3-pip git curl ca-certificates
+    # На Ubuntu/Debian ensurepip живёт в python3.X-venv, не только в python3-venv
+    apt-get install -y \
+      python3 \
+      python3-pip \
+      python3-venv \
+      ${ver:+python${ver}-venv} \
+      git curl ca-certificates
   elif command -v dnf >/dev/null 2>&1; then
     dnf install -y python3 python3-pip git curl ca-certificates
   elif command -v yum >/dev/null 2>&1; then
@@ -102,23 +121,32 @@ install_packages() {
 need_pkgs=0
 command -v python3 >/dev/null 2>&1 || need_pkgs=1
 command -v git >/dev/null 2>&1 || need_pkgs=1
+venv_ready || need_pkgs=1
+
 if [[ "$need_pkgs" -eq 1 ]]; then
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "Нужны python3 и git. Запустите через sudo или установите их вручную." >&2
+    echo "Нужны python3, git и python3-venv. Запустите через sudo." >&2
+    echo "На Ubuntu: sudo apt install -y python3-venv python$(py_minor)-venv git" >&2
     exit 1
   fi
-  echo "→ Ставлю системные зависимости…"
+  echo "→ Ставлю системные зависимости (включая python3-venv)…"
   install_packages
 fi
 
-# python3-venv на Debian/Ubuntu часто отдельный пакет
-if ! python3 -c "import venv" >/dev/null 2>&1; then
-  if [[ "${EUID:-$(id -u)}" -eq 0 ]] && command -v apt-get >/dev/null 2>&1; then
-    apt-get install -y python3-venv
-  else
-    echo "Модуль venv недоступен. Установите python3-venv." >&2
-    exit 1
-  fi
+if ! venv_ready; then
+  echo "ensurepip/venv всё ещё недоступны после установки пакетов." >&2
+  echo "Попробуйте вручную: apt install -y python3-venv python$(py_minor)-venv" >&2
+  exit 1
+fi
+
+# убрать битый .venv от прошлой неудачной установки
+if [[ -d "$INSTALL_DIR/polaris/.venv" ]] && [[ ! -x "$INSTALL_DIR/polaris/.venv/bin/python" ]]; then
+  echo "→ Удаляю повреждённый .venv"
+  rm -rf "$INSTALL_DIR/polaris/.venv"
+fi
+if [[ -d "$INSTALL_DIR/.venv" ]] && [[ ! -x "$INSTALL_DIR/.venv/bin/python" ]]; then
+  echo "→ Удаляю повреждённый .venv"
+  rm -rf "$INSTALL_DIR/.venv"
 fi
 
 # --- clone / update ---
