@@ -1,0 +1,17 @@
+[Unit]
+Description=Polaris (web + bot)
+After=network.target
+
+[Service]
+Type=simple
+User=ROOT_USER
+Group=ROOT_GROUP
+WorkingDirectory=INSTALL_DIR
+EnvironmentFile=INSTALL_DIR/.env
+Environment=PYTHONPATH=INSTALL_DIR/src
+ExecStart=VENV_PYTHON INSTALL_DIR/scripts/run_all.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+database/data/*
+!database/data/.gitkeep
+polaris/database/data/*
+!polaris/database/data/.gitkeep
+*.db
