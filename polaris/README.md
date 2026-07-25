@@ -29,6 +29,18 @@ curl -fsSL https://raw.githubusercontent.com/artinuwq/polaris-hub/main/install.s
 Сервис: `systemctl status polaris`  
 Обновление: в боте `/update`
 
+## Удаление
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/artinuwq/polaris-hub/main/uninstall.sh | sudo bash
+```
+
+Без подтверждения:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/artinuwq/polaris-hub/main/uninstall.sh | sudo bash -s -- --yes
+```
+
 ## Структура
 - Backend: Python/FastAPI
 - Bot: Telegram Bot API
