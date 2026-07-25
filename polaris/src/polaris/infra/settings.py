@@ -28,6 +28,7 @@ class Settings:
     update_api_token: str = ""
     web_host: str = "127.0.0.1"
     web_port: int = 8000
+    telegram_force_ipv4: bool = True
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -44,4 +45,6 @@ class Settings:
             update_api_token=os.getenv("UPDATE_API_TOKEN", ""),
             web_host=os.getenv("WEB_HOST", "127.0.0.1"),
             web_port=int(os.getenv("WEB_PORT", "8000")),
+            telegram_force_ipv4=os.getenv("TELEGRAM_FORCE_IPV4", "true").lower()
+            in {"1", "true", "yes"},
         )

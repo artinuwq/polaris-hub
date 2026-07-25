@@ -1,15 +1,25 @@
 from __future__ import annotations
 
-import time
+import socket
 from typing import Any
 
 import requests
+from urllib3.util import connection as urllib3_connection
 
 from polaris.infra.settings import Settings
 from polaris.shared.exceptions import ConfigurationError, PolarisError
 from polaris.update.manager import UpdateManager
 
 API = "https://api.telegram.org"
+
+
+def _prefer_ipv4() -> None:
+    """На многих VPS IPv6 до api.telegram.org «висит» 20–60с, потом fallback на IPv4."""
+
+    def allowed_gai_family() -> socket.AddressFamily:
+        return socket.AF_INET
+
+    urllib3_connection.allowed_gai_family = allowed_gai_family  # type: ignore[method-assign]
 
 
 class TelegramBot:
@@ -19,12 +29,21 @@ class TelegramBot:
         self.settings = settings
         self.token = settings.telegram_bot_token
         self.offset: int | None = None
+        self.session = requests.Session()
+        if settings.telegram_force_ipv4:
+            _prefer_ipv4()
 
     def _url(self, method: str) -> str:
         return f"{API}/bot{self.token}/{method}"
 
-    def api(self, method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        response = requests.post(self._url(method), json=payload or {}, timeout=60)
+    def api(
+        self,
+        method: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        timeout: float | tuple[float, float] = (5, 60),
+    ) -> dict[str, Any]:
+        response = self.session.post(self._url(method), json=payload or {}, timeout=timeout)
         response.raise_for_status()
         data = response.json()
         if not data.get("ok"):
@@ -35,18 +54,21 @@ class TelegramBot:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if reply_markup:
             payload["reply_markup"] = reply_markup
-        self.api("sendMessage", payload)
+        # короткий connect-timeout: если сеть плохая — сразу видно, а не ждать 60с
+        self.api("sendMessage", payload, timeout=(5, 30))
 
     def answer_callback(self, callback_id: str, text: str = "") -> None:
-        self.api("answerCallbackQuery", {"callback_query_id": callback_id, "text": text})
+        self.api(
+            "answerCallbackQuery",
+            {"callback_query_id": callback_id, "text": text},
+            timeout=(5, 15),
+        )
 
     def is_admin(self, user_id: int | None) -> bool:
         if user_id is None:
             return False
         admins = self.settings.telegram_admin_ids
         if not admins:
-            # если список пуст — разрешаем всем (удобно на старте),
-            # но лучше задать TELEGRAM_ADMIN_IDS
             return True
         return user_id in admins
 
@@ -81,6 +103,10 @@ class TelegramBot:
                 self.send(chat_id, "Недостаточно прав.")
                 return
             self._run_update(chat_id)
+            return
+
+        if text.startswith("/ping"):
+            self.send(chat_id, "pong")
             return
 
     def _update_keyboard(self) -> dict[str, Any]:
@@ -131,19 +157,24 @@ class TelegramBot:
             self.send(chat_id, f"Ошибка обновления: {exc}")
 
     def poll_forever(self) -> None:
-        self.api("deleteWebhook", {"drop_pending_updates": False})
+        import time
+
+        self.api("deleteWebhook", {"drop_pending_updates": False}, timeout=(5, 30))
+        mode = "IPv4" if self.settings.telegram_force_ipv4 else "system DNS"
+        print(f"Polaris bot polling started ({mode})")
         while True:
             try:
-                payload: dict[str, Any] = {"timeout": 30}
+                payload: dict[str, Any] = {"timeout": 25}
                 if self.offset is not None:
                     payload["offset"] = self.offset
-                updates = self.api("getUpdates", payload)
+                # connect 5с, read чуть больше long-poll timeout
+                updates = self.api("getUpdates", payload, timeout=(5, 35))
                 for item in updates:
                     self.offset = item["update_id"] + 1
                     self.handle_update(item)
-            except Exception as exc:  # noqa: BLE001 — держим polling живым
+            except Exception as exc:  # noqa: BLE001
                 print(f"bot poll error: {exc}")
-                time.sleep(3)
+                time.sleep(2)
 
 
 def run_bot() -> None:
