@@ -392,12 +392,6 @@
       meta: state.authMode === 'browser' ? 'desktop' : 'telegram',
     });
 
-    items.push({
-      title: 'Глобальный поиск',
-      subtitle: 'Нажмите на Polaris или `Ctrl/⌘ + K`, чтобы перейти к командам и разделам.',
-      meta: 'spotlight',
-    });
-
     return items;
   }
 
@@ -413,16 +407,14 @@
       ${renderNotice()}
       <section class="card hero-card span-12">
         <div class="hero-copy">
-          <p class="eyebrow">Attention</p>
-          <h1>Что сейчас заслуживает внимания?</h1>
+          <p class="eyebrow">Polaris Hub</p>
+          <h1>Спокойный контроль<br />главного</h1>
           <p>
-            Polaris показывает только то, что требует действия прямо сейчас. Остальное уходит в поиск и навигацию.
+            Здесь только состояние системы и действия, которые могут понадобиться прямо сейчас.
           </p>
           <div class="badge-row">
-            <span class="badge primary">Command Center</span>
-            <span class="badge">Calm</span>
-            <span class="badge">Fast</span>
             <span class="badge ${currentTone}">${escapeHTML(update.tone.toUpperCase())}</span>
+            <span class="badge">${browserMode ? 'Браузер' : 'Telegram Mini App'}</span>
           </div>
         </div>
 
@@ -435,9 +427,6 @@
           </button>
           <button class="small-button ghost" type="button" data-action="run-restart" ${actionBusy ? 'disabled' : ''}>
             ${state.busy === 'restart' ? 'Перезапускаю…' : 'Перезапуск'}
-          </button>
-          <button class="small-button ghost" type="button" data-action="open-search">
-            Поиск
           </button>
         </div>
       </section>
@@ -474,8 +463,8 @@
 
       <section class="section">
         <div class="section-head">
-          <h2>Сегодня</h2>
-          <span>Только то, что требует внимания</span>
+          <h2>Сейчас</h2>
+          <span>Состояние Polaris</span>
         </div>
         <article class="card list-card">
           <div class="calm-steps">
@@ -496,19 +485,6 @@
         </article>
       </section>
 
-      <section class="section">
-        <div class="section-head">
-          <h2>Ближайшее</h2>
-          <span>Куда ведет навигация</span>
-        </div>
-        <article class="card list-card">
-          <div class="badge-row">
-            ${NAV_ITEMS.filter((item) => item.id !== 'settings')
-              .map((item) => `<span class="badge">${escapeHTML(item.label)}</span>`)
-              .join('')}
-          </div>
-        </article>
-      </section>
     `;
   }
 
@@ -544,7 +520,7 @@
               <div class="calm-step">
                 <div>
                   <strong>/config set WEBAPP_URL https://example.com</strong>
-                  <span>Сохранить URL Mini App в `.env`.</span>
+                  <span>Сохранить URL Mini App в файле .env.</span>
                 </div>
                 <span class="list-item-meta">write</span>
               </div>
@@ -620,13 +596,12 @@
   }
 
   function renderAccessGate() {
-    const headline = 'Нет доступа';
     return `
       <section class="card hero-card span-12">
         <div class="hero-copy">
           <p class="eyebrow">Access</p>
-          <h1>${escapeHTML(headline)}</h1>
-          <p>${escapeHTML(state.authMessage)}</p>
+          <h1>Нет доступа</h1>
+          <p class="access-message" data-auth-message></p>
           <div class="badge-row">
             <span class="badge warning">Telegram initData или token</span>
             <span class="badge">Mini App</span>
@@ -645,7 +620,7 @@
         <div class="calm-steps">
           <div class="calm-step">
             <div>
-              <strong>Откройте `/browser` в Telegram-боте</strong>
+              <strong>Откройте /browser в Telegram-боте</strong>
               <span>Так на компьютере появится доступ через token, без Telegram initData.</span>
             </div>
             <span class="list-item-meta">desktop</span>
@@ -673,6 +648,13 @@
         ? renderAttentionView()
         : renderModuleView(view)
       : renderAccessGate();
+
+    if (!state.authenticated) {
+      const message = elements.mainContent.querySelector('[data-auth-message]');
+      if (message) {
+        message.textContent = state.authMessage || 'Откройте Polaris из Telegram Mini App или через /browser.';
+      }
+    }
 
     hydrateIcons(elements.mainContent);
   }
