@@ -22,7 +22,10 @@
     localStorage.setItem('polaris_update_token', params.get('token'));
   }
 
-  const initData = tg?.initData || '';
+  // Как в lumica: берём подписанный initData из официального SDK
+  function getInitData() {
+    return window.Telegram?.WebApp?.initData || '';
+  }
 
   function setAuth(text, kind) {
     if (!authEl) return;
@@ -31,8 +34,9 @@
     if (kind) authEl.classList.add(kind);
   }
 
-  function headers() {
-    const result = { 'Content-Type': 'application/json' };
+  function headers(extra = {}) {
+    const result = { 'Content-Type': 'application/json', ...extra };
+    const initData = getInitData();
     if (initData) {
       result['X-Telegram-Init-Data'] = initData;
     }
@@ -51,30 +55,55 @@
     if (updateBtn) updateBtn.disabled = busy;
   }
 
-  async function request(path, method = 'GET') {
-    const response = await fetch(path, { method, headers: headers() });
+  async function request(path, method = 'GET', body = undefined) {
+    const options = { method, headers: headers(), credentials: 'same-origin' };
+    if (body !== undefined) {
+      options.body = JSON.stringify(body);
+    }
+    const response = await fetch(path, options);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const detail = data.detail || data.message || `HTTP ${response.status}`;
+      const detail = data.detail || data.message || data.error || `HTTP ${response.status}`;
       throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
     }
     return data;
   }
 
-  async function bootstrap() {
+  async function validateUser() {
+    const initData = getInitData();
+    console.log('initData present:', Boolean(initData), 'length:', initData.length);
+
     if (!initData && !apiToken) {
-      setAuth('Откройте приложение из Telegram-бота.', 'err');
-      return;
+      throw new Error(
+        'Не обнаружены данные Telegram Web App. Откройте Mini App кнопкой в боте (не через обычную ссылку в браузере).'
+      );
     }
 
+    // Как в lumica: явный POST /api/tg/auth с initData в JSON
+    if (initData) {
+      return request('/api/tg/auth', 'POST', { initData });
+    }
+
+    return request('/api/me');
+  }
+
+  async function bootstrap() {
     try {
-      const me = await request('/api/me');
-      const name = me.data?.display_name || me.data?.username || 'admin';
-      setAuth(me.message || `Доступ разрешён: ${name}`, 'ok');
+      const payload = await validateUser();
+      const name =
+        payload.data?.display_name ||
+        payload.data?.username ||
+        payload.user?.username ||
+        'admin';
+      setAuth(payload.message || `Доступ разрешён: ${name}`, 'ok');
       if (panelEl) panelEl.hidden = false;
     } catch (err) {
       setAuth(`Нет доступа: ${err.message}`, 'err');
-      tg?.showAlert?.(`Нет доступа: ${err.message}`);
+      try {
+        tg?.showAlert?.(`Нет доступа: ${err.message}`);
+      } catch (_) {
+        /* ignore */
+      }
     }
   }
 
@@ -113,5 +142,10 @@
 
   checkBtn?.addEventListener('click', checkUpdate);
   updateBtn?.addEventListener('click', runUpdate);
-  bootstrap();
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrap);
+  } else {
+    bootstrap();
+  }
 })();

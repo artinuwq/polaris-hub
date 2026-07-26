@@ -227,6 +227,8 @@ def write_env(app_root: Path, values: dict[str, str]) -> Path:
         f"TELEGRAM_BOT_TOKEN={values['TELEGRAM_BOT_TOKEN']}",
         f"TELEGRAM_ADMIN_IDS={values['TELEGRAM_ADMIN_IDS']}",
         "TELEGRAM_WEBHOOK_URL=",
+        f"WEBAPP_URL={values.get('WEBAPP_URL', '')}",
+        "TELEGRAM_FORCE_IPV4=true",
         "",
         f"UPDATE_BRANCH={values['UPDATE_BRANCH']}",
         f"UPDATE_REMOTE={values['UPDATE_REMOTE']}",
@@ -362,6 +364,7 @@ def collect_config(app_root: Path, branch: str) -> dict[str, str]:
         "UPDATE_API_TOKEN": api_token,
         "WEB_HOST": web_host,
         "WEB_PORT": web_port,
+        "WEBAPP_URL": "",
     }
 
 
@@ -462,6 +465,7 @@ def main() -> int:
             "UPDATE_API_TOKEN": secrets.token_urlsafe(24),
             "WEB_HOST": DEFAULT_WEB_HOST,
             "WEB_PORT": DEFAULT_WEB_PORT,
+            "WEBAPP_URL": "",
         }
     else:
         values = collect_config(app_root, args.branch)

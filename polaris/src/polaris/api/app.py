@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from polaris.infra.settings import Settings
 from polaris.integrations.telegram.auth import TelegramWebAppUser, authenticate_webapp
@@ -25,25 +26,31 @@ app.add_middleware(
 FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 
 
+class TgAuthBody(BaseModel):
+    initData: str = Field(default="", description="Telegram.WebApp.initData")
+
+
+def _user_from_init_data(init_data: str) -> TelegramWebAppUser:
+    return authenticate_webapp(
+        init_data,
+        settings.telegram_bot_token,
+        admin_ids=settings.telegram_admin_ids,
+        require_admin=True,
+        max_age_seconds=settings.telegram_init_data_max_age,
+    )
+
+
 def require_admin(
     x_telegram_init_data: str | None = Header(default=None, alias="X-Telegram-Init-Data"),
     x_polaris_token: str | None = Header(default=None, alias="X-Polaris-Token"),
 ) -> TelegramWebAppUser | None:
-    """Доступ: валидный Telegram initData админа ИЛИ UPDATE_API_TOKEN (для отладки)."""
-    # 1) Mini App — основная проверка
+    """Доступ: валидный Telegram initData админа ИЛИ UPDATE_API_TOKEN."""
     if x_telegram_init_data:
         try:
-            return authenticate_webapp(
-                x_telegram_init_data,
-                settings.telegram_bot_token,
-                admin_ids=settings.telegram_admin_ids,
-                require_admin=True,
-                max_age_seconds=settings.telegram_init_data_max_age,
-            )
+            return _user_from_init_data(x_telegram_init_data)
         except AuthorizationError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-    # 2) Fallback токен (удобно вне Telegram / curl)
     expected = settings.update_api_token
     if expected and x_polaris_token == expected:
         return None
@@ -57,21 +64,17 @@ def require_admin(
     )
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-@app.get("/api/me")
-def me(user: TelegramWebAppUser | None = Depends(require_admin)):
+def _me_payload(user: TelegramWebAppUser | None) -> dict:
     if user is None:
         return {
             "success": True,
+            "ok": True,
             "message": "Авторизован по API-токену",
             "data": {"auth": "token", "is_admin": True},
         }
     return {
         "success": True,
+        "ok": True,
         "message": f"Привет, {user.display_name}",
         "data": {
             "auth": "telegram",
@@ -82,7 +85,32 @@ def me(user: TelegramWebAppUser | None = Depends(require_admin)):
             "last_name": user.last_name,
             "display_name": user.display_name,
         },
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "first_name": user.first_name,
+        },
     }
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/api/tg/auth")
+def tg_auth(body: TgAuthBody):
+    """Как в lumica: принять initData в JSON и проверить подпись."""
+    try:
+        user = _user_from_init_data(body.initData)
+        return _me_payload(user)
+    except AuthorizationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@app.get("/api/me")
+def me(user: TelegramWebAppUser | None = Depends(require_admin)):
+    return _me_payload(user)
 
 
 @app.get("/api/update/status")
@@ -109,7 +137,7 @@ def run_update(_user: TelegramWebAppUser | None = Depends(require_admin)):
     try:
         result = UpdateManager(settings).apply()
         return {
-            "success": result.success,
+            "success": True,
             "message": result.message,
             "data": {
                 "previous_sha": result.previous_sha,

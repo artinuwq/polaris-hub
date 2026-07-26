@@ -86,8 +86,8 @@ class TelegramBot:
         if text.startswith("/start"):
             self.send(
                 chat_id,
-                "Polaris bot готов.\nКоманды: /update, /status",
-                reply_markup=self._update_keyboard(),
+                "Polaris bot готов.\nОткройте Mini App кнопкой ниже.\nКоманды: /update, /status, /ping",
+                reply_markup=self._start_keyboard(),
             )
             return
 
@@ -109,15 +109,23 @@ class TelegramBot:
             self.send(chat_id, "pong")
             return
 
-    def _update_keyboard(self) -> dict[str, Any]:
-        return {
-            "inline_keyboard": [
-                [
-                    {"text": "Проверить", "callback_data": "update:status"},
-                    {"text": "Обновить", "callback_data": "update:apply"},
-                ]
+    def _start_keyboard(self) -> dict[str, Any]:
+        rows: list[list[dict[str, Any]]] = []
+        webapp_url = (self.settings.webapp_url or "").strip()
+        if webapp_url:
+            rows.append(
+                [{"text": "Открыть Mini App", "web_app": {"url": webapp_url}}]
+            )
+        rows.append(
+            [
+                {"text": "Проверить", "callback_data": "update:status"},
+                {"text": "Обновить", "callback_data": "update:apply"},
             ]
-        }
+        )
+        return {"inline_keyboard": rows}
+
+    def _update_keyboard(self) -> dict[str, Any]:
+        return self._start_keyboard()
 
     def _on_callback(self, callback: dict[str, Any]) -> None:
         data = callback.get("data") or ""
