@@ -4,7 +4,7 @@ import socket
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
 from urllib3.util import connection as urllib3_connection
@@ -157,6 +157,21 @@ def _format_setting_value(spec: ConfigSpec, value: str) -> str:
     return value
 
 
+def build_browser_access_url(webapp_url: str, token: str) -> str | None:
+    webapp_url = webapp_url.strip()
+    token = token.strip()
+    if not webapp_url or not token:
+        return None
+
+    parsed = urlparse(webapp_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["token"] = token
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
 def _prefer_ipv4() -> None:
     """На многих VPS IPv6 до api.telegram.org «висит» 20–60с, потом fallback на IPv4."""
 
@@ -238,7 +253,7 @@ class TelegramBot:
         if text.startswith("/start"):
             self.send(
                 chat_id,
-                "Polaris bot готов.\nОткройте Mini App кнопкой ниже.\nКоманды: /update, /status, /config, /restart, /ping",
+                "Polaris bot готов.\nОткройте Mini App кнопкой ниже.\nКоманды: /update, /status, /config, /browser, /restart, /ping",
                 reply_markup=self._start_keyboard(),
             )
             return
@@ -264,6 +279,13 @@ class TelegramBot:
             self._ask_restart(chat_id)
             return
 
+        if text.startswith("/browser") or text.startswith("/desktop"):
+            if not self.is_admin(user_id):
+                self.send(chat_id, "Недостаточно прав.")
+                return
+            self._send_browser_link(chat_id)
+            return
+
         if text.startswith("/ping"):
             self.send(chat_id, "pong")
             return
@@ -280,6 +302,9 @@ class TelegramBot:
             rows.append(
                 [{"text": "Открыть Mini App", "web_app": {"url": webapp_url}}]
             )
+            browser_url = build_browser_access_url(webapp_url, self.settings.update_api_token)
+            if browser_url:
+                rows.append([{"text": "Открыть в браузере", "url": browser_url}])
         rows.append(
             [
                 {"text": "Проверить", "callback_data": "update:status"},
@@ -378,6 +403,16 @@ class TelegramBot:
             chat_id,
             "Клоун, ты уверен что это хочешь?",
             reply_markup=self._restart_keyboard(),
+        )
+
+    def _send_browser_link(self, chat_id: int) -> None:
+        browser_url = build_browser_access_url(self.settings.webapp_url, self.settings.update_api_token)
+        if not browser_url:
+            self.send(chat_id, "Нужны WEBAPP_URL и UPDATE_API_TOKEN.")
+            return
+        self.send(
+            chat_id,
+            f"Откройте в браузере: {browser_url}\nЭто вариант без Telegram initData.",
         )
 
     def _on_callback(self, callback: dict[str, Any]) -> None:

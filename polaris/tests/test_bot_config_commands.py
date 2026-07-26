@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from polaris.bot.runtime import TelegramBot, parse_config_command
+from polaris.bot.runtime import TelegramBot, build_browser_access_url, parse_config_command
 from polaris.infra.settings import Settings
 
 
@@ -131,3 +131,31 @@ def test_restart_command_yes_triggers_service_restart(tmp_path, monkeypatch):
     assert deleted[-1] == (100, 777)
     assert sent[-2][1] == "Пробую перезапуститься…"
     assert sent[-1][1] == "Сервис polaris перезапущен"
+
+
+def test_browser_link_command_and_helper(tmp_path):
+    url = build_browser_access_url("https://example.com/app", "secret-token")
+    assert url == "https://example.com/app?token=secret-token"
+
+    settings = Settings(
+        telegram_bot_token="123:token",
+        telegram_admin_ids=[1],
+        webapp_url="https://example.com/app",
+        update_api_token="secret-token",
+    )
+    bot = TelegramBot(settings, env_path=tmp_path / ".env")
+
+    sent: list[tuple[int, str, dict | None]] = []
+    bot.send = lambda chat_id, text, reply_markup=None: sent.append((chat_id, text, reply_markup))  # type: ignore[method-assign]
+
+    bot.handle_update(
+        {
+            "message": {
+                "chat": {"id": 100},
+                "from": {"id": 1},
+                "text": "/browser",
+            }
+        }
+    )
+
+    assert "https://example.com/app?token=secret-token" in sent[-1][1]

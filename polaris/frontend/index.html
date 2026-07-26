@@ -3,26 +3,86 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Polaris Mini App</title>
-    <!-- Официальный SDK (как в lumica) — локальная заглушка не даёт initData -->
+    <title>Polaris Hub</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="assets/css/app.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <h1>Polaris</h1>
-      <p class="subtitle">Управление и обновление</p>
-      <p id="auth-status" class="auth-status">Проверяю доступ…</p>
+    <div class="ambient ambient-a" aria-hidden="true"></div>
+    <div class="ambient ambient-b" aria-hidden="true"></div>
 
-      <section class="panel" id="app-panel" hidden>
-        <h2>Обновление</h2>
-        <p id="update-status" class="status">Нажмите «Проверить», чтобы узнать версию.</p>
-        <div class="actions">
-          <button id="check-update" type="button">Проверить</button>
-          <button id="run-update" type="button" class="primary">Обновить</button>
+    <div class="app-shell">
+      <header class="topbar">
+        <button id="drawer-toggle" class="icon-button" type="button" aria-label="Открыть навигацию">
+          <span class="icon" data-icon="menu" aria-hidden="true"></span>
+        </button>
+
+        <button id="brand-button" class="brand-button" type="button" aria-label="Открыть поиск">
+          <span class="brand-name">Polaris</span>
+          <span id="current-view-label" class="brand-context">Attention</span>
+        </button>
+
+        <div class="topbar-copy">
+          <span id="topbar-title" class="topbar-title">Attention</span>
+          <span id="topbar-subtitle" class="topbar-subtitle">Что сейчас заслуживает внимания</span>
         </div>
-      </section>
-    </main>
+
+        <button id="search-toggle" class="icon-button" type="button" aria-label="Поиск">
+          <span class="icon" data-icon="search" aria-hidden="true"></span>
+        </button>
+      </header>
+
+      <p id="auth-status" class="auth-banner" role="status" aria-live="polite">Проверяю доступ…</p>
+
+      <main id="main-content" class="main-content">
+        <section class="card skeleton-card">
+          <div class="skeleton-line skeleton-line-title"></div>
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line"></div>
+        </section>
+      </main>
+    </div>
+
+    <aside id="drawer" class="drawer" aria-label="Навигация" aria-hidden="true">
+      <div class="drawer-header">
+        <div>
+          <p class="drawer-eyebrow">Navigation</p>
+          <h2>Polaris Hub</h2>
+        </div>
+        <button id="drawer-close" class="icon-button" type="button" aria-label="Закрыть навигацию">
+          <span class="icon" data-icon="close" aria-hidden="true"></span>
+        </button>
+      </div>
+      <nav id="drawer-nav" class="drawer-nav"></nav>
+      <div class="drawer-footer">
+        <p>Attention first. Остальное открывается по запросу.</p>
+      </div>
+    </aside>
+
+    <div id="backdrop" class="backdrop" hidden></div>
+
+    <section id="search-overlay" class="search-overlay" aria-hidden="true" hidden>
+      <div class="search-panel" role="dialog" aria-modal="true" aria-label="Глобальный поиск">
+        <div class="search-head">
+          <div>
+            <p class="drawer-eyebrow">Global Search</p>
+            <h2>Найти что угодно</h2>
+          </div>
+          <button id="search-close" class="icon-button" type="button" aria-label="Закрыть поиск">
+            <span class="icon" data-icon="close" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <label class="search-field">
+          <span class="icon" data-icon="search" aria-hidden="true"></span>
+          <input id="search-input" type="search" placeholder="Search…" autocomplete="off" />
+        </label>
+
+        <div id="search-hints" class="search-hints"></div>
+        <div id="search-results" class="search-results"></div>
+      </div>
+    </section>
+
     <script src="assets/js/app.js"></script>
   </body>
 </html>

@@ -149,6 +149,21 @@ def run_update(_user: TelegramWebAppUser | None = Depends(require_admin)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/api/restart")
+def restart_service(_user: TelegramWebAppUser | None = Depends(require_admin)):
+    try:
+        restarted, message = UpdateManager(settings).restart_service()
+        return {
+            "success": True,
+            "message": message,
+            "data": {
+                "restarted": restarted,
+            },
+        }
+    except PolarisError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 if FRONTEND_DIR.exists():
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():

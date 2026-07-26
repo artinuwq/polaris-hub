@@ -1,37 +1,225 @@
 (() => {
-  const authEl = document.getElementById('auth-status');
-  const panelEl = document.getElementById('app-panel');
-  const statusEl = document.getElementById('update-status');
-  const checkBtn = document.getElementById('check-update');
-  const updateBtn = document.getElementById('run-update');
-
   const tg = window.Telegram?.WebApp;
   tg?.ready?.();
   tg?.expand?.();
-  if (tg?.themeParams?.bg_color) {
-    document.body.style.background = tg.themeParams.bg_color;
-  }
 
   const params = new URLSearchParams(window.location.search);
-  const apiToken =
-    params.get('token') ||
-    localStorage.getItem('polaris_update_token') ||
-    '';
+  const tokenFromUrl = params.get('token') || '';
+  const tokenStorageKey = 'polaris_update_token';
+  if (tokenFromUrl) {
+    localStorage.setItem(tokenStorageKey, tokenFromUrl);
+  }
+  const apiToken = tokenFromUrl || localStorage.getItem(tokenStorageKey) || '';
 
-  if (params.get('token')) {
-    localStorage.setItem('polaris_update_token', params.get('token'));
+  const elements = {
+    authStatus: document.getElementById('auth-status'),
+    currentViewLabel: document.getElementById('current-view-label'),
+    topbarTitle: document.getElementById('topbar-title'),
+    topbarSubtitle: document.getElementById('topbar-subtitle'),
+    mainContent: document.getElementById('main-content'),
+    drawer: document.getElementById('drawer'),
+    drawerNav: document.getElementById('drawer-nav'),
+    drawerToggle: document.getElementById('drawer-toggle'),
+    drawerClose: document.getElementById('drawer-close'),
+    brandButton: document.getElementById('brand-button'),
+    searchToggle: document.getElementById('search-toggle'),
+    searchOverlay: document.getElementById('search-overlay'),
+    searchClose: document.getElementById('search-close'),
+    searchInput: document.getElementById('search-input'),
+    searchHints: document.getElementById('search-hints'),
+    searchResults: document.getElementById('search-results'),
+    backdrop: document.getElementById('backdrop'),
+  };
+
+  const ICONS = {
+    menu:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>',
+    close:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>',
+    search:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>',
+    star:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.6 5.4 6 .9-4.3 4.2 1 6-5.3-2.8-5.3 2.8 1-6-4.3-4.2 6-.9L12 3z"></path></svg>',
+    tasks:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"></rect><path d="M8 9h8M8 13h5"></path></svg>',
+    servers:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="6" rx="2"></rect><rect x="4" y="14" width="16" height="6" rx="2"></rect><path d="M8 7h.01M8 17h.01"></path></svg>',
+    finance:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3Z"></path><path d="M12 8v8M9 11.5c0-1 .9-1.5 2.3-1.5h1.4c1.4 0 2.3.5 2.3 1.5S14.1 13 12.8 13h-1.6C9.9 13 9 13.5 9 14.5s.9 1.5 2.3 1.5h1.4c1.4 0 2.3-.5 2.3-1.5"></path></svg>',
+    knowledge:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h8a4 4 0 0 1 4 4v10a3 3 0 0 0-3-3H5z"></path><path d="M19 5h-2a4 4 0 0 0-4 4v10"></path></svg>',
+    athena:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 12 2-4 2 4 4 2-4 2-2 4-2-4-4-2z"></path><path d="m17 6 .8 1.8L20 9l-2.2.6L17 11l-.8-1.4L14 9l2.2-1.2z"></path></svg>',
+    home:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"></path></svg>',
+    settings:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4h4l.7 2.1 2.2 1 2.1-.5 2 3.5-1.5 1.6v2l1.5 1.6-2 3.5-2.1-.5-2.2 1L14 20h-4l-.7-2.1-2.2-1-2.1.5-2-3.5 1.5-1.6v-2L2 9.7l2-3.5 2.1.5 2.2-1L10 4z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+    update:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-13.4 5.9"></path><path d="M4 12a8 8 0 0 1 13.4-5.9"></path><path d="m14 4.5 3.5 2-.5-4"></path><path d="m10 19.5-3.5-2 .5 4"></path></svg>',
+    restart:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 7.5A7 7 0 1 1 6 12"></path><path d="M7 4v4h4"></path></svg>',
+    monitor:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg>',
+    external:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5"></path><path d="M10 14 19 5"></path><path d="M19 14v5H5V5h5"></path></svg>',
+    spark:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8L12 2z"></path><path d="m18.5 14 1.1 3.2L23 18.3l-3.4 1.1L18.5 23l-1.1-3.6L14 18.3l3.4-1.1z"></path></svg>',
+    chevron:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>',
+  };
+
+  const NAV_ITEMS = [
+    { id: 'attention', label: 'Attention', subtitle: 'Что сейчас заслуживает внимания', icon: 'star' },
+    { id: 'tasks', label: 'Tasks', subtitle: 'Дела и быстрые действия', icon: 'tasks' },
+    { id: 'servers', label: 'Servers', subtitle: 'Инфраструктура', icon: 'servers' },
+    { id: 'finance', label: 'Finance', subtitle: 'То, что требует оплаты', icon: 'finance' },
+    { id: 'knowledge', label: 'Knowledge', subtitle: 'Заметки и база знаний', icon: 'knowledge' },
+    { id: 'athena', label: 'Athena', subtitle: 'Интеллектуальный помощник', icon: 'athena' },
+    { id: 'home', label: 'Home', subtitle: 'Home Assistant', icon: 'home' },
+    { id: 'settings', label: 'Settings', subtitle: 'Команды и доступ', icon: 'settings', footer: true },
+  ];
+
+  const state = {
+    authenticated: false,
+    authMode: '',
+    authMessage: 'Проверяю доступ…',
+    user: null,
+    currentView: 'attention',
+    drawerOpen: false,
+    searchOpen: false,
+    searchQuery: '',
+    busy: '',
+    notice: null,
+    update: {
+      loading: false,
+      loaded: false,
+      data: null,
+      message: '',
+      error: '',
+    },
+  };
+
+  function escapeHTML(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 
-  // Как в lumica: берём подписанный initData из официального SDK
+  function hydrateIcons(root = document) {
+    root.querySelectorAll('[data-icon]').forEach((node) => {
+      const name = node.dataset.icon || 'chevron';
+      node.innerHTML = ICONS[name] || ICONS.chevron;
+    });
+  }
+
+  function shortSha(sha) {
+    return sha ? sha.slice(0, 7) : '—';
+  }
+
+  function normalizeAuthMode(rawMode) {
+    return rawMode === 'token' ? 'browser' : 'telegram';
+  }
+
+  function setAuthBanner(text, tone = '') {
+    if (!elements.authStatus) return;
+    elements.authStatus.textContent = text;
+    elements.authStatus.classList.remove('ok', 'err', 'warn');
+    if (tone) {
+      elements.authStatus.classList.add(tone);
+    }
+  }
+
+  function setNotice(text, tone = '') {
+    state.notice = text ? { text, tone } : null;
+    renderMain();
+  }
+
+  function getViewMeta(viewId) {
+    return NAV_ITEMS.find((item) => item.id === viewId) || NAV_ITEMS[0];
+  }
+
+  function updateTopbar() {
+    const meta = getViewMeta(state.currentView);
+    if (elements.currentViewLabel) {
+      elements.currentViewLabel.textContent = meta.label;
+    }
+    if (elements.topbarTitle) {
+      elements.topbarTitle.textContent = meta.label;
+    }
+    if (elements.topbarSubtitle) {
+      elements.topbarSubtitle.textContent = meta.subtitle;
+    }
+  }
+
+  function syncOverlays() {
+    if (elements.drawer) {
+      elements.drawer.classList.toggle('is-open', state.drawerOpen);
+      elements.drawer.setAttribute('aria-hidden', String(!state.drawerOpen));
+    }
+    if (elements.searchOverlay) {
+      elements.searchOverlay.hidden = !state.searchOpen;
+      elements.searchOverlay.setAttribute('aria-hidden', String(!state.searchOpen));
+    }
+    if (elements.backdrop) {
+      elements.backdrop.hidden = !(state.drawerOpen || state.searchOpen);
+    }
+    document.body.style.overflow = state.drawerOpen || state.searchOpen ? 'hidden' : '';
+  }
+
+  function openDrawer() {
+    state.drawerOpen = true;
+    state.searchOpen = false;
+    syncOverlays();
+  }
+
+  function closeDrawer() {
+    state.drawerOpen = false;
+    syncOverlays();
+  }
+
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    if (state.drawerOpen) {
+      state.searchOpen = false;
+    }
+    syncOverlays();
+  }
+
+  function openSearch() {
+    state.searchOpen = true;
+    state.drawerOpen = false;
+    syncOverlays();
+    renderSearch();
+    requestAnimationFrame(() => {
+      elements.searchInput?.focus();
+      elements.searchInput?.select?.();
+    });
+  }
+
+  function closeSearch() {
+    state.searchOpen = false;
+    syncOverlays();
+  }
+
+  function setView(viewId) {
+    state.currentView = viewId;
+    closeDrawer();
+    closeSearch();
+    updateTopbar();
+    renderMain();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function toggleActionBusy(busy) {
+    state.busy = busy || '';
+    renderMain();
+  }
+
   function getInitData() {
     return window.Telegram?.WebApp?.initData || '';
-  }
-
-  function setAuth(text, kind) {
-    if (!authEl) return;
-    authEl.textContent = text;
-    authEl.classList.remove('ok', 'err');
-    if (kind) authEl.classList.add(kind);
   }
 
   function headers(extra = {}) {
@@ -44,15 +232,6 @@
       result['X-Polaris-Token'] = apiToken;
     }
     return result;
-  }
-
-  function setStatus(text) {
-    if (statusEl) statusEl.textContent = text;
-  }
-
-  function setBusy(busy) {
-    if (checkBtn) checkBtn.disabled = busy;
-    if (updateBtn) updateBtn.disabled = busy;
   }
 
   async function request(path, method = 'GET', body = undefined) {
@@ -71,81 +250,829 @@
 
   async function validateUser() {
     const initData = getInitData();
-    console.log('initData present:', Boolean(initData), 'length:', initData.length);
-
     if (!initData && !apiToken) {
       throw new Error(
-        'Не удалось получить Telegram Web App initData. Откройте Polaris кнопкой Mini App внутри Telegram, а не обычной ссылкой в браузере.'
+        'На компьютере откройте Polaris через команду /browser в Telegram-боте. Внутри Telegram Mini App запускается напрямую.'
       );
     }
 
-    // Как в lumica: явный POST /api/tg/auth с initData в JSON
     if (initData) {
+      state.authMode = 'telegram';
       return request('/api/tg/auth', 'POST', { initData });
     }
 
+    state.authMode = 'browser';
     return request('/api/me');
   }
 
-  async function bootstrap() {
+  function renderDrawer() {
+    const primary = NAV_ITEMS.filter((item) => !item.footer);
+    const footer = NAV_ITEMS.filter((item) => item.footer);
+
+    elements.drawerNav.innerHTML = [
+      ...primary.map((item) => drawerItemTemplate(item)),
+      footer.length ? '<div class="drawer-divider"></div>' : '',
+      ...footer.map((item) => drawerItemTemplate(item)),
+    ].join('');
+    hydrateIcons(elements.drawerNav);
+  }
+
+  function drawerItemTemplate(item) {
+    const active = item.id === state.currentView ? ' active' : '';
+    return `
+      <button class="drawer-item${active}" type="button" data-view="${escapeHTML(item.id)}">
+        <span class="icon" data-icon="${escapeHTML(item.icon)}" aria-hidden="true"></span>
+        <span class="drawer-item-copy">
+          <span class="drawer-item-title">${escapeHTML(item.label)}</span>
+          <span class="drawer-item-subtitle">${escapeHTML(item.subtitle)}</span>
+        </span>
+        <span class="icon" data-icon="chevron" aria-hidden="true"></span>
+      </button>
+    `;
+  }
+
+  function renderNotice() {
+    if (!state.notice) {
+      return '';
+    }
+
+    const tone = state.notice.tone ? ` tone-${escapeHTML(state.notice.tone)}` : '';
+    return `
+      <section class="card notice-card${tone} span-12">
+        <div class="notice-text">${escapeHTML(state.notice.text)}</div>
+      </section>
+    `;
+  }
+
+  function updateSummary() {
+    if (state.update.loading) {
+      return {
+        title: 'Проверяю обновления',
+        tone: 'primary',
+        subtitle: 'Сверяю локальную и удаленную версию.',
+      };
+    }
+
+    if (state.update.error) {
+      return {
+        title: 'Ошибка проверки',
+        tone: 'error',
+        subtitle: state.update.error,
+      };
+    }
+
+    if (!state.update.loaded || !state.update.data) {
+      return {
+        title: 'Проверка еще не выполнена',
+        tone: 'neutral',
+        subtitle: 'Нажмите «Проверить», чтобы увидеть текущий статус.',
+      };
+    }
+
+    const data = state.update.data;
+    if (data.up_to_date && !data.dirty) {
+      return {
+        title: `Ветка ${data.branch} актуальна`,
+        tone: 'success',
+        subtitle: `Локальная версия совпадает с remote. SHA ${shortSha(data.local_sha)}`,
+      };
+    }
+
+    if (data.up_to_date && data.dirty) {
+      return {
+        title: `Ветка ${data.branch} актуальна`,
+        tone: 'warning',
+        subtitle: `Есть локальные изменения. SHA ${shortSha(data.local_sha)}`,
+      };
+    }
+
+    return {
+      title: 'Доступно обновление',
+      tone: 'warning',
+      subtitle: `${shortSha(data.local_sha)} → ${shortSha(data.remote_sha)} · ветка ${data.branch}`,
+    };
+  }
+
+  function accessSummary() {
+    const userName =
+      state.user?.display_name || state.user?.first_name || state.user?.username || 'admin';
+    if (state.authMode === 'browser') {
+      return {
+        title: 'Браузерный доступ',
+        tone: 'primary',
+        subtitle: `Открыто через token. Пользователь: ${userName}.`,
+        actionLabel: 'Скопировать ссылку',
+        action: 'copy-current-url',
+      };
+    }
+
+    return {
+      title: 'Telegram Mini App',
+      tone: 'success',
+      subtitle: `Доступ открыт через initData. Пользователь: ${userName}.`,
+      actionLabel: 'Как открыть на ПК',
+      action: 'browser-help',
+    };
+  }
+
+  function attentionItems() {
+    const items = [];
+    const update = updateSummary();
+    const access = accessSummary();
+
+    items.push({
+      title: update.title,
+      subtitle: update.subtitle,
+      meta: state.update.loaded ? 'update' : 'check',
+    });
+
+    items.push({
+      title: access.title,
+      subtitle: access.subtitle,
+      meta: state.authMode === 'browser' ? 'desktop' : 'telegram',
+    });
+
+    items.push({
+      title: 'Глобальный поиск',
+      subtitle: 'Нажмите на Polaris или `Ctrl/⌘ + K`, чтобы перейти к командам и разделам.',
+      meta: 'spotlight',
+    });
+
+    return items;
+  }
+
+  function renderAttentionView() {
+    const update = updateSummary();
+    const access = accessSummary();
+    const items = attentionItems();
+    const currentTone = update.tone === 'error' ? 'error' : update.tone === 'warning' ? 'warning' : 'success';
+    const actionBusy = Boolean(state.busy);
+    const browserMode = state.authMode === 'browser';
+
+    return `
+      ${renderNotice()}
+      <section class="card hero-card span-12">
+        <div class="hero-copy">
+          <p class="eyebrow">Attention</p>
+          <h1>Что сейчас заслуживает внимания?</h1>
+          <p>
+            Polaris показывает только то, что требует действия прямо сейчас. Остальное уходит в поиск и навигацию.
+          </p>
+          <div class="badge-row">
+            <span class="badge primary">Command Center</span>
+            <span class="badge">Calm</span>
+            <span class="badge">Fast</span>
+            <span class="badge ${currentTone}">${escapeHTML(update.tone.toUpperCase())}</span>
+          </div>
+        </div>
+
+        <div class="hero-actions">
+          <button class="small-button primary" type="button" data-action="check-update" ${actionBusy ? 'disabled' : ''}>
+            ${state.busy === 'check' ? 'Проверяю…' : 'Проверить'}
+          </button>
+          <button class="small-button" type="button" data-action="run-update" ${actionBusy ? 'disabled' : ''}>
+            ${state.busy === 'update' ? 'Обновляю…' : 'Обновить'}
+          </button>
+          <button class="small-button ghost" type="button" data-action="run-restart" ${actionBusy ? 'disabled' : ''}>
+            ${state.busy === 'restart' ? 'Перезапускаю…' : 'Перезапуск'}
+          </button>
+          <button class="small-button ghost" type="button" data-action="open-search">
+            Поиск
+          </button>
+        </div>
+      </section>
+
+      <div class="grid">
+        <article class="card metric-card span-6">
+          <h3>Состояние обновлений</h3>
+          <div class="metric">
+            <div class="metric-value">${escapeHTML(update.title)}</div>
+            <div class="metric-subtext">${escapeHTML(update.subtitle)}</div>
+            <div class="badge-row">
+              <span class="badge ${currentTone}">${escapeHTML(state.update.loading ? 'ПРОВЕРКА' : update.tone.toUpperCase())}</span>
+              <span class="badge">${escapeHTML(state.update.loaded ? 'update checked' : 'waiting')}</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="card metric-card span-6">
+          <h3>Режим доступа</h3>
+          <div class="metric">
+            <div class="metric-value">${escapeHTML(access.title)}</div>
+            <div class="metric-subtext">${escapeHTML(access.subtitle)}</div>
+            <div class="badge-row">
+              <span class="badge ${browserMode ? 'primary' : 'success'}">
+                ${browserMode ? 'DESKTOP' : 'TELEGRAM'}
+              </span>
+              <button class="small-button" type="button" data-action="${escapeHTML(access.action)}">
+                ${escapeHTML(access.actionLabel)}
+              </button>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Сегодня</h2>
+          <span>Только то, что требует внимания</span>
+        </div>
+        <article class="card list-card">
+          <div class="calm-steps">
+            ${items
+              .map(
+                (item) => `
+                  <div class="calm-step">
+                    <div>
+                      <strong>${escapeHTML(item.title)}</strong>
+                      <span>${escapeHTML(item.subtitle)}</span>
+                    </div>
+                    <span class="list-item-meta">${escapeHTML(item.meta)}</span>
+                  </div>
+                `
+              )
+              .join('')}
+          </div>
+        </article>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Ближайшее</h2>
+          <span>Куда ведет навигация</span>
+        </div>
+        <article class="card list-card">
+          <div class="badge-row">
+            ${NAV_ITEMS.filter((item) => item.id !== 'settings')
+              .map((item) => `<span class="badge">${escapeHTML(item.label)}</span>`)
+              .join('')}
+          </div>
+        </article>
+      </section>
+    `;
+  }
+
+  function renderModuleView(view) {
+    if (view.id === 'settings') {
+      return `
+        ${renderNotice()}
+        <section class="card module-card span-12">
+          <p class="eyebrow">Settings</p>
+          <h1 class="module-title">Команды и доступ</h1>
+          <p class="module-text">
+            Настройки меняются из Telegram-бота. На компьютере используйте браузерный вход через token.
+          </p>
+          <div class="badge-row">
+            <span class="badge primary">/config</span>
+            <span class="badge">/browser</span>
+            <span class="badge">/restart</span>
+            <span class="badge">WEBAPP_URL</span>
+          </div>
+        </section>
+
+        <div class="grid">
+          <article class="card list-card span-8">
+            <h3>Команды</h3>
+            <div class="calm-steps">
+              <div class="calm-step">
+                <div>
+                  <strong>/config</strong>
+                  <span>Показать список поддерживаемых параметров.</span>
+                </div>
+                <span class="list-item-meta">overview</span>
+              </div>
+              <div class="calm-step">
+                <div>
+                  <strong>/config set WEBAPP_URL https://example.com</strong>
+                  <span>Сохранить URL Mini App в `.env`.</span>
+                </div>
+                <span class="list-item-meta">write</span>
+              </div>
+              <div class="calm-step">
+                <div>
+                  <strong>/config get WEBAPP_URL</strong>
+                  <span>Посмотреть текущее значение.</span>
+                </div>
+                <span class="list-item-meta">read</span>
+              </div>
+              <div class="calm-step">
+                <div>
+                  <strong>/restart</strong>
+                  <span>Перезапустить сервис после подтверждения.</span>
+                </div>
+                <span class="list-item-meta">service</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="card list-card span-4">
+            <h3>Правило</h3>
+            <p class="metric-subtext">
+              Polaris не должен заставлять пользователя помнить, где что лежит. Поиск и одна команда должны быть
+              быстрее навигации по меню.
+            </p>
+          </article>
+        </div>
+      `;
+    }
+
+    return `
+      ${renderNotice()}
+      <section class="card module-card span-12">
+        <p class="eyebrow">${escapeHTML(view.label)}</p>
+        <h1 class="module-title">${escapeHTML(view.label)}</h1>
+        <p class="module-text">${escapeHTML(view.subtitle)}. Сейчас это спокойный каркас для будущих данных и действий.</p>
+        <div class="inline-actions">
+          <button class="small-button primary" type="button" data-action="open-search">Открыть поиск</button>
+          <button class="small-button" type="button" data-view="attention">Вернуться в Attention</button>
+        </div>
+      </section>
+
+      <div class="grid">
+        <article class="card list-card span-8">
+          <h3>Сейчас</h3>
+          <div class="calm-steps">
+            <div class="calm-step">
+              <div>
+                <strong>Контент подключается позже</strong>
+                <span>Здесь появятся реальные данные для этого раздела.</span>
+              </div>
+              <span class="list-item-meta">scaffold</span>
+            </div>
+            <div class="calm-step">
+              <div>
+                <strong>Поиск ведет в разделы</strong>
+                <span>Можно открыть этот экран через глобальный поиск.</span>
+              </div>
+              <span class="list-item-meta">spotlight</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="card list-card span-4">
+          <h3>Контекст</h3>
+          <p class="metric-subtext">
+            Минимализм, спокойствие и быстрые действия. Без лишнего шума и без перегруженных списков.
+          </p>
+        </article>
+      </div>
+    `;
+  }
+
+  function renderAccessGate() {
+    const headline = 'Нет доступа';
+    return `
+      <section class="card hero-card span-12">
+        <div class="hero-copy">
+          <p class="eyebrow">Access</p>
+          <h1>${escapeHTML(headline)}</h1>
+          <p>${escapeHTML(state.authMessage)}</p>
+          <div class="badge-row">
+            <span class="badge warning">Telegram initData или token</span>
+            <span class="badge">Mini App</span>
+            <span class="badge">Browser</span>
+          </div>
+        </div>
+
+        <div class="hero-actions">
+          <button class="small-button primary" type="button" data-action="browser-help">Как открыть на ПК</button>
+          <button class="small-button ghost" type="button" data-action="open-search">Поиск</button>
+        </div>
+      </section>
+
+      <article class="card list-card span-12">
+        <h3>Что делать</h3>
+        <div class="calm-steps">
+          <div class="calm-step">
+            <div>
+              <strong>Откройте `/browser` в Telegram-боте</strong>
+              <span>Так на компьютере появится доступ через token, без Telegram initData.</span>
+            </div>
+            <span class="list-item-meta">desktop</span>
+          </div>
+          <div class="calm-step">
+            <div>
+              <strong>Внутри Telegram Mini App все работает напрямую</strong>
+              <span>Это основной путь на телефоне и на устройствах с доступом к Telegram.</span>
+            </div>
+            <span class="list-item-meta">mini app</span>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderMain() {
+    if (!elements.mainContent) {
+      return;
+    }
+
+    const view = getViewMeta(state.currentView);
+    elements.mainContent.innerHTML = state.authenticated
+      ? state.currentView === 'attention'
+        ? renderAttentionView()
+        : renderModuleView(view)
+      : renderAccessGate();
+
+    hydrateIcons(elements.mainContent);
+  }
+
+  function renderSearchHints() {
+    if (!elements.searchHints) {
+      return;
+    }
+
+    const hints = ['Attention', 'Tasks', 'Servers', 'Finance', 'browser', 'restart', 'WEBAPP_URL', '/config'];
+    elements.searchHints.innerHTML = hints
+      .map(
+        (hint) => `
+          <button class="search-hint" type="button" data-search-query="${escapeHTML(hint)}">
+            ${escapeHTML(hint)}
+          </button>
+        `
+      )
+      .join('');
+  }
+
+  function searchCatalog() {
+    const browserHelpTitle = state.authMode === 'browser' ? 'Скопировать ссылку' : 'Как открыть на ПК';
+    const browserHelpAction = state.authMode === 'browser' ? 'copy-current-url' : 'browser-help';
+
+    return [
+      ...NAV_ITEMS.map((item) => ({
+        id: `view:${item.id}`,
+        kind: 'Section',
+        title: item.label,
+        subtitle: item.subtitle,
+        icon: item.icon,
+        keywords: [item.label, item.subtitle, item.id],
+        run: () => setView(item.id),
+        pinned: item.id === 'attention' || item.id === 'settings',
+      })),
+      {
+        id: 'action:check-update',
+        kind: 'Action',
+        title: 'Проверить обновления',
+        subtitle: '/status',
+        icon: 'update',
+        keywords: ['update', 'status', 'check', 'version'],
+        run: () => checkUpdate(),
+        pinned: true,
+      },
+      {
+        id: 'action:run-update',
+        kind: 'Action',
+        title: 'Обновить Polaris',
+        subtitle: '/update',
+        icon: 'update',
+        keywords: ['update', 'apply', 'git', 'refresh'],
+        run: () => runUpdate(),
+        pinned: true,
+      },
+      {
+        id: 'action:restart',
+        kind: 'Action',
+        title: 'Перезапуск сервиса',
+        subtitle: '/restart',
+        icon: 'restart',
+        keywords: ['restart', 'service', 'reboot', 'systemd'],
+        run: () => runRestart(),
+        pinned: true,
+      },
+      {
+        id: 'action:open-search',
+        kind: 'Action',
+        title: 'Глобальный поиск',
+        subtitle: 'Spotlight / Command palette',
+        icon: 'search',
+        keywords: ['search', 'command', 'palette', 'spotlight', 'raycast'],
+        run: () => openSearch(),
+        pinned: true,
+      },
+      {
+        id: 'action:browser-help',
+        kind: 'Action',
+        title: browserHelpTitle,
+        subtitle: state.authMode === 'browser' ? 'Скопировать текущую ссылку.' : 'Подсказка для доступа с компьютера.',
+        icon: state.authMode === 'browser' ? 'external' : 'monitor',
+        keywords: ['browser', 'desktop', 'token', 'pc', 'computer', 'access'],
+        run: () => handleAction(browserHelpAction),
+        pinned: true,
+      },
+    ];
+  }
+
+  function renderSearch() {
+    if (!state.searchOpen || !elements.searchResults) {
+      return;
+    }
+
+    renderSearchHints();
+
+    const query = state.searchQuery.trim().toLowerCase();
+    const items = searchCatalog()
+      .map((item) => ({
+        ...item,
+        haystack: [item.title, item.subtitle, ...(item.keywords || [])].join(' ').toLowerCase(),
+      }))
+      .filter((item) => {
+        if (!query) {
+          return item.pinned;
+        }
+        return item.haystack.includes(query);
+      })
+      .sort((left, right) => {
+        if (!query) {
+          return Number(right.pinned) - Number(left.pinned);
+        }
+        const leftStarts = left.title.toLowerCase().startsWith(query) ? 1 : 0;
+        const rightStarts = right.title.toLowerCase().startsWith(query) ? 1 : 0;
+        if (leftStarts !== rightStarts) {
+          return rightStarts - leftStarts;
+        }
+        return left.title.localeCompare(right.title, 'ru');
+      });
+
+    if (!items.length) {
+      elements.searchResults.innerHTML = `
+        <div class="card list-card">
+          <h3>Ничего не найдено</h3>
+          <p class="metric-subtext">Попробуйте Attention, update, browser, restart или WEBAPP_URL.</p>
+        </div>
+      `;
+      hydrateIcons(elements.searchResults);
+      return;
+    }
+
+    elements.searchResults.innerHTML = items
+      .map(
+        (item) => `
+          <button class="search-item" type="button" data-result-id="${escapeHTML(item.id)}">
+            <div class="search-item-top">
+              <span class="icon" data-icon="${escapeHTML(item.icon)}" aria-hidden="true"></span>
+              <span class="search-item-title">${escapeHTML(item.title)}</span>
+              <span class="search-item-kind">${escapeHTML(item.kind)}</span>
+            </div>
+            <div class="search-item-subtitle">${escapeHTML(item.subtitle)}</div>
+          </button>
+        `
+      )
+      .join('');
+
+    hydrateIcons(elements.searchResults);
+  }
+
+  function renderShell() {
+    updateTopbar();
+    renderDrawer();
+    renderMain();
+    renderSearch();
+    syncOverlays();
+  }
+
+  async function loadUpdateStatus() {
+    toggleActionBusy('check');
     try {
-      const payload = await validateUser();
-      const name =
-        payload.data?.display_name ||
-        payload.data?.username ||
-        payload.user?.username ||
-        'admin';
-      setAuth(payload.message || `Доступ разрешён: ${name}`, 'ok');
-      if (panelEl) panelEl.hidden = false;
-    } catch (err) {
-      setAuth(`Нет доступа: ${err.message}`, 'err');
-      try {
-        tg?.showAlert?.(`Нет доступа: ${err.message}`);
-      } catch (_) {
-        /* ignore */
-      }
+      const payload = await request('/api/update/status');
+      state.update.loading = false;
+      state.update.loaded = true;
+      state.update.data = payload.data || null;
+      state.update.message = payload.message || '';
+      state.update.error = '';
+      const tone =
+        payload.data?.up_to_date && !payload.data?.dirty
+          ? 'success'
+          : payload.data?.dirty || payload.data?.up_to_date === false
+            ? 'warning'
+            : 'success';
+      setNotice(payload.message || 'Статус обновлений получен.', tone);
+    } catch (error) {
+      state.update.loading = false;
+      state.update.loaded = true;
+      state.update.error = error.message;
+      state.update.message = '';
+      setNotice(`Ошибка проверки: ${error.message}`, 'error');
+    } finally {
+      state.busy = '';
+      renderShell();
     }
   }
 
   async function checkUpdate() {
-    setBusy(true);
-    setStatus('Проверяю…');
-    try {
-      const data = await request('/api/update/status');
-      setStatus(data.message || 'Готово');
-    } catch (err) {
-      setStatus(`Ошибка: ${err.message}`);
-    } finally {
-      setBusy(false);
-    }
+    state.update.loading = true;
+    renderShell();
+    await loadUpdateStatus();
   }
 
   async function runUpdate() {
     const ok = window.confirm(
       'Обновить Polaris из git-ветки? Локальные изменения на сервере будут сброшены.'
     );
-    if (!ok) return;
+    if (!ok) {
+      return;
+    }
 
-    setBusy(true);
-    setStatus('Обновляю…');
+    toggleActionBusy('update');
     try {
-      const data = await request('/api/update', 'POST');
-      setStatus(data.message || 'Обновлено');
+      const payload = await request('/api/update', 'POST');
+      setNotice(payload.message || 'Обновление выполнено.', 'success');
       tg?.HapticFeedback?.notificationOccurred?.('success');
-    } catch (err) {
-      setStatus(`Ошибка: ${err.message}`);
+      await loadUpdateStatus();
+    } catch (error) {
+      setNotice(`Ошибка обновления: ${error.message}`, 'error');
       tg?.HapticFeedback?.notificationOccurred?.('error');
     } finally {
-      setBusy(false);
+      state.busy = '';
+      renderShell();
     }
   }
 
-  checkBtn?.addEventListener('click', checkUpdate);
-  updateBtn?.addEventListener('click', runUpdate);
+  async function runRestart() {
+    const ok = window.confirm('Клоун, ты уверен что это хочешь?');
+    if (!ok) {
+      return;
+    }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootstrap);
-  } else {
-    bootstrap();
+    toggleActionBusy('restart');
+    try {
+      const payload = await request('/api/restart', 'POST');
+      setNotice(payload.message || 'Перезапуск выполнен.', 'success');
+      tg?.HapticFeedback?.notificationOccurred?.('success');
+      await loadUpdateStatus();
+    } catch (error) {
+      setNotice(`Ошибка перезапуска: ${error.message}`, 'error');
+      tg?.HapticFeedback?.notificationOccurred?.('error');
+    } finally {
+      state.busy = '';
+      renderShell();
+    }
   }
+
+  async function copyCurrentUrl() {
+    if (!apiToken) {
+      setNotice('Сначала откройте этот экран через /browser в Telegram-боте.', 'warning');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setNotice('Ссылка скопирована в буфер обмена.', 'success');
+    } catch (error) {
+      setNotice(`Не удалось скопировать ссылку: ${error.message}`, 'warning');
+    }
+  }
+
+  function browserHelp() {
+    setNotice('Для компьютера используйте /browser в Telegram-боте. Так Polaris откроется через token без initData.', 'warning');
+  }
+
+  function handleAction(action) {
+    switch (action) {
+      case 'open-search':
+        openSearch();
+        break;
+      case 'check-update':
+        checkUpdate();
+        break;
+      case 'run-update':
+        runUpdate();
+        break;
+      case 'run-restart':
+        runRestart();
+        break;
+      case 'copy-current-url':
+        copyCurrentUrl();
+        break;
+      case 'browser-help':
+        browserHelp();
+        break;
+      default:
+        break;
+    }
+  }
+
+  function executeSearchResult(resultId) {
+    const item = searchCatalog().find((entry) => entry.id === resultId);
+    if (!item) {
+      return;
+    }
+    closeSearch();
+    item.run();
+  }
+
+  async function bootstrap() {
+    hydrateIcons(document);
+    renderShell();
+
+    try {
+      const payload = await validateUser();
+      state.authenticated = true;
+      state.authMode = normalizeAuthMode(payload.data?.auth || state.authMode);
+      state.user = payload.user || payload.data || null;
+      state.authMessage = payload.message || 'Доступ разрешен.';
+      setAuthBanner(
+        `Доступ: ${state.authMode === 'browser' ? 'browser token' : 'Telegram initData'} · ${
+          state.user?.display_name || state.user?.first_name || state.user?.username || 'admin'
+        }`,
+        'ok'
+      );
+      renderShell();
+      await loadUpdateStatus();
+    } catch (error) {
+      state.authenticated = false;
+      state.authMessage = error.message;
+      setAuthBanner(`Нет доступа: ${error.message}`, 'err');
+      renderShell();
+    }
+  }
+
+  document.addEventListener('click', (event) => {
+    const viewButton = event.target.closest('[data-view]');
+    if (viewButton) {
+      setView(viewButton.dataset.view);
+      return;
+    }
+
+    const actionButton = event.target.closest('[data-action]');
+    if (actionButton) {
+      handleAction(actionButton.dataset.action);
+      return;
+    }
+
+    const resultButton = event.target.closest('[data-result-id]');
+    if (resultButton) {
+      executeSearchResult(resultButton.dataset.resultId);
+      return;
+    }
+
+    const queryButton = event.target.closest('[data-search-query]');
+    if (queryButton) {
+      state.searchQuery = queryButton.dataset.searchQuery || '';
+      if (elements.searchInput) {
+        elements.searchInput.value = state.searchQuery;
+      }
+      renderSearch();
+    }
+  });
+
+  elements.drawerToggle?.addEventListener('click', toggleDrawer);
+  elements.drawerClose?.addEventListener('click', closeDrawer);
+  elements.brandButton?.addEventListener('click', openSearch);
+  elements.searchToggle?.addEventListener('click', openSearch);
+  elements.searchClose?.addEventListener('click', closeSearch);
+
+  elements.backdrop?.addEventListener('click', () => {
+    closeDrawer();
+    closeSearch();
+  });
+
+  elements.searchInput?.addEventListener('input', (event) => {
+    state.searchQuery = event.target.value || '';
+    renderSearch();
+  });
+
+  elements.searchInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeSearch();
+      return;
+    }
+    if (event.key === 'Enter') {
+      const firstResult = elements.searchResults?.querySelector('[data-result-id]');
+      if (firstResult) {
+        executeSearchResult(firstResult.dataset.resultId);
+      }
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      if (state.searchOpen) {
+        closeSearch();
+        return;
+      }
+      if (state.drawerOpen) {
+        closeDrawer();
+        return;
+      }
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      openSearch();
+      return;
+    }
+
+    if (
+      event.key === '/' &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      document.activeElement !== elements.searchInput
+    ) {
+      event.preventDefault();
+      openSearch();
+    }
+  });
+
+  bootstrap();
 })();
