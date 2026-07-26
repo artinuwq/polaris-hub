@@ -84,7 +84,7 @@ class UpdateManager:
         self.rollback.remember(previous)
         new_sha = self.provider.checkout_remote()
         self.installer.install()
-        restarted = self._maybe_restart()
+        restarted, _ = self.restart_service()
         message = f"Обновлено: {previous[:7]} → {new_sha[:7]}"
         if restarted:
             message += ". Сервис перезапускается."
@@ -98,17 +98,20 @@ class UpdateManager:
             restarted=restarted,
         )
 
-    def _maybe_restart(self) -> bool:
+    def restart_service(self) -> tuple[bool, str]:
         service = self.settings.update_service_name
         if not service:
-            return False
+            return False, "UPDATE_SERVICE_NAME не задан"
         systemctl = shutil.which("systemctl")
         if not systemctl:
-            return False
+            return False, "systemctl не найден"
         completed = subprocess.run(
             [systemctl, "restart", service],
             capture_output=True,
             text=True,
             check=False,
         )
-        return completed.returncode == 0
+        if completed.returncode == 0:
+            return True, f"Сервис {service} перезапущен"
+        detail = (completed.stderr or completed.stdout or f"exit code {completed.returncode}").strip()
+        return False, f"Не удалось перезапустить {service}: {detail}"

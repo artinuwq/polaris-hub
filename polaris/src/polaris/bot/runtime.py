@@ -195,6 +195,13 @@ class TelegramBot:
             raise PolarisError(data.get("description", "Telegram API error"))
         return data["result"]
 
+    def delete_message(self, chat_id: int, message_id: int) -> None:
+        self.api(
+            "deleteMessage",
+            {"chat_id": chat_id, "message_id": message_id},
+            timeout=(5, 15),
+        )
+
     def send(self, chat_id: int, text: str, reply_markup: dict | None = None) -> None:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if reply_markup:
@@ -231,7 +238,7 @@ class TelegramBot:
         if text.startswith("/start"):
             self.send(
                 chat_id,
-                "Polaris bot готов.\nОткройте Mini App кнопкой ниже.\nКоманды: /update, /status, /config, /ping",
+                "Polaris bot готов.\nОткройте Mini App кнопкой ниже.\nКоманды: /update, /status, /config, /restart, /ping",
                 reply_markup=self._start_keyboard(),
             )
             return
@@ -248,6 +255,13 @@ class TelegramBot:
                 self.send(chat_id, "Недостаточно прав.")
                 return
             self._run_update(chat_id)
+            return
+
+        if text.startswith("/restart"):
+            if not self.is_admin(user_id):
+                self.send(chat_id, "Недостаточно прав.")
+                return
+            self._ask_restart(chat_id)
             return
 
         if text.startswith("/ping"):
@@ -349,6 +363,23 @@ class TelegramBot:
     def _update_keyboard(self) -> dict[str, Any]:
         return self._start_keyboard()
 
+    def _restart_keyboard(self) -> dict[str, Any]:
+        return {
+            "inline_keyboard": [
+                [
+                    {"text": "Да", "callback_data": "restart:yes"},
+                    {"text": "Нет", "callback_data": "restart:no"},
+                ]
+            ]
+        }
+
+    def _ask_restart(self, chat_id: int) -> None:
+        self.send(
+            chat_id,
+            "Клоун, ты уверен что это хочешь?",
+            reply_markup=self._restart_keyboard(),
+        )
+
     def _on_callback(self, callback: dict[str, Any]) -> None:
         data = callback.get("data") or ""
         chat_id = callback["message"]["chat"]["id"]
@@ -369,6 +400,17 @@ class TelegramBot:
             self._run_update(chat_id)
             return
 
+        if data == "restart:no":
+            self.answer_callback(callback_id, "Ладно, забыли")
+            self.delete_message(chat_id, callback["message"]["message_id"])
+            return
+
+        if data == "restart:yes":
+            self.answer_callback(callback_id, "Пробую перезапуститься…")
+            self.delete_message(chat_id, callback["message"]["message_id"])
+            self._run_restart(chat_id)
+            return
+
         self.answer_callback(callback_id)
 
     def _send_status(self, chat_id: int) -> None:
@@ -385,6 +427,14 @@ class TelegramBot:
             self.send(chat_id, result.message, reply_markup=self._update_keyboard())
         except PolarisError as exc:
             self.send(chat_id, f"Ошибка обновления: {exc}")
+
+    def _run_restart(self, chat_id: int) -> None:
+        self.send(chat_id, "Пробую перезапуститься…")
+        try:
+            restarted, message = UpdateManager(self.settings).restart_service()
+            self.send(chat_id, message)
+        except PolarisError as exc:
+            self.send(chat_id, f"Ошибка перезапуска: {exc}")
 
     def poll_forever(self) -> None:
         import time
