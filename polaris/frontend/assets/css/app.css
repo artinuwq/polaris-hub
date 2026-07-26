@@ -50,6 +50,15 @@ button {
   appearance: none;
 }
 
+button:focus {
+  outline: none;
+}
+
+button:focus-visible {
+  outline: 2px solid rgba(90, 184, 255, 0.72);
+  outline-offset: 2px;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -181,6 +190,35 @@ button {
   display: flex;
   flex-direction: column;
   gap: 22px;
+}
+
+.page-intro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 2px 4px;
+}
+
+.page-title {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.9rem, 4vw, 2.65rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.page-subtitle {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .card {
@@ -363,6 +401,36 @@ button {
 .metric .small-button {
   justify-self: start;
   margin-top: 4px;
+}
+
+.status-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+}
+
+.status-card-copy {
+  min-width: 0;
+}
+
+.status-card-copy h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.035em;
+}
+
+.status-card-copy p:last-child {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.status-card .badge-row {
+  flex-shrink: 0;
+  margin-top: 0;
 }
 
 .section {
@@ -655,6 +723,11 @@ button {
 @media (max-width: 720px) {
   .app-shell { width: min(100% - 24px, 620px); padding-top: 10px; }
   .topbar { padding-bottom: 12px; }
+  .page-intro { align-items: stretch; flex-direction: column; gap: 18px; }
+  .page-actions { justify-content: stretch; }
+  .page-actions .small-button { flex: 1; }
+  .status-card { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .status-card .badge-row { margin-top: 0; }
   .hero-card { grid-template-columns: 1fr; gap: 24px; min-height: 0; }
   .hero-card h1 { font-size: clamp(2.25rem, 12vw, 3.4rem); }
   .hero-actions { display: grid; grid-template-columns: 1fr 1fr; }

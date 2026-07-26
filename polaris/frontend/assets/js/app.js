@@ -353,72 +353,21 @@
     };
   }
 
-  function accessSummary() {
-    const userName =
-      state.user?.display_name || state.user?.first_name || state.user?.username || 'admin';
-    if (state.authMode === 'browser') {
-      return {
-        title: 'Браузерный доступ',
-        tone: 'primary',
-        subtitle: `Открыто через token. Пользователь: ${userName}.`,
-        actionLabel: 'Скопировать ссылку',
-        action: 'copy-current-url',
-      };
-    }
-
-    return {
-      title: 'Telegram Mini App',
-      tone: 'success',
-      subtitle: `Доступ открыт через initData. Пользователь: ${userName}.`,
-      actionLabel: 'Как открыть на ПК',
-      action: 'browser-help',
-    };
-  }
-
-  function attentionItems() {
-    const items = [];
-    const update = updateSummary();
-    const access = accessSummary();
-
-    items.push({
-      title: update.title,
-      subtitle: update.subtitle,
-      meta: state.update.loaded ? 'update' : 'check',
-    });
-
-    items.push({
-      title: access.title,
-      subtitle: access.subtitle,
-      meta: state.authMode === 'browser' ? 'desktop' : 'telegram',
-    });
-
-    return items;
-  }
-
   function renderAttentionView() {
     const update = updateSummary();
-    const access = accessSummary();
-    const items = attentionItems();
     const currentTone = update.tone === 'error' ? 'error' : update.tone === 'warning' ? 'warning' : 'success';
     const actionBusy = Boolean(state.busy);
-    const browserMode = state.authMode === 'browser';
 
     return `
       ${renderNotice()}
-      <section class="card hero-card span-12">
-        <div class="hero-copy">
-          <p class="eyebrow">Polaris Hub</p>
-          <h1>Спокойный контроль<br />главного</h1>
-          <p>
-            Здесь только состояние системы и действия, которые могут понадобиться прямо сейчас.
-          </p>
-          <div class="badge-row">
-            <span class="badge ${currentTone}">${escapeHTML(update.tone.toUpperCase())}</span>
-            <span class="badge">${browserMode ? 'Браузер' : 'Telegram Mini App'}</span>
-          </div>
+      <section class="page-intro">
+        <div>
+          <p class="eyebrow">Attention</p>
+          <h1 class="page-title">Состояние Polaris</h1>
+          <p class="page-subtitle">Только то, что требует внимания сейчас.</p>
         </div>
 
-        <div class="hero-actions">
+        <div class="page-actions">
           <button class="small-button primary" type="button" data-action="check-update" ${actionBusy ? 'disabled' : ''}>
             ${state.busy === 'check' ? 'Проверяю…' : 'Проверить'}
           </button>
@@ -431,60 +380,17 @@
         </div>
       </section>
 
-      <div class="grid">
-        <article class="card metric-card span-6">
-          <h3>Состояние обновлений</h3>
-          <div class="metric">
-            <div class="metric-value">${escapeHTML(update.title)}</div>
-            <div class="metric-subtext">${escapeHTML(update.subtitle)}</div>
-            <div class="badge-row">
-              <span class="badge ${currentTone}">${escapeHTML(state.update.loading ? 'ПРОВЕРКА' : update.tone.toUpperCase())}</span>
-              <span class="badge">${escapeHTML(state.update.loaded ? 'update checked' : 'waiting')}</span>
-            </div>
-          </div>
-        </article>
-
-        <article class="card metric-card span-6">
-          <h3>Режим доступа</h3>
-          <div class="metric">
-            <div class="metric-value">${escapeHTML(access.title)}</div>
-            <div class="metric-subtext">${escapeHTML(access.subtitle)}</div>
-            <div class="badge-row">
-              <span class="badge ${browserMode ? 'primary' : 'success'}">
-                ${browserMode ? 'DESKTOP' : 'TELEGRAM'}
-              </span>
-              <button class="small-button" type="button" data-action="${escapeHTML(access.action)}">
-                ${escapeHTML(access.actionLabel)}
-              </button>
-            </div>
-          </div>
-        </article>
-      </div>
-
-      <section class="section">
-        <div class="section-head">
-          <h2>Сейчас</h2>
-          <span>Состояние Polaris</span>
+      <article class="card status-card">
+        <div class="status-card-copy">
+          <p class="kicker">Обновления</p>
+          <h2>${escapeHTML(update.title)}</h2>
+          <p>${escapeHTML(update.subtitle)}</p>
         </div>
-        <article class="card list-card">
-          <div class="calm-steps">
-            ${items
-              .map(
-                (item) => `
-                  <div class="calm-step">
-                    <div>
-                      <strong>${escapeHTML(item.title)}</strong>
-                      <span>${escapeHTML(item.subtitle)}</span>
-                    </div>
-                    <span class="list-item-meta">${escapeHTML(item.meta)}</span>
-                  </div>
-                `
-              )
-              .join('')}
-          </div>
-        </article>
-      </section>
-
+        <div class="badge-row">
+          <span class="badge ${currentTone}">${escapeHTML(state.update.loading ? 'ПРОВЕРКА' : update.tone.toUpperCase())}</span>
+          <span class="badge">${escapeHTML(state.update.loaded ? 'Проверено' : 'Ожидает проверки')}</span>
+        </div>
+      </article>
     `;
   }
 
@@ -504,7 +410,7 @@
             <span class="badge">/restart</span>
             <span class="badge">WEBAPP_URL</span>
           </div>
-        </section>
+        </article>
 
         <div class="grid">
           <article class="card list-card span-8">
@@ -827,7 +733,11 @@
           : payload.data?.dirty || payload.data?.up_to_date === false
             ? 'warning'
             : 'success';
-      setNotice(payload.message || 'Статус обновлений получен.', tone);
+      if (tone === 'success') {
+        setNotice('');
+      } else {
+        setNotice(payload.message || 'Статус обновлений получен.', tone);
+      }
     } catch (error) {
       state.update.loading = false;
       state.update.loaded = true;
