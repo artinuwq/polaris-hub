@@ -75,7 +75,7 @@
 
     if (!initData && !apiToken) {
       throw new Error(
-        'Не обнаружены данные Telegram Web App. Откройте Mini App кнопкой в боте (не через обычную ссылку в браузере).'
+        'Не удалось получить Telegram Web App initData. Откройте Polaris кнопкой Mini App внутри Telegram, а не обычной ссылкой в браузере.'
       );
     }
 
