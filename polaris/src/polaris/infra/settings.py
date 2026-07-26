@@ -29,6 +29,7 @@ class Settings:
     web_host: str = "127.0.0.1"
     web_port: int = 8000
     telegram_force_ipv4: bool = True
+    telegram_init_data_max_age: int = 86400
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -47,4 +48,5 @@ class Settings:
             web_port=int(os.getenv("WEB_PORT", "8000")),
             telegram_force_ipv4=os.getenv("TELEGRAM_FORCE_IPV4", "true").lower()
             in {"1", "true", "yes"},
+            telegram_init_data_max_age=int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", "86400")),
         )

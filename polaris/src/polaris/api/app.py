@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from polaris.infra.settings import Settings
+from polaris.integrations.telegram.auth import TelegramWebAppUser, authenticate_webapp
 from polaris.shared.exceptions import AuthorizationError, PolarisError
 from polaris.update.manager import UpdateManager
 
@@ -24,14 +25,36 @@ app.add_middleware(
 FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 
 
-def _authorize(token: str | None) -> None:
+def require_admin(
+    x_telegram_init_data: str | None = Header(default=None, alias="X-Telegram-Init-Data"),
+    x_polaris_token: str | None = Header(default=None, alias="X-Polaris-Token"),
+) -> TelegramWebAppUser | None:
+    """Доступ: валидный Telegram initData админа ИЛИ UPDATE_API_TOKEN (для отладки)."""
+    # 1) Mini App — основная проверка
+    if x_telegram_init_data:
+        try:
+            return authenticate_webapp(
+                x_telegram_init_data,
+                settings.telegram_bot_token,
+                admin_ids=settings.telegram_admin_ids,
+                require_admin=True,
+                max_age_seconds=settings.telegram_init_data_max_age,
+            )
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    # 2) Fallback токен (удобно вне Telegram / curl)
     expected = settings.update_api_token
-    if not expected:
-        if settings.debug:
-            return
-        raise HTTPException(status_code=503, detail="UPDATE_API_TOKEN не задан")
-    if token != expected:
-        raise AuthorizationError("Неверный токен обновления")
+    if expected and x_polaris_token == expected:
+        return None
+
+    if settings.debug and not expected and not settings.telegram_bot_token:
+        return None
+
+    raise HTTPException(
+        status_code=401,
+        detail="Откройте Mini App из Telegram или передайте X-Polaris-Token",
+    )
 
 
 @app.get("/health")
@@ -39,10 +62,32 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/me")
+def me(user: TelegramWebAppUser | None = Depends(require_admin)):
+    if user is None:
+        return {
+            "success": True,
+            "message": "Авторизован по API-токену",
+            "data": {"auth": "token", "is_admin": True},
+        }
+    return {
+        "success": True,
+        "message": f"Привет, {user.display_name}",
+        "data": {
+            "auth": "telegram",
+            "is_admin": True,
+            "id": user.id,
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "display_name": user.display_name,
+        },
+    }
+
+
 @app.get("/api/update/status")
-def update_status(x_polaris_token: str | None = Header(default=None)):
+def update_status(_user: TelegramWebAppUser | None = Depends(require_admin)):
     try:
-        _authorize(x_polaris_token)
         status = UpdateManager(settings).check()
         return {
             "success": True,
@@ -55,16 +100,13 @@ def update_status(x_polaris_token: str | None = Header(default=None)):
                 "dirty": status.dirty,
             },
         }
-    except AuthorizationError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PolarisError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/update")
-def run_update(x_polaris_token: str | None = Header(default=None)):
+def run_update(_user: TelegramWebAppUser | None = Depends(require_admin)):
     try:
-        _authorize(x_polaris_token)
         result = UpdateManager(settings).apply()
         return {
             "success": result.success,
@@ -75,8 +117,6 @@ def run_update(x_polaris_token: str | None = Header(default=None)):
                 "restarted": result.restarted,
             },
         }
-    except AuthorizationError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PolarisError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
