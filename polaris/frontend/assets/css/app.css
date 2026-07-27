@@ -852,7 +852,7 @@ body.drawer-ready .swipe-hint {
   .hero-actions .small-button:first-child { grid-column: span 2; }
   .span-8, .span-6, .span-4 { grid-column: span 12; }
   .metric-card, .list-card, .empty-card, .module-card, .notice-card { padding: 18px; }
-  .drawer { top: 4px; bottom: 4px; left: 4px; width: calc(100vw - 8px); }
+  .drawer { top: 12px; bottom: 12px; left: 12px; width: calc(100vw - 24px); }
   .search-overlay { padding: 12px; }
   .search-panel { margin-top: 0; padding: 16px; }
 
@@ -878,9 +878,10 @@ body.drawer-ready .swipe-hint {
   body.tg-mobile .topbar {
     grid-template-columns: 1fr;
     gap: 8px;
-    padding-top: calc(env(safe-area-inset-top) + 4px);
-    min-height: calc(52px + env(safe-area-inset-top));
-    position: relative;
+    padding-top: calc(env(safe-area-inset-top) + 12px);
+    min-height: calc(60px + env(safe-area-inset-top));
+    position: sticky;
+    top: 0;
     z-index: 10;
   }
 
@@ -890,6 +891,6 @@ body.drawer-ready .swipe-hint {
 
   /* Lower content on mobile */
   body.tg-mobile .app-shell {
-    padding-top: calc(env(safe-area-inset-top) + 8px);
+    padding-top: calc(env(safe-area-inset-top) + 20px);
   }
 }
