@@ -4,9 +4,9 @@
 
   /* ─── Platform detection ─── */
   const platform = tg?.platform || 'unknown';
-  const isMobile = /android|ios/i.test(platform);
-  const isDesktop = /macos|windows|linux/i.test(platform);
-  const isWeb = platform === 'web';
+  const isMobile = /android|ios/i.test(platform) || window.innerWidth < 720;
+  const isDesktop = /macos|windows|linux/i.test(platform) && window.innerWidth >= 720;
+  const isWeb = platform === 'web' && window.innerWidth >= 720;
   const isFullscreen = tg?.isFullscreen || false;
 
   if (isMobile) {
