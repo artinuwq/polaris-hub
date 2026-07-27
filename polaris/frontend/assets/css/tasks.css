@@ -372,6 +372,8 @@
   background: #0d1018;
   box-shadow: var(--shadow);
   animation: slideIn 200ms ease;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 @keyframes slideIn {

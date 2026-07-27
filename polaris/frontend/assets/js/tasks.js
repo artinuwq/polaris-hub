@@ -564,6 +564,12 @@ window.TasksModule = (() => {
             <input type="time" id="create-task-time" />
           </div>
         </div>
+        <div class="detail-field" style="margin-top:10px">
+          <label>Энергия</label>
+          <select id="create-task-energy">
+            ${ENERGY_OPTIONS.map((e) => `<option value="${e.id}">${escapeHTML(e.label)} — ${escapeHTML(e.desc)}</option>`).join('')}
+          </select>
+        </div>
         <div class="create-modal-actions">
           <button class="small-button ghost" type="button" data-action="close-create-modal">Отмена</button>
           <button class="small-button primary" type="button" data-action="submit-create-task">Создать</button>
@@ -614,11 +620,13 @@ window.TasksModule = (() => {
 
     const dateInput = document.getElementById('create-task-date');
     const timeInput = document.getElementById('create-task-time');
+    const energyInput = document.getElementById('create-task-energy');
 
     const data = {
       title: title,
       date: dateInput?.value || '',
       time: timeInput?.value || '',
+      energy: energyInput?.value || 'medium',
       tags: extractTagsFromTitle(title),
     };
 
@@ -655,10 +663,10 @@ window.TasksModule = (() => {
           </button>
         </div>
 
-        <!-- Description -->
+        <!-- Title (editable) -->
         <div class="detail-section">
-          <div class="detail-section-title">Описание</div>
-          <textarea data-field="description" placeholder="Добавить описание..." rows="3">${escapeHTML(task.description)}</textarea>
+          <div class="detail-section-title">Название</div>
+          <input type="text" data-field="title" value="${escapeHTML(task.title)}" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.95rem;outline:none" />
         </div>
 
         <div class="detail-divider"></div>
