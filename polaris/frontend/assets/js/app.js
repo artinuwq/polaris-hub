@@ -1,7 +1,6 @@
 (() => {
   const tg = window.Telegram?.WebApp;
   tg?.ready?.();
-  tg?.expand?.();
 
   /* ─── Platform detection ─── */
   const platform = tg?.platform || 'unknown';
@@ -12,8 +11,14 @@
 
   if (isMobile) {
     document.body.classList.add('tg-mobile');
-    // На телефоне сразу раскрываем на весь экран
-    tg?.expand?.();
+    // На телефоне раскрываем на весь экран с небольшой задержкой
+    setTimeout(() => {
+      tg?.expand?.();
+      // Пробуем полноэкранный режим если поддерживается
+      if (tg?.requestFullscreen) {
+        tg.requestFullscreen().catch(() => {});
+      }
+    }, 300);
   }
   if (isDesktop) {
     document.body.classList.add('tg-desktop');
