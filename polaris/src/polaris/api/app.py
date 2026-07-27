@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -16,7 +17,25 @@ from polaris.shared.exceptions import AuthorizationError, PolarisError
 from polaris.update.manager import UpdateManager
 
 settings = Settings.from_env()
-app = FastAPI(title="Polaris API", on_startup=[lambda: _run_migrations()])
+MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "database" / "migrations"
+FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
+
+
+def _run_migrations() -> None:
+    """Run pending database migrations on startup."""
+    if MIGRATIONS_DIR.exists():
+        for sql_file in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            run_migration(sql_file.read_text())
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: run migrations on startup."""
+    _run_migrations()
+    yield
+
+
+app = FastAPI(title="Polaris API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,8 +43,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 
 
 class TgAuthBody(BaseModel):
@@ -42,7 +59,10 @@ def _user_from_init_data(init_data: str) -> TelegramWebAppUser:
     )
 
 
-def require_admin(
+# ─── Auth dependency ───
+
+
+def _require_admin(
     x_telegram_init_data: str | None = Header(default=None, alias="X-Telegram-Init-Data"),
     x_polaris_token: str | None = Header(default=None, alias="X-Polaris-Token"),
 ) -> TelegramWebAppUser | None:
@@ -64,6 +84,84 @@ def require_admin(
         status_code=401,
         detail="Откройте Mini App из Telegram или передайте X-Polaris-Token",
     )
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/api/tg/auth")
+def tg_auth(body: TgAuthBody):
+    """Как в lumica: принять initData в JSON и проверить подпись."""
+    try:
+        user = _user_from_init_data(body.initData)
+        return _me_payload(user)
+    except AuthorizationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@app.get("/api/me")
+def me(user: TelegramWebAppUser | None = Depends(_require_admin)):
+    return _me_payload(user)
+
+
+@app.get("/api/update/status")
+def update_status(_user: TelegramWebAppUser | None = Depends(_require_admin)):
+    try:
+        status = UpdateManager(settings).check()
+        return {
+            "success": True,
+            "message": status.message,
+            "data": {
+                "branch": status.branch,
+                "local_sha": status.local_sha,
+                "remote_sha": status.remote_sha,
+                "up_to_date": status.up_to_date,
+                "dirty": status.dirty,
+            },
+        }
+    except PolarisError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/update")
+def run_update(_user: TelegramWebAppUser | None = Depends(_require_admin)):
+    try:
+        result = UpdateManager(settings).apply()
+        return {
+            "success": True,
+            "message": result.message,
+            "data": {
+                "previous_sha": result.previous_sha,
+                "current_sha": result.current_sha,
+                "restarted": result.restarted,
+            },
+        }
+    except PolarisError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/restart")
+def restart_service(_user: TelegramWebAppUser | None = Depends(_require_admin)):
+    try:
+        restarted, message = UpdateManager(settings).restart_service()
+        return {
+            "success": True,
+            "message": message,
+            "data": {
+                "restarted": restarted,
+            },
+        }
+    except PolarisError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ─── Include routers ───
+app.include_router(tasks_router)
+
+
+# ─── Helpers ───
 
 
 def _me_payload(user: TelegramWebAppUser | None) -> dict:
@@ -95,86 +193,7 @@ def _me_payload(user: TelegramWebAppUser | None) -> dict:
     }
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-@app.post("/api/tg/auth")
-def tg_auth(body: TgAuthBody):
-    """Как в lumica: принять initData в JSON и проверить подпись."""
-    try:
-        user = _user_from_init_data(body.initData)
-        return _me_payload(user)
-    except AuthorizationError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
-
-
-@app.get("/api/me")
-def me(user: TelegramWebAppUser | None = Depends(require_admin)):
-    return _me_payload(user)
-
-
-@app.get("/api/update/status")
-def update_status(_user: TelegramWebAppUser | None = Depends(require_admin)):
-    try:
-        status = UpdateManager(settings).check()
-        return {
-            "success": True,
-            "message": status.message,
-            "data": {
-                "branch": status.branch,
-                "local_sha": status.local_sha,
-                "remote_sha": status.remote_sha,
-                "up_to_date": status.up_to_date,
-                "dirty": status.dirty,
-            },
-        }
-    except PolarisError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/update")
-def run_update(_user: TelegramWebAppUser | None = Depends(require_admin)):
-    try:
-        result = UpdateManager(settings).apply()
-        return {
-            "success": True,
-            "message": result.message,
-            "data": {
-                "previous_sha": result.previous_sha,
-                "current_sha": result.current_sha,
-                "restarted": result.restarted,
-            },
-        }
-    except PolarisError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/restart")
-def restart_service(_user: TelegramWebAppUser | None = Depends(require_admin)):
-    try:
-        restarted, message = UpdateManager(settings).restart_service()
-        return {
-            "success": True,
-            "message": message,
-            "data": {
-                "restarted": restarted,
-            },
-        }
-    except PolarisError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-app.include_router(tasks_router)
-
-
-def _run_migrations() -> None:
-    """Run pending database migrations on startup."""
-    migration_path = Path(__file__).resolve().parents[2] / "database" / "migrations" / "001_create_tasks.sql"
-    if migration_path.exists():
-        run_migration(migration_path.read_text())
-
+# ─── Static files & SPA fallback ───
 
 if FRONTEND_DIR.exists():
     assets_dir = FRONTEND_DIR / "assets"

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from polaris.integrations.telegram.auth import TelegramWebAppUser
-from polaris.api.app import require_admin
+from polaris.shared.auth import require_admin
 from polaris.modules.todo.models import TaskCreate, TaskUpdate
 from polaris.modules.todo import service
 
