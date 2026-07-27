@@ -210,6 +210,12 @@
     closeSearch();
     updateTopbar();
     renderMain();
+
+    // Initialize tasks module when navigating to tasks view
+    if (viewId === 'tasks' && window.TasksModule) {
+      window.TasksModule.init('tasks-container');
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -395,6 +401,13 @@
   }
 
   function renderModuleView(view) {
+    if (view.id === 'tasks') {
+      return `
+        ${renderNotice()}
+        <div id="tasks-container" class="tasks-page"></div>
+      `;
+    }
+
     if (view.id === 'settings') {
       return `
         ${renderNotice()}

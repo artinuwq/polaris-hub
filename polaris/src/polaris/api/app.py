@@ -8,13 +8,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from polaris.infra.database import run_migration
 from polaris.infra.settings import Settings
 from polaris.integrations.telegram.auth import TelegramWebAppUser, authenticate_webapp
+from polaris.modules.todo.api import router as tasks_router
 from polaris.shared.exceptions import AuthorizationError, PolarisError
 from polaris.update.manager import UpdateManager
 
 settings = Settings.from_env()
-app = FastAPI(title="Polaris API")
+app = FastAPI(title="Polaris API", on_startup=[lambda: _run_migrations()])
 
 app.add_middleware(
     CORSMiddleware,
@@ -162,6 +164,16 @@ def restart_service(_user: TelegramWebAppUser | None = Depends(require_admin)):
         }
     except PolarisError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+app.include_router(tasks_router)
+
+
+def _run_migrations() -> None:
+    """Run pending database migrations on startup."""
+    migration_path = Path(__file__).resolve().parents[2] / "database" / "migrations" / "001_create_tasks.sql"
+    if migration_path.exists():
+        run_migration(migration_path.read_text())
 
 
 if FRONTEND_DIR.exists():
