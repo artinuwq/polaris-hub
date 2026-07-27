@@ -44,6 +44,7 @@ body {
 button,
 input {
   font: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -52,6 +53,16 @@ button {
 
 button:focus {
   outline: none;
+}
+
+button:active,
+.icon-button:active,
+.drawer-item:active,
+.search-item:active,
+.search-hint:active,
+.small-button:active {
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button:focus-visible {
