@@ -451,7 +451,10 @@ class TelegramBot:
     def _send_status(self, chat_id: int) -> None:
         try:
             status = UpdateManager(self.settings).check()
-            self.send(chat_id, status.message, reply_markup=self._update_keyboard())
+            if status.up_to_date:
+                self.send(chat_id, status.message)
+            else:
+                self.send(chat_id, status.message, reply_markup=self._update_keyboard())
         except PolarisError as exc:
             self.send(chat_id, f"Ошибка: {exc}")
 
@@ -459,7 +462,12 @@ class TelegramBot:
         self.send(chat_id, "Обновление запущено…")
         try:
             result = UpdateManager(self.settings).apply()
-            self.send(chat_id, result.message, reply_markup=self._update_keyboard())
+            if result.success:
+                branch = self.settings.update_branch
+                sha = result.current_sha[:7]
+                self.send(chat_id, f"Обновление успешно пройдено\nнынешняя версия {branch} ({sha})")
+            else:
+                self.send(chat_id, result.message)
         except PolarisError as exc:
             self.send(chat_id, f"Ошибка обновления: {exc}")
 
