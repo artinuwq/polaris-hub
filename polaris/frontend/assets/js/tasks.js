@@ -60,6 +60,23 @@ window.TasksModule = (() => {
     { label: 'Через неделю', value: '1w' },
   ];
 
+  const TAG_RULES = [
+    { keyword: 'polaris', tag: 'polaris' },
+    { keyword: 'lumica', tag: 'lumica' },
+    { keyword: 'linux', tag: 'linux' },
+    { keyword: 'python', tag: 'python' },
+    { keyword: 'telegram', tag: 'telegram' },
+    { keyword: 'idea', tag: 'idea' },
+    { keyword: 'дом', tag: 'дом' },
+    { keyword: 'домом', tag: 'дом' },
+    { keyword: 'учеба', tag: 'учеба' },
+    { keyword: 'учёба', tag: 'учеба' },
+    { keyword: 'личное', tag: 'личное' },
+    { keyword: 'сервер', tag: 'servers' },
+    { keyword: 'оплатить', tag: 'finance' },
+    { keyword: 'оплата', tag: 'finance' },
+  ];
+
   const CACHE_KEY = 'polaris.tasks.cache';
 
   /* ─── State ─── */
@@ -536,7 +553,17 @@ window.TasksModule = (() => {
           </button>
         </div>
         <textarea class="create-modal-input" id="create-task-input" placeholder="Что нужно сделать?" rows="2" autofocus></textarea>
-        <p class="create-modal-hint">Enter — создать. Умные даты: «завтра в 18», «через 3 дня», «31 июля»</p>
+        <p class="create-modal-hint">Enter — создать. Теги подставятся автоматически: lumica, linux, telegram, дом, учеба...</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+          <div class="detail-field">
+            <label>Дата</label>
+            <input type="date" id="create-task-date" />
+          </div>
+          <div class="detail-field">
+            <label>Время</label>
+            <input type="time" id="create-task-time" />
+          </div>
+        </div>
         <div class="create-modal-actions">
           <button class="small-button ghost" type="button" data-action="close-create-modal">Отмена</button>
           <button class="small-button primary" type="button" data-action="submit-create-task">Создать</button>
@@ -568,17 +595,31 @@ window.TasksModule = (() => {
     render();
   }
 
+  function extractTagsFromTitle(title) {
+    const lower = title.toLowerCase();
+    const matched = new Set();
+    TAG_RULES.forEach((rule) => {
+      if (lower.includes(rule.keyword)) {
+        matched.add(rule.tag);
+      }
+    });
+    return Array.from(matched);
+  }
+
   async function submitCreate() {
     const input = document.getElementById('create-task-input');
     if (!input) return;
     const title = input.value.trim();
     if (!title) return;
 
-    const parsed = parseSmartDate(title);
+    const dateInput = document.getElementById('create-task-date');
+    const timeInput = document.getElementById('create-task-time');
+
     const data = {
       title: title,
-      date: parsed.date,
-      time: parsed.time,
+      date: dateInput?.value || '',
+      time: timeInput?.value || '',
+      tags: extractTagsFromTitle(title),
     };
 
     try {
