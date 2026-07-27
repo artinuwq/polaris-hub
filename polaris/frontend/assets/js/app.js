@@ -3,6 +3,28 @@
   tg?.ready?.();
   tg?.expand?.();
 
+  /* ─── Platform detection ─── */
+  const platform = tg?.platform || 'unknown';
+  const isMobile = /android|ios/i.test(platform);
+  const isDesktop = /macos|windows|linux/i.test(platform);
+  const isWeb = platform === 'web';
+  const isFullscreen = tg?.isFullscreen || false;
+
+  if (isMobile) {
+    document.body.classList.add('tg-mobile');
+    // На телефоне сразу раскрываем на весь экран
+    tg?.expand?.();
+  }
+  if (isDesktop) {
+    document.body.classList.add('tg-desktop');
+  }
+  if (isWeb) {
+    document.body.classList.add('tg-web');
+  }
+  if (isFullscreen) {
+    document.body.classList.add('tg-fullscreen');
+  }
+
   const params = new URLSearchParams(window.location.search);
   const tokenFromUrl = params.get('token') || '';
   const tokenStorageKey = 'polaris_update_token';
