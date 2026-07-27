@@ -860,13 +860,28 @@ body.drawer-ready .swipe-hint {
   body.tg-mobile #drawer-toggle,
   body.tg-mobile #search-toggle {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+    pointer-events: none !important;
+    clip: rect(0, 0, 0, 0) !important;
+    clip-path: inset(50%) !important;
   }
 
   /* Adjust topbar for mobile with capsule only */
   body.tg-mobile .topbar {
     grid-template-columns: 1fr;
     gap: 8px;
-    padding-top: 12px;
+    padding-top: calc(env(safe-area-inset-top) + 12px);
+    min-height: calc(60px + env(safe-area-inset-top));
+    position: relative;
+    z-index: 10;
   }
 
   body.tg-mobile .search-capsule {
@@ -875,6 +890,6 @@ body.drawer-ready .swipe-hint {
 
   /* Lower content on mobile */
   body.tg-mobile .app-shell {
-    padding-top: 16px;
+    padding-top: calc(env(safe-area-inset-top) + 16px);
   }
 }
