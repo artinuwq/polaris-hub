@@ -153,6 +153,10 @@
     if (elements.topbarSubtitle) {
       elements.topbarSubtitle.textContent = meta.subtitle;
     }
+    const capsuleText = document.getElementById('search-capsule-text');
+    if (capsuleText) {
+      capsuleText.textContent = meta.label === 'Attention' ? 'Polaris' : meta.label;
+    }
   }
 
   function syncOverlays() {
