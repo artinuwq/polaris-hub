@@ -16,9 +16,11 @@
   --radius-md: 16px;
   --radius-sm: 12px;
   color-scheme: dark;
-  --glass-bg: rgba(17, 20, 29, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-blur: 18px;
+  --glass-bg: rgba(20, 20, 20, 0.42);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-blur: 20px;
+  --glass-saturate: 165%;
+  --glass-highlight: rgba(255, 255, 255, 0.1);
 }
 
 *,
@@ -106,21 +108,41 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 11px 16px;
   border-radius: 999px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 var(--glass-highlight);
   cursor: pointer;
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  position: relative;
+}
+
+.search-capsule::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 60%);
+  pointer-events: none;
+  opacity: 0.6;
 }
 
 .search-capsule:hover {
   transform: translateY(-1px);
-  border-color: rgba(90, 184, 255, 0.35);
-  background: rgba(17, 20, 29, 0.82);
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.search-capsule:active {
+  transform: scale(0.98);
+  transition: transform 120ms ease;
 }
 
 .search-capsule .icon {
@@ -128,11 +150,15 @@ button:focus-visible {
   height: 18px;
   color: var(--text-muted);
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .search-capsule-title {
   color: var(--text-muted);
   font-size: 0.92rem;
+  position: relative;
+  z-index: 1;
 }
 
 .icon-button,
@@ -599,14 +625,27 @@ button:focus-visible {
   width: min(330px, calc(100vw - 32px));
   padding: 20px;
   overflow: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  background: rgba(13, 16, 24, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: var(--shadow);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 var(--glass-highlight);
   transform: translateX(calc(-100% - 24px));
   transition: transform 180ms ease;
+  position: relative;
+}
+
+.drawer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 50%);
+  pointer-events: none;
+  opacity: 0.5;
 }
 
 .drawer.is-open { transform: translateX(0); }
@@ -678,9 +717,9 @@ button:focus-visible {
   position: fixed;
   inset: 0;
   z-index: 20;
-  background: rgba(4, 6, 10, 0.7);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  background: rgba(4, 6, 10, 0.65);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
 }
 
 /* Swipe hint for drawer */
