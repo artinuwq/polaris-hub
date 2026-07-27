@@ -786,8 +786,11 @@ window.TasksModule = (() => {
 
         <div class="detail-divider"></div>
 
-        <!-- Delete -->
-        <button class="small-button" type="button" data-action="delete-task" style="color:var(--error);border-color:rgba(255,93,115,0.3)">Удалить задачу</button>
+        <!-- Actions -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="small-button primary" type="button" data-action="complete-task" style="background:var(--status-done);color:#06111b;border-color:transparent;font-weight:700">Завершить задачу</button>
+          <button class="small-button" type="button" data-action="delete-task" style="color:var(--error);border-color:rgba(255,93,115,0.3)">Удалить задачу</button>
+        </div>
       </div>
     `;
 
@@ -994,6 +997,9 @@ window.TasksModule = (() => {
 
     const deleteBtn = target.closest('[data-action="delete-task"]');
     if (deleteBtn && selectedTaskId && confirm('Удалить задачу?')) { deleteTask(selectedTaskId); return; }
+
+    const completeBtn = target.closest('[data-action="complete-task"]');
+    if (completeBtn && selectedTaskId) { toggleDone(selectedTaskId); return; }
 
     // Checklist
     if (target.closest('[data-action="toggle-checklist"]')) {
