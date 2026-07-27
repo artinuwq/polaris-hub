@@ -23,6 +23,7 @@
     drawerClose: document.getElementById('drawer-close'),
     brandButton: document.getElementById('brand-button'),
     searchToggle: document.getElementById('search-toggle'),
+    searchCapsule: document.getElementById('search-capsule'),
     searchOverlay: document.getElementById('search-overlay'),
     searchClose: document.getElementById('search-close'),
     searchInput: document.getElementById('search-input'),
@@ -924,6 +925,7 @@
   elements.drawerClose?.addEventListener('click', closeDrawer);
   elements.brandButton?.addEventListener('click', openSearch);
   elements.searchToggle?.addEventListener('click', openSearch);
+  elements.searchCapsule?.addEventListener('click', openSearch);
   elements.searchClose?.addEventListener('click', closeSearch);
 
   elements.backdrop?.addEventListener('click', () => {
@@ -977,6 +979,49 @@
       event.preventDefault();
       openSearch();
     }
+  });
+
+  /* ─── Swipe-to-open drawer ─── */
+  let swipeStartX = 0;
+  let swipeStartY = 0;
+  let swiping = false;
+  const SWIPE_EDGE = 28;
+  const SWIPE_THRESHOLD = 60;
+
+  function isNearLeftEdge(x) {
+    return x <= SWIPE_EDGE;
+  }
+
+  function isHorizontalSwipe(dx, dy) {
+    return Math.abs(dx) > Math.abs(dy) * 1.2;
+  }
+
+  document.addEventListener('touchstart', (event) => {
+    if (state.drawerOpen || state.searchOpen) return;
+    const touch = event.touches[0];
+    if (!isNearLeftEdge(touch.clientX)) return;
+    swipeStartX = touch.clientX;
+    swipeStartY = touch.clientY;
+    swiping = true;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (event) => {
+    if (!swiping || state.drawerOpen) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - swipeStartX;
+    const dy = touch.clientY - swipeStartY;
+    if (!isHorizontalSwipe(dx, dy)) {
+      swiping = false;
+      return;
+    }
+    if (dx > SWIPE_THRESHOLD) {
+      openDrawer();
+      swiping = false;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    swiping = false;
   });
 
   bootstrap();

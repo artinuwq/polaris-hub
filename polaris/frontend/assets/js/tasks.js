@@ -886,6 +886,9 @@ window.TasksModule = (() => {
       await apiRequest(`/api/tasks/${taskId}`, 'PATCH', { status: newStatus });
       clearCache();
       await loadFromServer();
+      if (detailOpen && selectedTaskId === taskId) {
+        closeDetail();
+      }
     } catch (e) { error = e.message; render(); }
   }
 
