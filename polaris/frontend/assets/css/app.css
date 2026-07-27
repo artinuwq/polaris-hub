@@ -855,4 +855,26 @@ body.drawer-ready .swipe-hint {
   .drawer { top: 12px; bottom: 12px; left: 12px; width: calc(100vw - 24px); }
   .search-overlay { padding: 12px; }
   .search-panel { margin-top: 0; padding: 16px; }
+
+  /* Hide drawer and search buttons on mobile, keep only capsule */
+  body.tg-mobile #drawer-toggle,
+  body.tg-mobile #search-toggle {
+    display: none !important;
+  }
+
+  /* Adjust topbar for mobile with capsule only */
+  body.tg-mobile .topbar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  body.tg-mobile .search-capsule {
+    justify-self: center;
+  }
+
+  /* Lower content on mobile */
+  body.tg-mobile .app-shell {
+    padding-top: 16px;
+  }
 }
