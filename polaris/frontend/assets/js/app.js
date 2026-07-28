@@ -190,7 +190,7 @@
       elements.drawer.setAttribute('aria-hidden', String(!state.drawerOpen));
     }
     if (elements.searchOverlay) {
-      elements.searchOverlay.hidden = !state.searchOpen;
+      elements.searchOverlay.classList.toggle('is-open', state.searchOpen);
       elements.searchOverlay.setAttribute('aria-hidden', String(!state.searchOpen));
     }
     if (elements.backdrop) {
@@ -257,7 +257,12 @@
 
   function closeSearch() {
     state.searchOpen = false;
+    state.searchQuery = '';
+    if (elements.searchInput) {
+      elements.searchInput.value = '';
+    }
     syncOverlays();
+    renderSearch();
   }
 
   function setView(viewId) {
@@ -720,7 +725,7 @@
   }
 
   function renderSearch() {
-    if (!state.searchOpen || !elements.searchResults) {
+    if (!elements.searchResults) {
       return;
     }
 

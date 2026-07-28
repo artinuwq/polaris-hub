@@ -802,8 +802,12 @@ body.drawer-ready .swipe-hint {
   left: 0;
   right: 0;
   z-index: 40;
-  display: block;
+  display: none;
   padding: 12px 0 0;
+}
+
+.search-overlay.is-open {
+  display: block;
 }
 
 .search-panel {
