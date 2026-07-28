@@ -805,7 +805,7 @@ body.drawer-ready .swipe-hint {
 
 .search-panel {
   width: min(720px, 100%);
-  margin-top: calc(8vh + 15px);
+  margin-top: calc(8vh + 45px);
   padding: 16px;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
