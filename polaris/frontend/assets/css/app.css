@@ -903,8 +903,8 @@ body.drawer-ready .swipe-hint {
   .search-overlay { padding: 12px; }
   .search-panel { margin-top: 0; padding: 16px; }
 
-  /* Drawer fullscreen on mobile — overrides fixed positioning */
-  body.tg-mobile .drawer {
+  /* Drawer fullscreen on mobile */
+  .drawer {
     top: 0 !important;
     bottom: 0 !important;
     left: 0 !important;
@@ -913,20 +913,20 @@ body.drawer-ready .swipe-hint {
     border-radius: 0 !important;
     border: 0 !important;
     transform: translateX(-100%);
-    box-shadow: none;
+    box-shadow: none !important;
   }
 
-  body.tg-mobile .drawer.is-open {
+  .drawer.is-open {
     transform: translateX(0) !important;
   }
 
-  body.tg-mobile .drawer::before {
-    border-radius: 0;
+  .drawer::before {
+    border-radius: 0 !important;
   }
 
-/* Hide drawer and search buttons on mobile, keep only capsule */
-  body.tg-mobile #drawer-toggle,
-  body.tg-mobile #search-toggle {
+  /* Hide drawer and search buttons on mobile */
+  #drawer-toggle,
+  #search-toggle {
     display: none !important;
     visibility: hidden !important;
     opacity: 0 !important;
@@ -943,8 +943,8 @@ body.drawer-ready .swipe-hint {
   }
 
   /* Adjust topbar for mobile with capsule only */
-  body.tg-mobile .topbar {
-    grid-template-columns: 1fr;
+  .topbar {
+    grid-template-columns: 1fr !important;
     gap: 8px;
     padding-top: 0;
     padding-bottom: 6px;
@@ -955,13 +955,13 @@ body.drawer-ready .swipe-hint {
     background: rgba(9, 11, 18, 0.7);
   }
 
-  body.tg-mobile .search-capsule {
+  .search-capsule {
     justify-self: center;
     margin-top: 24px;
   }
 
   /* Lower content on mobile */
-  body.tg-mobile .app-shell {
+  .app-shell {
     padding-top: 24px;
   }
 }
