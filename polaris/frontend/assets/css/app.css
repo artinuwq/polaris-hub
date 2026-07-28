@@ -135,7 +135,6 @@ button:focus-visible {
 }
 
 .search-capsule:hover {
-  transform: translateY(5px);
   border-color: rgba(255, 255, 255, 0.24);
   box-shadow:
     0 6px 16px rgba(0, 0, 0, 0.22),
@@ -198,7 +197,6 @@ button:focus-visible {
   border-color: rgba(90, 184, 255, 0.42);
   background: var(--surface-raised);
   color: var(--text);
-  transform: translateY(5px);
 }
 
 .icon-button:disabled,
