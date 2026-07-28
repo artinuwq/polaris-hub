@@ -796,24 +796,18 @@ body.drawer-ready .swipe-hint {
   transition: opacity 160ms ease;
 }
 
-body.search-open .topbar {
-  opacity: 0;
-  pointer-events: none;
-}
-
 .search-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: clamp(16px, 6vw, 56px);
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: block;
+  padding: 12px 0 0;
 }
 
 .search-panel {
-  width: min(720px, 100%);
-  margin-top: clamp(24px, 4vh, 64px);
+  width: 100%;
   padding: 16px;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
@@ -912,8 +906,7 @@ body.search-open .topbar {
   .hero-actions .small-button:first-child { grid-column: span 2; }
   .span-8, .span-6, .span-4 { grid-column: span 12; }
   .metric-card, .list-card, .empty-card, .module-card, .notice-card { padding: 18px; }
-  .search-overlay { padding: 12px; }
-  .search-panel { margin-top: 0; padding: 16px; }
+  .search-panel { padding: 16px; }
 
   /* Drawer fullscreen on mobile */
   .drawer {

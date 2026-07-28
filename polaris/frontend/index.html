@@ -25,6 +25,18 @@
         </button>
       </header>
 
+      <section id="search-overlay" class="search-overlay" aria-hidden="true" hidden>
+        <div class="search-panel" role="dialog" aria-modal="true" aria-label="Глобальный поиск">
+          <label class="search-field">
+            <span class="icon" data-icon="search" aria-hidden="true"></span>
+            <input id="search-input" type="search" placeholder="Search…" autocomplete="off" />
+          </label>
+
+          <div id="search-hints" class="search-hints"></div>
+          <div id="search-results" class="search-results"></div>
+        </div>
+      </section>
+
       <main id="main-content" class="main-content">
         <section class="card skeleton-card">
           <div class="skeleton-line skeleton-line-title"></div>
@@ -46,18 +58,6 @@
 
     <div id="backdrop" class="backdrop" hidden></div>
     <div id="swipe-hint" class="swipe-hint"></div>
-
-    <section id="search-overlay" class="search-overlay" aria-hidden="true" hidden>
-      <div class="search-panel" role="dialog" aria-modal="true" aria-label="Глобальный поиск">
-        <label class="search-field">
-          <span class="icon" data-icon="search" aria-hidden="true"></span>
-          <input id="search-input" type="search" placeholder="Search…" autocomplete="off" />
-        </label>
-
-        <div id="search-hints" class="search-hints"></div>
-        <div id="search-results" class="search-results"></div>
-      </div>
-    </section>
 
     <script src="assets/js/tasks.js"></script>
     <script src="assets/js/app.js"></script>
