@@ -640,7 +640,6 @@ button:focus-visible {
     inset 0 1px 0 var(--glass-highlight);
   transform: translateX(calc(-100% - 24px));
   transition: transform 180ms ease;
-  position: relative;
 }
 
 .drawer::before {
@@ -914,6 +913,7 @@ body.drawer-ready .swipe-hint {
     border: 0 !important;
     transform: translateX(-100%);
     box-shadow: none !important;
+    background: rgba(9, 11, 18, 0.98) !important;
   }
 
   .drawer.is-open {
