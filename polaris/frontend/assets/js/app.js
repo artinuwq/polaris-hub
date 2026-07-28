@@ -38,26 +38,6 @@
   }
   const apiToken = tokenFromUrl || localStorage.getItem(tokenStorageKey) || '';
 
-  /* ─── Capsule position slider ─── */
-  const CAPSULE_OFFSET_KEY = 'polaris_capsule_offset';
-  let capsuleOffset = parseInt(localStorage.getItem(CAPSULE_OFFSET_KEY) || '24', 10);
-
-  function applyCapsuleOffset() {
-    if (!isMobile) return;
-    const topbar = document.querySelector('.topbar');
-    const shell = document.querySelector('.app-shell');
-    const capsule = document.querySelector('.search-capsule');
-    if (topbar) topbar.style.paddingTop = `${capsuleOffset}px`;
-    if (shell) shell.style.paddingTop = `${capsuleOffset}px`;
-    if (capsule) capsule.style.marginTop = `${capsuleOffset}px`;
-  }
-
-  function onCapsuleSliderChange(value) {
-    capsuleOffset = parseInt(value, 10);
-    localStorage.setItem(CAPSULE_OFFSET_KEY, capsuleOffset);
-    applyCapsuleOffset();
-  }
-
   const elements = {
     authStatus: document.getElementById('auth-status'),
     currentViewLabel: document.getElementById('current-view-label'),
@@ -77,8 +57,6 @@
     searchHints: document.getElementById('search-hints'),
     searchResults: document.getElementById('search-results'),
     backdrop: document.getElementById('backdrop'),
-    capsuleSlider: document.getElementById('capsule-slider'),
-    capsuleSliderValue: document.getElementById('capsule-slider-value'),
   };
 
   const ICONS = {
@@ -921,7 +899,6 @@
 
   async function bootstrap() {
     hydrateIcons(document);
-    applyCapsuleOffset();
     renderShell();
 
     try {
@@ -974,20 +951,6 @@
       renderSearch();
     }
   });
-
-    /* ─── Capsule slider ─── */
-    if (elements.capsuleSlider) {
-      elements.capsuleSlider.value = capsuleOffset;
-      if (elements.capsuleSliderValue) {
-        elements.capsuleSliderValue.textContent = capsuleOffset;
-      }
-      elements.capsuleSlider.addEventListener('input', (event) => {
-        onCapsuleSliderChange(event.target.value);
-        if (elements.capsuleSliderValue) {
-          elements.capsuleSliderValue.textContent = event.target.value;
-        }
-      });
-    }
 
     elements.drawerToggle?.addEventListener('click', toggleDrawer);
   elements.drawerClose?.addEventListener('click', closeDrawer);

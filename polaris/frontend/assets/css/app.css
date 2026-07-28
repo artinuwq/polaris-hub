@@ -121,6 +121,7 @@ button:focus-visible {
   cursor: pointer;
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
   position: relative;
+  margin-top: -10px;
 }
 
 .search-capsule::before {
