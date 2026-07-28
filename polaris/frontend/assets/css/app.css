@@ -653,11 +653,10 @@ button:focus-visible {
 
 .drawer.is-open { transform: translateX(0); }
 
-.drawer-header,
-.search-head {
+.drawer-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
 }
 
