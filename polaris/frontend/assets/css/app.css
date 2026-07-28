@@ -718,6 +718,54 @@ button:focus-visible {
   line-height: 1.5;
 }
 
+.capsule-slider-row {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.capsule-slider-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.capsule-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+  cursor: pointer;
+}
+
+.capsule-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.capsule-slider::-webkit-slider-thumb:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.capsule-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+}
+
 .backdrop {
   position: fixed;
   inset: 0;
@@ -878,9 +926,9 @@ body.drawer-ready .swipe-hint {
   body.tg-mobile .topbar {
     grid-template-columns: 1fr;
     gap: 8px;
-    padding-top: 0 !important;
-    padding-bottom: 6px !important;
-    min-height: 40px !important;
+    padding-top: 0;
+    padding-bottom: 6px;
+    min-height: 40px;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -894,6 +942,6 @@ body.drawer-ready .swipe-hint {
 
   /* Lower content on mobile */
   body.tg-mobile .app-shell {
-    padding-top: 24px !important;
+    padding-top: 24px;
   }
 }
