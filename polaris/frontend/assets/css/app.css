@@ -121,7 +121,7 @@ button:focus-visible {
   cursor: pointer;
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
   position: relative;
-  margin-top: 3px;
+  margin-top: 5px;
 }
 
 .search-capsule::before {
@@ -956,7 +956,7 @@ body.drawer-ready .swipe-hint {
 
   .search-capsule {
     justify-self: center;
-    margin-top: 4px;
+    margin-top: 6px;
   }
 
   /* Lower content on mobile */
