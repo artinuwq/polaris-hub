@@ -47,12 +47,10 @@
     drawer: document.getElementById('drawer'),
     drawerNav: document.getElementById('drawer-nav'),
     drawerToggle: document.getElementById('drawer-toggle'),
-    drawerClose: document.getElementById('drawer-close'),
     brandButton: document.getElementById('brand-button'),
     searchToggle: document.getElementById('search-toggle'),
     searchCapsule: document.getElementById('search-capsule'),
     searchOverlay: document.getElementById('search-overlay'),
-    searchClose: document.getElementById('search-close'),
     searchInput: document.getElementById('search-input'),
     searchHints: document.getElementById('search-hints'),
     searchResults: document.getElementById('search-results'),
@@ -198,8 +196,34 @@
     if (elements.backdrop) {
       elements.backdrop.hidden = !(state.drawerOpen || state.searchOpen);
     }
+    document.body.classList.toggle('search-open', state.searchOpen);
     document.body.style.overflow = state.drawerOpen || state.searchOpen ? 'hidden' : '';
+    syncBackButton();
   }
+
+  /* ─── Telegram native back button ───
+     Заменяет собой кастомные крестики: пока открыт поиск или drawer,
+     показываем системную стрелку/крестик ТГ вместо своих кнопок закрытия. */
+  function syncBackButton() {
+    if (!tg?.BackButton) return;
+    if (state.searchOpen || state.drawerOpen) {
+      tg.BackButton.show();
+    } else {
+      tg.BackButton.hide();
+    }
+  }
+
+  function handleBackButton() {
+    if (state.searchOpen) {
+      closeSearch();
+      return;
+    }
+    if (state.drawerOpen) {
+      closeDrawer();
+    }
+  }
+
+  tg?.BackButton?.onClick?.(handleBackButton);
 
   function openDrawer() {
     state.drawerOpen = true;
@@ -953,11 +977,9 @@
   });
 
     elements.drawerToggle?.addEventListener('click', toggleDrawer);
-  elements.drawerClose?.addEventListener('click', closeDrawer);
   elements.brandButton?.addEventListener('click', openSearch);
   elements.searchToggle?.addEventListener('click', openSearch);
   elements.searchCapsule?.addEventListener('click', openSearch);
-  elements.searchClose?.addEventListener('click', closeSearch);
 
   elements.backdrop?.addEventListener('click', () => {
     closeDrawer();
