@@ -97,7 +97,7 @@ button:focus-visible {
   gap: 14px;
   align-items: center;
   min-height: 58px;
-  padding: 6px 0 16px;
+  padding: 16px 0 16px;
   background: linear-gradient(180deg, rgba(9, 11, 18, 0.96) 72%, rgba(9, 11, 18, 0));
 }
 
@@ -121,7 +121,7 @@ button:focus-visible {
   cursor: pointer;
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
   position: relative;
-  margin-top: 5px;
+  margin-top: 0;
 }
 
 .search-capsule::before {
@@ -945,7 +945,7 @@ body.drawer-ready .swipe-hint {
   .topbar {
     grid-template-columns: 1fr !important;
     gap: 8px;
-    padding-top: 0;
+    padding-top: 16px;
     padding-bottom: 6px;
     min-height: 40px;
     position: sticky;
@@ -956,7 +956,7 @@ body.drawer-ready .swipe-hint {
 
   .search-capsule {
     justify-self: center;
-    margin-top: 6px;
+    margin-top: 0;
   }
 
   /* Lower content on mobile */
