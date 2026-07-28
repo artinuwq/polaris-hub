@@ -725,7 +725,7 @@
   }
 
   function renderSearch() {
-    if (!elements.searchResults) {
+    if (!state.searchOpen || !elements.searchResults) {
       return;
     }
 

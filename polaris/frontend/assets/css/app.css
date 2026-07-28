@@ -801,7 +801,7 @@ body.drawer-ready .swipe-hint {
   top: 100%;
   left: 0;
   right: 0;
-  z-index: 40;
+  z-index: 100;
   display: none;
   padding: 12px 0 0;
 }
