@@ -768,10 +768,15 @@ button:focus-visible {
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 199;
   background: rgba(4, 6, 10, 0.65);
   backdrop-filter: blur(8px) saturate(140%);
   -webkit-backdrop-filter: blur(8px) saturate(140%);
+}
+
+/* При поиске backdrop не должен перехватывать клики (они идут на overlay) */
+body.search-open .backdrop {
+  pointer-events: none;
 }
 
 /* Swipe hint for drawer */
@@ -796,17 +801,6 @@ body.drawer-ready .swipe-hint {
 
 .topbar {
   transition: opacity 160ms ease;
-}
-
-body.search-open::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 199;
-  background: rgba(4, 6, 10, 0.65);
-  backdrop-filter: blur(8px) saturate(140%);
-  -webkit-backdrop-filter: blur(8px) saturate(140%);
-  pointer-events: none;
 }
 
 .search-overlay {

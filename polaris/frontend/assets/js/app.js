@@ -194,7 +194,7 @@
       elements.searchOverlay.setAttribute('aria-hidden', String(!state.searchOpen));
     }
     if (elements.backdrop) {
-      elements.backdrop.hidden = !state.drawerOpen;
+      elements.backdrop.hidden = !(state.drawerOpen || state.searchOpen);
     }
     document.body.classList.toggle('search-open', state.searchOpen);
     document.body.style.overflow = state.drawerOpen || state.searchOpen ? 'hidden' : '';
