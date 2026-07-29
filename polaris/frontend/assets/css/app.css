@@ -99,6 +99,8 @@ button:focus-visible {
   min-height: 58px;
   padding: 26px 0 16px;
   background: linear-gradient(180deg, rgba(9, 11, 18, 0.96) 72%, rgba(9, 11, 18, 0));
+  position: relative;
+  overflow: visible;
 }
 
 /* Telegram-style glass capsule search */
@@ -798,12 +800,12 @@ body.drawer-ready .swipe-hint {
 
 .search-overlay {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 8px);
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 200;
   display: none;
-  padding: 12px 0 0;
+  padding: 0;
 }
 
 .search-overlay.is-open {
