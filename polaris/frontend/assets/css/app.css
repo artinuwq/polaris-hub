@@ -818,8 +818,8 @@ body.drawer-ready .swipe-hint {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(8px) saturate(130%);
+  -webkit-backdrop-filter: blur(8px) saturate(130%);
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.18),
     inset 0 1px 0 var(--glass-highlight);
@@ -835,8 +835,8 @@ body.drawer-ready .swipe-hint {
   border: 1px solid var(--glass-border);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px) saturate(150%);
-  -webkit-backdrop-filter: blur(10px) saturate(150%);
+  backdrop-filter: blur(4px) saturate(120%);
+  -webkit-backdrop-filter: blur(4px) saturate(120%);
 }
 
 .search-field input {
