@@ -985,7 +985,13 @@
     elements.drawerToggle?.addEventListener('click', toggleDrawer);
   elements.brandButton?.addEventListener('click', openSearch);
   elements.searchToggle?.addEventListener('click', openSearch);
-  elements.searchCapsule?.addEventListener('click', openSearch);
+  elements.searchCapsule?.addEventListener('click', () => {
+    if (state.searchOpen) {
+      closeSearch();
+    } else {
+      openSearch();
+    }
+  });
 
   elements.backdrop?.addEventListener('click', () => {
     closeDrawer();
