@@ -238,8 +238,6 @@
     }
   }
 
-  tg?.BackButton?.onClick?.(handleBackButton);
-
   /* ─── Overlay registry for external modules (tasks, etc.) ───
      Позволяет другим модулям регистрировать свои оверлеи (модалки, панели)
      чтобы системная кнопка "назад" Telegram их закрывала. */
@@ -255,6 +253,8 @@
       syncBackButton();
     },
   };
+
+  tg?.BackButton?.onClick?.(handleBackButton);
 
   function openDrawer() {
     state.drawerOpen = true;

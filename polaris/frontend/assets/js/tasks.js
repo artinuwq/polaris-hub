@@ -2,6 +2,16 @@
 window.TasksModule = (() => {
   'use strict';
 
+  /* ─── Telegram Back Button integration via PolarisUI ───
+     Регистрируем модалки в app.js, чтобы системная кнопка "назад" Telegram
+     их закрывала. app.js управляет показом/скрытием BackButton. */
+  function showBackButton(modalId, closeFn) {
+    window.PolarisUI?.registerOverlay(modalId, closeFn);
+  }
+  function hideBackButton(modalId) {
+    window.PolarisUI?.unregisterOverlay(modalId);
+  }
+
   /* ─── Icons ─── */
   const ICONS = {
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>',
@@ -592,12 +602,12 @@ window.TasksModule = (() => {
 
   function openCreateModal() {
     createModalOpen = true;
-    window.PolarisUI?.registerOverlay('tasks-create-modal', closeCreateModal);
+    showBackButton('tasks-create-modal', closeCreateModal);
     render();
   }
   function closeCreateModal() {
     createModalOpen = false;
-    window.PolarisUI?.unregisterOverlay('tasks-create-modal');
+    hideBackButton('tasks-create-modal');
     const overlay = document.querySelector('.create-modal-overlay');
     if (overlay) overlay.remove();
     render();
@@ -870,14 +880,14 @@ window.TasksModule = (() => {
   function openDetail(taskId) {
     selectedTaskId = taskId;
     detailOpen = true;
-    window.PolarisUI?.registerOverlay('tasks-detail-panel', closeDetail);
+    showBackButton('tasks-detail-panel', closeDetail);
     render();
   }
 
   function closeDetail() {
     detailOpen = false;
     selectedTaskId = null;
-    window.PolarisUI?.unregisterOverlay('tasks-detail-panel');
+    hideBackButton('tasks-detail-panel');
     const overlay = document.querySelector('.detail-overlay');
     if (overlay) overlay.remove();
     render();
