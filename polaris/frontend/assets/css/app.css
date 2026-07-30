@@ -657,7 +657,7 @@ button:focus-visible {
   top: 31px;
   bottom: 16px;
   left: 16px;
-  z-index: 30;
+  z-index: 200;
   width: min(330px, calc(100vw - 32px));
   padding: 20px;
   overflow: auto;
