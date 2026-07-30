@@ -204,6 +204,11 @@
     document.body.classList.toggle('drawer-open', state.drawerOpen);
     document.body.style.overflow = state.drawerOpen || state.searchOpen ? 'hidden' : '';
 
+    /* ─── Telegram native back button ───
+       Заменяет собой кастомные крестики: пока открыт поиск или drawer
+       (или модалка/детали задачи из tasks.js), показываем системную
+       стрелку ТГ вместо своих кнопок закрытия. Состояние ведётся через
+       общий стек window.PolarisBack, чтобы не конфликтовать с tasks.js. */
     if (state.drawerOpen) {
       window.PolarisBack?.push('app-drawer', closeDrawer);
     } else {

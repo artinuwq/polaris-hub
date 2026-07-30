@@ -5,35 +5,31 @@ window.TasksModule = (() => {
   /* ─── Общий стек для системной кнопки "назад" Telegram ───
      Единая точка правды: любой модуль (app.js, tasks.js) регистрирует
      свой оверлей через push(id, onClose) и снимает через pop(id).
-     Кнопка видна, пока стек не пуст; по нажатию закрывается верхний. */
+     Кнопка видна, пока стек не пуст; по нажатию закрывается верхний оверлей. */
   window.PolarisBack = window.PolarisBack || (() => {
     const stack = [];
     function sync() {
       const bb = window.Telegram?.WebApp?.BackButton;
-      console.log('[PolarisBack] sync — bb:', !!bb, 'stack:', stack.length);
       if (!bb) return;
       try {
         if (stack.length > 0) bb.show(); else bb.hide();
-      } catch (e) { console.error('[PolarisBack] show/hide error:', e); }
+      } catch (e) { /* ignore */ }
     }
     function handleClick() {
       const top = stack[stack.length - 1];
       if (top) top.onClose();
     }
     function push(id, onClose) {
-      console.log('[PolarisBack] push:', id);
       if (stack.some((e) => e.id === id)) return;
       stack.push({ id, onClose });
       sync();
     }
     function pop(id) {
-      console.log('[PolarisBack] pop:', id);
       const idx = stack.findIndex((e) => e.id === id);
       if (idx !== -1) stack.splice(idx, 1);
       sync();
     }
     window.Telegram?.WebApp?.BackButton?.onClick?.(handleClick);
-    console.log('[PolarisBack] initialized, BackButton:', !!window.Telegram?.WebApp?.BackButton);
     return { push, pop };
   })();
 
@@ -629,9 +625,6 @@ window.TasksModule = (() => {
     createModalOpen = true;
     render();
     window.PolarisBack.push('tasks-create-modal', closeCreateModal);
-    // Fallback: прямой вызов show() на случай если PolarisBack.sync не сработал
-    const bb = window.Telegram?.WebApp?.BackButton;
-    if (bb) { try { bb.show(); } catch (e) { console.error('[tasks] BackButton.show failed:', e); } }
   }
   function closeCreateModal() {
     createModalOpen = false;
