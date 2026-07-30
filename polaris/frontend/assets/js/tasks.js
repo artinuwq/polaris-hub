@@ -616,7 +616,12 @@ window.TasksModule = (() => {
       });
     }
 
+    const openedAt = Date.now();
     overlay.addEventListener('click', (e) => {
+      // Игнорируем "призрачный" клик, который мобильный WebView иногда
+      // досылает в ту же точку экрана ~200-350мс после тапа на кнопку,
+      // из-за которого модалка закрывалась сама через секунду после открытия.
+      if (Date.now() - openedAt < 350) return;
       if (e.target === overlay) closeCreateModal();
     });
   }
@@ -679,8 +684,12 @@ window.TasksModule = (() => {
     const existing = document.querySelector('.detail-overlay');
     if (existing) existing.remove();
 
-    const task = tasks.find((t) => t.id === selectedTaskId);
-    if (!task) { detailOpen = false; return; }
+    const task = tasks.find((t) => String(t.id) === String(selectedTaskId));
+    if (!task) {
+      detailOpen = false;
+      window.PolarisBack.pop('tasks-detail');
+      return;
+    }
 
     const energyIcon = task.energy === 'quick' ? '🟢' : task.energy === 'medium' ? '🟡' : '🔴';
     const energyLabel = ENERGY_OPTIONS.find((e) => e.id === task.energy)?.label || '🟡 Средняя';
@@ -851,7 +860,9 @@ window.TasksModule = (() => {
       });
     }
 
+    const openedAt = Date.now();
     overlay.addEventListener('click', (e) => {
+      if (Date.now() - openedAt < 350) return;
       if (e.target === overlay) closeDetail();
     });
   }
