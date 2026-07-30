@@ -256,6 +256,27 @@
     });
   }
 
+  function toggleSearch() {
+    if (state.searchOpen) {
+      state.searchOpen = false;
+      state.searchQuery = '';
+      if (elements.searchInput) {
+        elements.searchInput.value = '';
+      }
+      syncOverlays();
+      renderSearch();
+    } else {
+      state.searchOpen = true;
+      state.drawerOpen = false;
+      syncOverlays();
+      renderSearch();
+      requestAnimationFrame(() => {
+        elements.searchInput?.focus();
+        elements.searchInput?.select?.();
+      });
+    }
+  }
+
   function closeSearch() {
     state.searchOpen = false;
     state.searchQuery = '';
@@ -954,6 +975,12 @@
   }
 
   document.addEventListener('click', (event) => {
+    // Search capsule toggle (open/close)
+    if (event.target.closest('#search-capsule')) {
+      toggleSearch();
+      return;
+    }
+
     const viewButton = event.target.closest('[data-view]');
     if (viewButton) {
       setView(viewButton.dataset.view);
@@ -985,13 +1012,7 @@
     elements.drawerToggle?.addEventListener('click', toggleDrawer);
   elements.brandButton?.addEventListener('click', openSearch);
   elements.searchToggle?.addEventListener('click', openSearch);
-  elements.searchCapsule?.addEventListener('click', () => {
-    if (state.searchOpen) {
-      closeSearch();
-    } else {
-      openSearch();
-    }
-  });
+  // Search capsule toggle handled in document click handler below
 
   elements.backdrop?.addEventListener('click', () => {
     closeDrawer();
