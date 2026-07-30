@@ -59,7 +59,7 @@ body::before {
   transition: filter 300ms ease;
 }
 
-body.overlay-open::before {
+body.drawer-open::before {
   filter: blur(8px) saturate(140%);
   -webkit-filter: blur(8px) saturate(140%);
 }
@@ -850,9 +850,10 @@ body.drawer-ready .swipe-hint {
   padding: 16px;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  background: var(--surface);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  /* Frosted glass: размытие только за панелью поиска, не весь экран */
+  background: rgba(17, 20, 29, 0.72);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.18),
     inset 0 1px 0 var(--glass-highlight);
