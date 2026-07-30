@@ -2,8 +2,6 @@
 window.TasksModule = (() => {
   'use strict';
 
-  const tg = window.Telegram?.WebApp;
-
   /* ─── Telegram Back Button handler for task modals ───
      Управляем системной кнопкой "назад" Telegram напрямую, без app.js.
      Telegram API поддерживает несколько подписчиков BackButton.onClick(),
@@ -14,11 +12,15 @@ window.TasksModule = (() => {
   }
 
   function syncTasksBackButton() {
-    if (createModalOpen || detailOpen) {
-      tg?.BackButton?.show();
-    } else {
-      tg?.BackButton?.hide();
-    }
+    const bb = window.Telegram?.WebApp?.BackButton;
+    if (!bb) return;
+    try {
+      if (createModalOpen || detailOpen) {
+        bb.show();
+      } else {
+        bb.hide();
+      }
+    } catch (e) { /* ignore */ }
   }
 
   /* ─── Icons ─── */
@@ -611,8 +613,11 @@ window.TasksModule = (() => {
 
   function openCreateModal() {
     createModalOpen = true;
-    syncTasksBackButton();
     render();
+    // Показываем кнопку "назад" после рендера модалки
+    syncTasksBackButton();
+    // Двойная страховка: если BackButton.show() не сработал сразу
+    setTimeout(() => syncTasksBackButton(), 50);
   }
   function closeCreateModal() {
     createModalOpen = false;
@@ -1190,7 +1195,7 @@ window.TasksModule = (() => {
 
     // Подписываемся на системную кнопку "назад" Telegram.
     // Telegram API поддерживает несколько подписчиков, так что app.js тоже работает.
-    tg?.BackButton?.onClick?.(handleTasksBackButton);
+    window.Telegram?.WebApp?.BackButton?.onClick?.(handleTasksBackButton);
 
     initialized = true;
   }
