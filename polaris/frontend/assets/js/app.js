@@ -193,6 +193,10 @@
       elements.searchOverlay.classList.toggle('is-open', state.searchOpen);
       elements.searchOverlay.setAttribute('aria-hidden', String(!state.searchOpen));
     }
+    if (elements.searchCapsule) {
+      elements.searchCapsule.classList.toggle('is-active', state.searchOpen);
+      elements.searchCapsule.setAttribute('aria-expanded', String(state.searchOpen));
+    }
     if (elements.backdrop) {
       elements.backdrop.hidden = !(state.drawerOpen || state.searchOpen);
     }
@@ -974,13 +978,14 @@
     }
   }
 
-  document.addEventListener('click', (event) => {
-    // Search capsule toggle (open/close)
-    if (event.target.closest('#search-capsule')) {
-      toggleSearch();
-      return;
-    }
+  // Search capsule works as a toggle: opens and closes the search overlay
+  elements.searchCapsule?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleSearch();
+  });
 
+  document.addEventListener('click', (event) => {
     const viewButton = event.target.closest('[data-view]');
     if (viewButton) {
       setView(viewButton.dataset.view);
