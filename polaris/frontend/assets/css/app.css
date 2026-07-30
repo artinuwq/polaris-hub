@@ -38,13 +38,30 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
-  background:
-    linear-gradient(180deg, rgba(17, 20, 29, 0.72), transparent 34%),
-    var(--background);
+  background: var(--background);
   color: var(--text);
   font-family: Inter, Geist, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+}
+
+/* Фоновый градиент вынесен в псевдоэлемент, чтобы при открытии оверлея
+   размывался только фон, а не контент */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(17, 20, 29, 0.72), transparent 34%),
+    var(--background);
+  pointer-events: none;
+  transition: filter 300ms ease;
+}
+
+body.overlay-open::before {
+  filter: blur(8px) saturate(140%);
+  -webkit-filter: blur(8px) saturate(140%);
 }
 
 button,
@@ -624,7 +641,7 @@ button:focus-visible {
 
 .drawer {
   position: fixed;
-  top: 16px;
+  top: 31px;
   bottom: 16px;
   left: 16px;
   z-index: 30;
@@ -769,7 +786,7 @@ button:focus-visible {
   position: fixed;
   inset: 0;
   z-index: 199;
-  background: rgba(4, 6, 10, 0.65);
+  background: transparent;
 }
 
 /* При поиске backdrop не должен перехватывать клики (они идут на overlay) */

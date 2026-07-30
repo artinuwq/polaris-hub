@@ -197,6 +197,7 @@
       elements.backdrop.hidden = !(state.drawerOpen || state.searchOpen);
     }
     document.body.classList.toggle('search-open', state.searchOpen);
+    document.body.classList.toggle('overlay-open', state.drawerOpen || state.searchOpen);
     document.body.style.overflow = state.drawerOpen || state.searchOpen ? 'hidden' : '';
     syncBackButton();
   }
