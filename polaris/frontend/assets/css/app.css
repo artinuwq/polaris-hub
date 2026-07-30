@@ -960,7 +960,7 @@ body.drawer-ready .swipe-hint {
     box-shadow: none !important;
     background: rgba(9, 11, 18, 0.98) !important;
     /* Опускаем содержимое ниже камеры/челки */
-    padding-top: 35px !important;
+    padding-top: 50px !important;
   }
 
   .drawer.is-open {
