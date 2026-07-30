@@ -2,26 +2,40 @@
 window.TasksModule = (() => {
   'use strict';
 
-  /* ─── Telegram Back Button handler for task modals ───
-     Управляем системной кнопкой "назад" Telegram напрямую, без app.js.
-     Telegram API поддерживает несколько подписчиков BackButton.onClick(),
-     поэтому оба модуля (app.js и tasks.js) могут независимо обрабатывать нажатия. */
-  function handleTasksBackButton() {
-    if (createModalOpen) { closeCreateModal(); return; }
-    if (detailOpen) { closeDetail(); }
-  }
-
-  function syncTasksBackButton() {
-    const bb = window.Telegram?.WebApp?.BackButton;
-    if (!bb) return;
-    try {
-      if (createModalOpen || detailOpen) {
-        bb.show();
-      } else {
-        bb.hide();
-      }
-    } catch (e) { /* ignore */ }
-  }
+  /* ─── Общий стек для системной кнопки "назад" Telegram ───
+     Единая точка правды: любой модуль (app.js, tasks.js) регистрирует
+     свой оверлей через push(id, onClose) и снимает через pop(id).
+     Кнопка видна, пока стек не пуст; по нажатию закрывается верхний. */
+  window.PolarisBack = window.PolarisBack || (() => {
+    const stack = [];
+    function sync() {
+      const bb = window.Telegram?.WebApp?.BackButton;
+      console.log('[PolarisBack] sync — bb:', !!bb, 'stack:', stack.length);
+      if (!bb) return;
+      try {
+        if (stack.length > 0) bb.show(); else bb.hide();
+      } catch (e) { console.error('[PolarisBack] show/hide error:', e); }
+    }
+    function handleClick() {
+      const top = stack[stack.length - 1];
+      if (top) top.onClose();
+    }
+    function push(id, onClose) {
+      console.log('[PolarisBack] push:', id);
+      if (stack.some((e) => e.id === id)) return;
+      stack.push({ id, onClose });
+      sync();
+    }
+    function pop(id) {
+      console.log('[PolarisBack] pop:', id);
+      const idx = stack.findIndex((e) => e.id === id);
+      if (idx !== -1) stack.splice(idx, 1);
+      sync();
+    }
+    window.Telegram?.WebApp?.BackButton?.onClick?.(handleClick);
+    console.log('[PolarisBack] initialized, BackButton:', !!window.Telegram?.WebApp?.BackButton);
+    return { push, pop };
+  })();
 
   /* ─── Icons ─── */
   const ICONS = {
@@ -614,14 +628,14 @@ window.TasksModule = (() => {
   function openCreateModal() {
     createModalOpen = true;
     render();
-    // Показываем кнопку "назад" после рендера модалки
-    syncTasksBackButton();
-    // Двойная страховка: если BackButton.show() не сработал сразу
-    setTimeout(() => syncTasksBackButton(), 50);
+    window.PolarisBack.push('tasks-create-modal', closeCreateModal);
+    // Fallback: прямой вызов show() на случай если PolarisBack.sync не сработал
+    const bb = window.Telegram?.WebApp?.BackButton;
+    if (bb) { try { bb.show(); } catch (e) { console.error('[tasks] BackButton.show failed:', e); } }
   }
   function closeCreateModal() {
     createModalOpen = false;
-    syncTasksBackButton();
+    window.PolarisBack.pop('tasks-create-modal');
     const overlay = document.querySelector('.create-modal-overlay');
     if (overlay) overlay.remove();
     render();
@@ -894,14 +908,14 @@ window.TasksModule = (() => {
   function openDetail(taskId) {
     selectedTaskId = taskId;
     detailOpen = true;
-    syncTasksBackButton();
+    window.PolarisBack.push('tasks-detail', closeDetail);
     render();
   }
 
   function closeDetail() {
     detailOpen = false;
     selectedTaskId = null;
-    syncTasksBackButton();
+    window.PolarisBack.pop('tasks-detail');
     const overlay = document.querySelector('.detail-overlay');
     if (overlay) overlay.remove();
     render();
@@ -1192,10 +1206,6 @@ window.TasksModule = (() => {
     // Event listeners
     document.addEventListener('click', handleClick);
     document.addEventListener('keydown', handleKeydown);
-
-    // Подписываемся на системную кнопку "назад" Telegram.
-    // Telegram API поддерживает несколько подписчиков, так что app.js тоже работает.
-    window.Telegram?.WebApp?.BackButton?.onClick?.(handleTasksBackButton);
 
     initialized = true;
   }

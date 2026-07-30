@@ -203,32 +203,18 @@
     document.body.classList.toggle('search-open', state.searchOpen);
     document.body.classList.toggle('drawer-open', state.drawerOpen);
     document.body.style.overflow = state.drawerOpen || state.searchOpen ? 'hidden' : '';
-    syncBackButton();
-  }
 
-  /* ─── Telegram native back button ───
-     Заменяет собой кастомные крестики: пока открыт поиск или drawer,
-     показываем системную стрелку/крестик ТГ вместо своих кнопок закрытия. */
-  function syncBackButton() {
-    if (!tg?.BackButton) return;
-    if (state.searchOpen || state.drawerOpen) {
-      tg.BackButton.show();
-    } else {
-      tg.BackButton.hide();
-    }
-  }
-
-  function handleBackButton() {
-    if (state.searchOpen) {
-      closeSearch();
-      return;
-    }
     if (state.drawerOpen) {
-      closeDrawer();
+      window.PolarisBack?.push('app-drawer', closeDrawer);
+    } else {
+      window.PolarisBack?.pop('app-drawer');
+    }
+    if (state.searchOpen) {
+      window.PolarisBack?.push('app-search', closeSearch);
+    } else {
+      window.PolarisBack?.pop('app-search');
     }
   }
-
-  tg?.BackButton?.onClick?.(handleBackButton);
 
   function openDrawer() {
     state.drawerOpen = true;
