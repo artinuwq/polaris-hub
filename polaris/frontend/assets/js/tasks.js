@@ -2,14 +2,23 @@
 window.TasksModule = (() => {
   'use strict';
 
-  /* ─── Telegram Back Button integration via PolarisUI ───
-     Регистрируем модалки в app.js, чтобы системная кнопка "назад" Telegram
-     их закрывала. app.js управляет показом/скрытием BackButton. */
-  function showBackButton(modalId, closeFn) {
-    window.PolarisUI?.registerOverlay(modalId, closeFn);
+  const tg = window.Telegram?.WebApp;
+
+  /* ─── Telegram Back Button handler for task modals ───
+     Управляем системной кнопкой "назад" Telegram напрямую, без app.js.
+     Telegram API поддерживает несколько подписчиков BackButton.onClick(),
+     поэтому оба модуля (app.js и tasks.js) могут независимо обрабатывать нажатия. */
+  function handleTasksBackButton() {
+    if (createModalOpen) { closeCreateModal(); return; }
+    if (detailOpen) { closeDetail(); }
   }
-  function hideBackButton(modalId) {
-    window.PolarisUI?.unregisterOverlay(modalId);
+
+  function syncTasksBackButton() {
+    if (createModalOpen || detailOpen) {
+      tg?.BackButton?.show();
+    } else {
+      tg?.BackButton?.hide();
+    }
   }
 
   /* ─── Icons ─── */
@@ -602,12 +611,12 @@ window.TasksModule = (() => {
 
   function openCreateModal() {
     createModalOpen = true;
-    showBackButton('tasks-create-modal', closeCreateModal);
+    syncTasksBackButton();
     render();
   }
   function closeCreateModal() {
     createModalOpen = false;
-    hideBackButton('tasks-create-modal');
+    syncTasksBackButton();
     const overlay = document.querySelector('.create-modal-overlay');
     if (overlay) overlay.remove();
     render();
@@ -880,14 +889,14 @@ window.TasksModule = (() => {
   function openDetail(taskId) {
     selectedTaskId = taskId;
     detailOpen = true;
-    showBackButton('tasks-detail-panel', closeDetail);
+    syncTasksBackButton();
     render();
   }
 
   function closeDetail() {
     detailOpen = false;
     selectedTaskId = null;
-    hideBackButton('tasks-detail-panel');
+    syncTasksBackButton();
     const overlay = document.querySelector('.detail-overlay');
     if (overlay) overlay.remove();
     render();
@@ -1178,6 +1187,10 @@ window.TasksModule = (() => {
     // Event listeners
     document.addEventListener('click', handleClick);
     document.addEventListener('keydown', handleKeydown);
+
+    // Подписываемся на системную кнопку "назад" Telegram.
+    // Telegram API поддерживает несколько подписчиков, так что app.js тоже работает.
+    tg?.BackButton?.onClick?.(handleTasksBackButton);
 
     initialized = true;
   }

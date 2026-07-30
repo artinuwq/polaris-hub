@@ -207,11 +207,11 @@
   }
 
   /* ─── Telegram native back button ───
-     Заменяет собой кастомные крестики: пока открыт поиск, drawer или
-     внешний оверлей (модалки задач и т.д.), показываем системную стрелку/крестик ТГ. */
+     Заменяет собой кастомные крестики: пока открыт поиск или drawer,
+     показываем системную стрелку/крестик ТГ вместо своих кнопок закрытия. */
   function syncBackButton() {
     if (!tg?.BackButton) return;
-    if (state.searchOpen || state.drawerOpen || overlayRegistry.size > 0) {
+    if (state.searchOpen || state.drawerOpen) {
       tg.BackButton.show();
     } else {
       tg.BackButton.hide();
@@ -219,16 +219,6 @@
   }
 
   function handleBackButton() {
-    // Сначала закрываем внешние оверлеи (модалки задач и т.д.)
-    if (overlayRegistry.size > 0) {
-      const closeFns = Array.from(overlayRegistry.values());
-      overlayRegistry.clear();
-      closeFns.forEach((fn) => {
-        try { fn(); } catch (e) { /* ignore */ }
-      });
-      syncBackButton();
-      return;
-    }
     if (state.searchOpen) {
       closeSearch();
       return;
@@ -237,22 +227,6 @@
       closeDrawer();
     }
   }
-
-  /* ─── Overlay registry for external modules (tasks, etc.) ───
-     Позволяет другим модулям регистрировать свои оверлеи (модалки, панели)
-     чтобы системная кнопка "назад" Telegram их закрывала. */
-  const overlayRegistry = new Map();
-
-  window.PolarisUI = {
-    registerOverlay(id, closeFn) {
-      overlayRegistry.set(id, closeFn);
-      syncBackButton();
-    },
-    unregisterOverlay(id) {
-      overlayRegistry.delete(id);
-      syncBackButton();
-    },
-  };
 
   tg?.BackButton?.onClick?.(handleBackButton);
 
