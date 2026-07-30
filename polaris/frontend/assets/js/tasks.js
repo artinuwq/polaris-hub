@@ -548,9 +548,6 @@ window.TasksModule = (() => {
       <div class="create-modal" role="dialog" aria-modal="true" aria-label="Новая задача">
         <div class="create-modal-header">
           <h2>Новая задача</h2>
-          <button class="icon-button" type="button" data-action="close-create-modal" aria-label="Закрыть">
-            <span class="icon" data-icon="close" aria-hidden="true"></span>
-          </button>
         </div>
         <textarea class="create-modal-input" id="create-task-input" placeholder="Что нужно сделать?" rows="2" autofocus></textarea>
         <p class="create-modal-hint">Enter — создать. Теги подставятся автоматически: lumica, linux, telegram, дом, учеба...</p>
@@ -593,9 +590,14 @@ window.TasksModule = (() => {
     });
   }
 
-  function openCreateModal() { createModalOpen = true; render(); }
+  function openCreateModal() {
+    createModalOpen = true;
+    window.PolarisUI?.registerOverlay('tasks-create-modal', closeCreateModal);
+    render();
+  }
   function closeCreateModal() {
     createModalOpen = false;
+    window.PolarisUI?.unregisterOverlay('tasks-create-modal');
     const overlay = document.querySelector('.create-modal-overlay');
     if (overlay) overlay.remove();
     render();
@@ -658,9 +660,6 @@ window.TasksModule = (() => {
       <div class="detail-panel" role="dialog" aria-modal="true" aria-label="Детали задачи">
         <div class="detail-header">
           <h2>${escapeHTML(task.title)}</h2>
-          <button class="icon-button" type="button" data-action="close-detail" aria-label="Закрыть">
-            <span class="icon" data-icon="close" aria-hidden="true"></span>
-          </button>
         </div>
 
         <!-- Title (editable) -->
@@ -868,10 +867,17 @@ window.TasksModule = (() => {
     }
   }
 
-  function openDetail(taskId) { selectedTaskId = taskId; detailOpen = true; render(); }
+  function openDetail(taskId) {
+    selectedTaskId = taskId;
+    detailOpen = true;
+    window.PolarisUI?.registerOverlay('tasks-detail-panel', closeDetail);
+    render();
+  }
 
   function closeDetail() {
-    detailOpen = false; selectedTaskId = null;
+    detailOpen = false;
+    selectedTaskId = null;
+    window.PolarisUI?.unregisterOverlay('tasks-detail-panel');
     const overlay = document.querySelector('.detail-overlay');
     if (overlay) overlay.remove();
     render();
