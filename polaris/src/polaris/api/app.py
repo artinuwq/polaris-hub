@@ -13,6 +13,7 @@ from polaris.infra.database import run_migration
 from polaris.infra.settings import Settings
 from polaris.integrations.telegram.auth import TelegramWebAppUser, authenticate_webapp
 from polaris.modules.calendar.api import router as calendar_router
+from polaris.modules.events.api import router as events_router
 from polaris.modules.todo.api import router as tasks_router
 from polaris.shared.exceptions import AuthorizationError, PolarisError
 from polaris.update.manager import UpdateManager
@@ -161,6 +162,7 @@ def restart_service(_user: TelegramWebAppUser | None = Depends(_require_admin)):
 # ─── Include routers ───
 app.include_router(tasks_router)
 app.include_router(calendar_router)
+app.include_router(events_router)
 
 
 # ─── Helpers ───

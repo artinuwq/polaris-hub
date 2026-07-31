@@ -5,6 +5,7 @@ from __future__ import annotations
 Эндпоинты:
   GET /api/calendar/month   — события на месяц (year, month)
   GET /api/calendar/day     — события на конкретный день (date)
+  GET /api/calendar/week    — события на неделю (date — любой день недели)
   GET /api/calendar/today   — события на сегодня
   GET /api/calendar/markers — маркеры на дни месяца
   GET /api/calendar/upcoming — предстоящие события (для Attention)
@@ -61,6 +62,18 @@ def calendar_day(
             "date": date,
             "events": [_dump_event(ev) for ev in events],
         },
+    }
+
+
+@router.get("/week")
+def calendar_week(
+    date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    _user: TelegramWebAppUser | None = Depends(require_admin),
+):
+    """События на неделю (Пн—Вс), содержащую указанную дату."""
+    return {
+        "success": True,
+        "data": service.get_week_events(date),
     }
 
 

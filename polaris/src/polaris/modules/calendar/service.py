@@ -40,6 +40,38 @@ def get_today_events() -> list[CalendarEvent]:
     return repo.get_events_for_day(_today())
 
 
+def get_week_events(date_str: str) -> dict[str, Any]:
+    """Вернуть события для недели (Пн—Вс), содержащей указанную дату.
+
+    Возвращает: {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD",
+                 "days": [{"date": "YYYY-MM-DD", "events": [...]}, ...]}
+    """
+    anchor = _parse_date(date_str) or _today()
+    monday = anchor - timedelta(days=anchor.weekday())
+
+    def _dump(ev: CalendarEvent) -> dict[str, Any]:
+        data = ev.model_dump()
+        data["type"] = ev.type.value
+        data["color"] = ev.color
+        data["label"] = ev.label
+        return data
+
+    days: list[dict[str, Any]] = []
+    for i in range(7):
+        day = monday + timedelta(days=i)
+        day_events = repo.get_events_for_day(day)
+        days.append({
+            "date": day.isoformat(),
+            "events": [_dump(ev) for ev in day_events],
+        })
+
+    return {
+        "start": monday.isoformat(),
+        "end": (monday + timedelta(days=6)).isoformat(),
+        "days": days,
+    }
+
+
 def _parse_date(date_str: str) -> Optional[date]:
     """Разобрать YYYY-MM-DD в date."""
     if not date_str:

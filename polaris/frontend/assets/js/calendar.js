@@ -16,6 +16,7 @@ window.CalendarModule = (() => {
     alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h7.5l.5 5 7-11.5L13 2z"></path></svg>',
     list: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"></rect><path d="M8 9h8M8 13h5"></path></svg>',
     external: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5"></path><path d="M10 14 19 5"></path><path d="M19 14v5H5V5h5"></path></svg>',
+    plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>',
   };
 
   const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -32,8 +33,13 @@ window.CalendarModule = (() => {
   let markers = {}; // {"YYYY-MM-DD": ["task", "reminder", ...]}
   let loading = false;
   let error = '';
-  let currentView = 'month'; // "month" | "day" (extensible)
+  let currentView = 'month'; // "month" | "day" | "week"
   let initialized = false;
+  let weekAnchor = null; // "YYYY-MM-DD" — любой день недели, которая сейчас показана
+  let weekDays = []; // [{date, events}, ...] для недельного вида
+  let modalOpen = false;
+  let modalSaving = false;
+  let modalError = '';
 
   /* ─── Helpers ─── */
   function escapeHTML(value) {
@@ -96,8 +102,10 @@ window.CalendarModule = (() => {
     return h;
   }
 
-  async function apiRequest(path) {
-    const response = await fetch(path, { headers: requestHeaders() });
+  async function apiRequest(path, method = 'GET', body = undefined) {
+    const opts = { method, headers: requestHeaders() };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const response = await fetch(path, opts);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(data.detail || data.message || `HTTP ${response.status}`);
@@ -148,6 +156,25 @@ window.CalendarModule = (() => {
     render();
   }
 
+  async function loadWeek(dateStr) {
+    if (!dateStr) return;
+    loading = true;
+    error = '';
+    render();
+
+    try {
+      const resp = await apiRequest(`/api/calendar/week?date=${dateStr}`);
+      weekDays = resp.data?.days || [];
+      weekAnchor = resp.data?.start || dateStr;
+    } catch (e) {
+      error = e.message;
+      weekDays = [];
+    }
+
+    loading = false;
+    render();
+  }
+
   /* ─── Rendering ─── */
 
   function render() {
@@ -160,6 +187,7 @@ window.CalendarModule = (() => {
     );
     container.appendChild(fragment);
     hydrateIcons(container);
+    renderModal();
   }
 
   function renderPage() {
@@ -175,16 +203,52 @@ window.CalendarModule = (() => {
     const viewToggle = `
       <div class="calendar-view-toggle">
         <button class="calendar-view-button ${currentView === 'month' ? 'active' : ''}" type="button" data-action="set-view" data-view="month">Месяц</button>
-        <button class="calendar-view-button" type="button" data-action="set-view" data-view="day" disabled>День</button>
-        <button class="calendar-view-button" type="button" data-action="set-view" data-view="week" disabled>Неделя</button>
+        <button class="calendar-view-button ${currentView === 'week' ? 'active' : ''}" type="button" data-action="set-view" data-view="week">Неделя</button>
+        <button class="calendar-view-button ${currentView === 'day' ? 'active' : ''}" type="button" data-action="set-view" data-view="day">День</button>
       </div>
     `;
 
     return `
       <div class="calendar-header">
         <h1>Календарь</h1>
-        ${viewToggle}
+        <div class="calendar-header-actions">
+          ${viewToggle}
+          <button class="calendar-add-button" type="button" data-action="open-add-event">
+            <span class="icon" data-icon="plus" aria-hidden="true"></span>
+            <span>Добавить событие</span>
+          </button>
+        </div>
       </div>
+      ${renderNav()}
+    `;
+  }
+
+  function renderNav() {
+    if (currentView === 'week') {
+      const start = weekAnchor || todayStr();
+      const startDate = new Date(start);
+      const endDate = new Date(start);
+      endDate.setDate(endDate.getDate() + 6);
+      const months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+      const label = `${startDate.getDate()} ${months[startDate.getMonth()]} — ${endDate.getDate()} ${months[endDate.getMonth()]}`;
+      return `
+        <div class="calendar-nav">
+          <button class="nav-button" type="button" data-action="prev-week" aria-label="Предыдущая неделя">
+            <span class="icon" data-icon="chevronLeft" aria-hidden="true"></span>
+          </button>
+          <h2>${label}</h2>
+          <button class="nav-button" type="button" data-action="next-week" aria-label="Следующая неделя">
+            <span class="icon" data-icon="chevronRight" aria-hidden="true"></span>
+          </button>
+        </div>
+      `;
+    }
+
+    if (currentView === 'day') {
+      return ''; // у дневного вида своя навигация внутри renderDayDetailCard
+    }
+
+    return `
       <div class="calendar-nav">
         <button class="nav-button" type="button" data-action="prev-month" aria-label="Предыдущий месяц">
           <span class="icon" data-icon="chevronLeft" aria-hidden="true"></span>
@@ -221,6 +285,10 @@ window.CalendarModule = (() => {
 
     if (currentView === 'month') {
       return renderMonth();
+    }
+
+    if (currentView === 'week') {
+      return renderWeek();
     }
 
     if (currentView === 'day' && selectedDate) {
@@ -302,6 +370,47 @@ window.CalendarModule = (() => {
 
   function renderDayDetail() {
     return renderDayDetailCard();
+  }
+
+  function renderWeek() {
+    const today = todayStr();
+    const dayCells = weekDays.map((day) => {
+      const isToday = day.date === today;
+      const isSelected = selectedDate === day.date;
+      const d = new Date(day.date);
+      const dayEvents = [...day.events].sort((a, b) => {
+        return (a.time || '99:99').localeCompare(b.time || '99:99');
+      });
+
+      return `
+        <div class="calendar-week-day${isToday ? ' today' : ''}${isSelected ? ' selected' : ''}" data-action="select-day" data-date="${day.date}">
+          <div class="calendar-week-day-header">
+            <span class="calendar-week-day-name">${WEEKDAYS[(d.getDay() + 6) % 7]}</span>
+            <span class="calendar-week-day-number">${d.getDate()}</span>
+          </div>
+          <div class="calendar-week-day-events">
+            ${dayEvents.length === 0
+              ? `<div class="calendar-week-day-empty">—</div>`
+              : dayEvents.map((ev) => `
+                <div class="calendar-week-event" style="border-left-color:${ev.color || '#5ab8ff'}" data-action="open-event" data-event-id="${escapeHTML(ev.id)}" data-event-source="${escapeHTML(ev.source)}">
+                  ${ev.time ? `<span class="calendar-week-event-time">${formatTime(ev.time)}</span>` : ''}
+                  <span class="calendar-week-event-title">${escapeHTML(ev.title)}</span>
+                </div>
+              `).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <button class="calendar-today-button" type="button" data-action="go-today">Сегодня</button>
+      <div class="card calendar-card span-12">
+        <div class="calendar-week">
+          ${dayCells}
+        </div>
+      </div>
+      ${selectedDate && weekDays.some((d) => d.date === selectedDate) ? renderDayDetailCard() : ''}
+    `;
   }
 
   function renderDayDetailCard() {
@@ -398,8 +507,15 @@ window.CalendarModule = (() => {
     currentMonth = d.getMonth() + 1;
     const today = todayStr();
     selectedDate = today;
-    loadMonth(currentYear, currentMonth);
-    loadDay(today);
+
+    if (currentView === 'week') {
+      loadWeek(today);
+    } else if (currentView === 'day') {
+      loadDay(today);
+    } else {
+      loadMonth(currentYear, currentMonth);
+      loadDay(today);
+    }
   }
 
   function handleSelectDay(dateStr) {
@@ -426,6 +542,20 @@ window.CalendarModule = (() => {
     loadDay(selectedDate);
   }
 
+  function handlePrevWeek() {
+    const anchor = weekAnchor || todayStr();
+    const d = new Date(anchor);
+    d.setDate(d.getDate() - 7);
+    loadWeek(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+  }
+
+  function handleNextWeek() {
+    const anchor = weekAnchor || todayStr();
+    const d = new Date(anchor);
+    d.setDate(d.getDate() + 7);
+    loadWeek(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+  }
+
   function handleSetView(view) {
     currentView = view;
     render();
@@ -434,12 +564,20 @@ window.CalendarModule = (() => {
       loadDay(selectedDate);
     } else if (view === 'month') {
       loadMonth(currentYear, currentMonth);
+    } else if (view === 'week') {
+      loadWeek(selectedDate || todayStr());
     }
   }
 
   function handleOpenEvent(eventId, source) {
     // Переход к сущности по источнику.
-    if (source === 'tasks' || source === 'events') {
+    if (source === 'events') {
+      const realId = eventId.replace('event-', '');
+      openEditModal(realId);
+      return;
+    }
+
+    if (source === 'tasks') {
       const realId = eventId.replace('reminder-', '').replace('event-', '');
       if (window.TasksModule && window.TasksModule.openDetail) {
         window.TasksModule.openDetail(realId);
@@ -456,6 +594,197 @@ window.CalendarModule = (() => {
         }
       }
     }
+  }
+
+  /* ─── Reload helper ─── */
+  function reloadCurrentView() {
+    if (currentView === 'month') {
+      loadMonth(currentYear, currentMonth);
+      if (selectedDate) loadDay(selectedDate);
+    } else if (currentView === 'week') {
+      loadWeek(weekAnchor || todayStr());
+      if (selectedDate) loadDay(selectedDate);
+    } else if (currentView === 'day') {
+      loadDay(selectedDate || todayStr());
+    }
+  }
+
+  /* ─── Add / Edit Event Modal ─── */
+  let modalForm = { id: '', title: '', date: '', time: '', end_time: '', description: '' };
+  let modalMode = 'create'; // "create" | "edit"
+
+  function openCreateModal() {
+    modalMode = 'create';
+    modalForm = {
+      id: '',
+      title: '',
+      date: selectedDate || todayStr(),
+      time: '',
+      end_time: '',
+      description: '',
+    };
+    modalError = '';
+    modalOpen = true;
+    renderModal();
+  }
+
+  async function openEditModal(eventId) {
+    modalMode = 'edit';
+    modalError = '';
+    modalOpen = true;
+    modalForm = { id: eventId, title: '', date: '', time: '', end_time: '', description: '' };
+    renderModal();
+
+    try {
+      const resp = await apiRequest(`/api/events/${eventId}`);
+      const ev = resp.data || {};
+      modalForm = {
+        id: eventId,
+        title: ev.title || '',
+        date: ev.date || '',
+        time: ev.time || '',
+        end_time: ev.end_time || '',
+        description: ev.description || '',
+      };
+    } catch (e) {
+      modalError = e.message;
+    }
+    renderModal();
+  }
+
+  function closeModal() {
+    modalOpen = false;
+    modalError = '';
+    renderModal();
+  }
+
+  async function submitModal() {
+    const overlay = document.querySelector('.calendar-event-modal-overlay');
+    const title = overlay?.querySelector('#event-modal-title')?.value.trim() || '';
+    const date = overlay?.querySelector('#event-modal-date')?.value || '';
+    const time = overlay?.querySelector('#event-modal-time')?.value || '';
+    const endTime = overlay?.querySelector('#event-modal-end-time')?.value || '';
+    const description = overlay?.querySelector('#event-modal-description')?.value.trim() || '';
+
+    if (!title) {
+      modalError = 'Укажите название события';
+      renderModal();
+      return;
+    }
+    if (!date) {
+      modalError = 'Укажите дату события';
+      renderModal();
+      return;
+    }
+
+    modalSaving = true;
+    modalError = '';
+    renderModal();
+
+    try {
+      if (modalMode === 'create') {
+        await apiRequest('/api/events', 'POST', {
+          title,
+          date,
+          time,
+          end_time: endTime,
+          description,
+        });
+      } else {
+        await apiRequest(`/api/events/${modalForm.id}`, 'PATCH', {
+          title,
+          date,
+          time,
+          end_time: endTime,
+          description,
+        });
+      }
+      modalSaving = false;
+      modalOpen = false;
+      renderModal();
+      reloadCurrentView();
+    } catch (e) {
+      modalSaving = false;
+      modalError = e.message;
+      renderModal();
+    }
+  }
+
+  async function deleteModalEvent() {
+    if (!modalForm.id) return;
+    if (!window.confirm('Удалить это событие?')) return;
+
+    modalSaving = true;
+    renderModal();
+    try {
+      await apiRequest(`/api/events/${modalForm.id}`, 'DELETE');
+      modalSaving = false;
+      modalOpen = false;
+      renderModal();
+      reloadCurrentView();
+    } catch (e) {
+      modalSaving = false;
+      modalError = e.message;
+      renderModal();
+    }
+  }
+
+  function renderModal() {
+    const existing = document.querySelector('.calendar-event-modal-overlay');
+    if (existing) existing.remove();
+    if (!modalOpen) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'create-modal-overlay calendar-event-modal-overlay';
+    overlay.innerHTML = `
+      <div class="create-modal" role="dialog" aria-modal="true" aria-label="${modalMode === 'create' ? 'Новое событие' : 'Событие'}">
+        <div class="create-modal-header">
+          <h2>${modalMode === 'create' ? 'Новое событие' : 'Редактировать событие'}</h2>
+        </div>
+        <div class="detail-field">
+          <label>Название</label>
+          <input type="text" id="event-modal-title" class="create-modal-input" style="min-height:40px" placeholder="Например, встреча с командой" value="${escapeHTML(modalForm.title)}" ${modalSaving ? 'disabled' : ''} autofocus />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+          <div class="detail-field">
+            <label>Дата</label>
+            <input type="date" id="event-modal-date" value="${escapeHTML(modalForm.date)}" ${modalSaving ? 'disabled' : ''} />
+          </div>
+          <div class="detail-field">
+            <label>Начало</label>
+            <input type="time" id="event-modal-time" value="${escapeHTML(modalForm.time)}" ${modalSaving ? 'disabled' : ''} />
+          </div>
+          <div class="detail-field">
+            <label>Конец</label>
+            <input type="time" id="event-modal-end-time" value="${escapeHTML(modalForm.end_time)}" ${modalSaving ? 'disabled' : ''} />
+          </div>
+        </div>
+        <div class="detail-field" style="margin-top:10px">
+          <label>Описание</label>
+          <textarea id="event-modal-description" class="create-modal-input" rows="2" placeholder="Необязательно" ${modalSaving ? 'disabled' : ''}>${escapeHTML(modalForm.description)}</textarea>
+        </div>
+        ${modalError ? `<p class="create-modal-hint" style="color:var(--error)">${escapeHTML(modalError)}</p>` : ''}
+        <div class="create-modal-actions" style="justify-content:${modalMode === 'edit' ? 'space-between' : 'flex-end'}">
+          ${modalMode === 'edit' ? `<button class="small-button ghost" type="button" data-action="delete-event" style="color:var(--error);border-color:rgba(255,93,115,0.3)" ${modalSaving ? 'disabled' : ''}>Удалить</button>` : ''}
+          <div style="display:flex;gap:8px">
+            <button class="small-button ghost" type="button" data-action="close-add-event" ${modalSaving ? 'disabled' : ''}>Отмена</button>
+            <button class="small-button primary" type="button" data-action="submit-add-event" ${modalSaving ? 'disabled' : ''}>${modalSaving ? 'Сохраняю…' : 'Сохранить'}</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) { closeModal(); return; }
+      const btn = event.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'close-add-event') { event.preventDefault(); closeModal(); return; }
+      if (action === 'submit-add-event') { event.preventDefault(); submitModal(); return; }
+      if (action === 'delete-event') { event.preventDefault(); deleteModalEvent(); return; }
+    });
+
+    document.body.appendChild(overlay);
   }
 
   /* ─── Initialization ─── */
@@ -486,7 +815,10 @@ window.CalendarModule = (() => {
       if (action === 'go-today') { event.preventDefault(); handleToday(); return; }
       if (action === 'prev-day') { event.preventDefault(); handlePrevDay(); return; }
       if (action === 'next-day') { event.preventDefault(); handleNextDay(); return; }
+      if (action === 'prev-week') { event.preventDefault(); handlePrevWeek(); return; }
+      if (action === 'next-week') { event.preventDefault(); handleNextWeek(); return; }
       if (action === 'set-view') { event.preventDefault(); handleSetView(btn.dataset.view); return; }
+      if (action === 'open-add-event') { event.preventDefault(); openCreateModal(); return; }
 
       const dayBtn = event.target.closest('[data-action="select-day"]');
       if (dayBtn) {
