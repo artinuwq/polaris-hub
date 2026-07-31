@@ -127,10 +127,10 @@ window.TasksModule = (() => {
   /* ─── Helpers ─── */
   function escapeHTML(value) {
     return String(value ?? '')
-      .replaceAll('&', '&')
-      .replaceAll('<', '<')
-      .replaceAll('>', '>')
-      .replaceAll('"', '"')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
   }
 
@@ -1215,10 +1215,26 @@ window.TasksModule = (() => {
   }
 
   /* ─── Public API ─── */
+  function openDetailSafe(taskId) {
+    if (loading) {
+      const wait = () => {
+        if (loading) {
+          setTimeout(wait, 120);
+          return;
+        }
+        openDetail(taskId);
+      };
+      wait();
+      return;
+    }
+    openDetail(taskId);
+  }
+
   return {
     init,
     render,
     loadFromServer,
     openCreateModal,
+    openDetail: openDetailSafe,
   };
 })();

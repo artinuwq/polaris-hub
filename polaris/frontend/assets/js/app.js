@@ -68,6 +68,8 @@
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.6 5.4 6 .9-4.3 4.2 1 6-5.3-2.8-5.3 2.8 1-6-4.3-4.2 6-.9L12 3z"></path></svg>',
     tasks:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"></rect><path d="M8 9h8M8 13h5"></path></svg>',
+    calendar:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2"></rect><path d="M8 4v3M16 4v3M4 10h16"></path></svg>',
     servers:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="6" rx="2"></rect><rect x="4" y="14" width="16" height="6" rx="2"></rect><path d="M8 7h.01M8 17h.01"></path></svg>',
     finance:
@@ -97,6 +99,7 @@
   const NAV_ITEMS = [
     { id: 'attention', label: 'Attention', subtitle: 'Что сейчас заслуживает внимания', icon: 'star' },
     { id: 'tasks', label: 'Tasks', subtitle: 'Дела и быстрые действия', icon: 'tasks' },
+    { id: 'calendar', label: 'Календарь', subtitle: 'Задачи, события и платежи', icon: 'calendar' },
     { id: 'servers', label: 'Servers', subtitle: 'Инфраструктура', icon: 'servers' },
     { id: 'finance', label: 'Finance', subtitle: 'То, что требует оплаты', icon: 'finance' },
     { id: 'knowledge', label: 'Knowledge', subtitle: 'Заметки и база знаний', icon: 'knowledge' },
@@ -292,6 +295,11 @@
     // Initialize tasks module when navigating to tasks view
     if (viewId === 'tasks' && window.TasksModule) {
       window.TasksModule.init('tasks-container');
+    }
+
+    // Initialize calendar module when navigating to calendar view
+    if (viewId === 'calendar' && window.CalendarModule) {
+      window.CalendarModule.init('calendar-container');
     }
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -549,6 +557,13 @@
       `;
     }
 
+    if (view.id === 'calendar') {
+      return `
+        ${renderNotice()}
+        <div id="calendar-container" class="calendar-page"></div>
+      `;
+    }
+
     return `
       ${renderNotice()}
       <section class="card module-card span-12">
@@ -661,7 +676,7 @@
       return;
     }
 
-    const hints = ['Attention', 'Tasks', 'Servers', 'Finance', 'browser', 'restart', 'WEBAPP_URL', '/config'];
+    const hints = ['Attention', 'Tasks', 'Календарь', 'Servers', 'Finance', 'browser', 'restart', 'WEBAPP_URL', '/config'];
     elements.searchHints.innerHTML = hints
       .map(
         (hint) => `
