@@ -153,32 +153,22 @@ def get_events_for_month(year: int, month: int) -> list[CalendarEvent]:
             if ev:
                 events.append(ev)
 
-        # ── Платёжные подписки (таблицы могут быть ещё не созданы) ──
-        # Payments
+        # ── Регулярные платежи (Finance) ──
         try:
+            from polaris.modules.finance import service as finance_service
+            finance_service.ensure_all_current()
+
             pay_rows = conn.execute(
-                "SELECT * FROM payments WHERE due_date != '' "
-                "AND due_date >= ? AND due_date <= ?",
+                "SELECT * FROM recurring_payments WHERE next_payment_date != '' "
+                "AND next_payment_date >= ? AND next_payment_date <= ? "
+                "AND status != 'cancelled'",
                 (start_str, end_str),
             ).fetchall()
             for row in pay_rows:
-                ev = CalendarEvent.from_payment(dict(row))
+                ev = CalendarEvent.from_recurring_payment(dict(row))
                 events.append(ev)
         except Exception:
-            pass  # таблица payments пока не существует
-
-        # Subscriptions
-        try:
-            sub_rows = conn.execute(
-                "SELECT * FROM subscriptions WHERE next_billing_date != '' "
-                "AND next_billing_date >= ? AND next_billing_date <= ?",
-                (start_str, end_str),
-            ).fetchall()
-            for row in sub_rows:
-                ev = CalendarEvent.from_subscription(dict(row))
-                events.append(ev)
-        except Exception:
-            pass  # таблица subscriptions пока не существует
+            pass  # таблица recurring_payments пока не создана (миграция не выполнена)
 
         # ── Произвольные события (если есть таблица events) ──
         try:
@@ -267,24 +257,18 @@ def get_events_for_day(day: date) -> list[CalendarEvent]:
             if ev:
                 events.append(ev)
 
-        # Payments
+        # Регулярные платежи (Finance)
         try:
+            from polaris.modules.finance import service as finance_service
+            finance_service.ensure_all_current()
+
             pay_rows = conn.execute(
-                "SELECT * FROM payments WHERE due_date = ?", (day_str,)
+                "SELECT * FROM recurring_payments WHERE next_payment_date = ? "
+                "AND status != 'cancelled'",
+                (day_str,),
             ).fetchall()
             for row in pay_rows:
-                ev = CalendarEvent.from_payment(dict(row))
-                events.append(ev)
-        except Exception:
-            pass
-
-        # Subscriptions
-        try:
-            sub_rows = conn.execute(
-                "SELECT * FROM subscriptions WHERE next_billing_date = ?", (day_str,)
-            ).fetchall()
-            for row in sub_rows:
-                ev = CalendarEvent.from_subscription(dict(row))
+                ev = CalendarEvent.from_recurring_payment(dict(row))
                 events.append(ev)
         except Exception:
             pass

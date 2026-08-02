@@ -302,6 +302,11 @@
       window.CalendarModule.init('calendar-container');
     }
 
+    // Initialize finance module when navigating to finance view
+    if (viewId === 'finance' && window.FinanceModule) {
+      window.FinanceModule.init('finance-container');
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -561,6 +566,13 @@
       return `
         ${renderNotice()}
         <div id="calendar-container" class="calendar-page"></div>
+      `;
+    }
+
+    if (view.id === 'finance') {
+      return `
+        ${renderNotice()}
+        <div id="finance-container" class="finance-page"></div>
       `;
     }
 

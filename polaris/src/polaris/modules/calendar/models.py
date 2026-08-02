@@ -232,6 +232,38 @@ class CalendarEvent(BaseModel):
         )
 
     @classmethod
+    def from_recurring_payment(cls, row: dict[str, Any]) -> "CalendarEvent":
+        """Адаптировать регулярный платёж (Finance) в календарное событие.
+
+        Ожидается строка таблицы ``recurring_payments``: id, name, amount,
+        currency, next_payment_date, status, category.
+        """
+        name = row.get("name", "Платёж")
+        amount = row.get("amount", 0)
+        currency = row.get("currency", "")
+        status = row.get("status", "active")
+
+        title = f"💰 {name}"
+        if amount:
+            title += f" — {amount} {currency}".rstrip()
+
+        return cls(
+            id=f"payment-{row.get('id', '')}",
+            source="finance",
+            source_id=row.get("id", ""),
+            title=title,
+            description=row.get("description", ""),
+            date=row.get("next_payment_date", ""),
+            time="",
+            type=EventType.PAYMENT,
+            priority="normal",
+            status=status,
+            project=row.get("category", ""),
+            tags=[],
+            url=f"/finance#{row.get('id', '')}",
+        )
+
+    @classmethod
     def from_event(cls, row: dict[str, Any]) -> "CalendarEvent":
         """Адаптировать произвольное событие (встреча, вечернинг и т.п.)."""
         title = row.get("title", "Событие")
