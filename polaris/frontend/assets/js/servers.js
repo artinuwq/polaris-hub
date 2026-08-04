@@ -303,10 +303,10 @@ window.ServersModule = (() => {
           <p class="metric-subtext">Установите Polaris Agent на сервере, чтобы он появился здесь online.</p>
 
           <div class="servers-install-box">
-            <code id="servers-install-command">${escapeHTML(tokenInfo.install_command)}</code>
-            <button class="small-button ghost" type="button" data-action="copy-install-command">
-              <span class="icon" data-icon="copy"></span> Copy
+            <button class="servers-copy-button" type="button" data-action="copy-install-command" aria-label="Скопировать команду" title="Скопировать">
+              <span class="icon" data-icon="copy"></span>
             </button>
+            <code id="servers-install-command">${escapeHTML(tokenInfo.install_command)}</code>
           </div>
 
           <p class="servers-token-timer ${expired ? 'expired' : ''}">
