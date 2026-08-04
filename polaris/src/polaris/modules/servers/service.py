@@ -32,6 +32,14 @@ def _hub_public_url() -> str:
     return url or os.getenv("HUB_PUBLIC_URL", "").rstrip("/") or "https://<your-hub-domain>"
 
 
+def _install_script_url() -> str:
+    """install.sh раздаётся из GitHub (как и в README проекта), а не с домена
+    Hub — сам Hub (FastAPI) не отдаёт этот файл как статику."""
+    repo = os.getenv("POLARIS_REPO_SLUG", "artinuwq/polaris-hub")
+    branch = os.getenv("POLARIS_BRANCH", "main")
+    return f"https://raw.githubusercontent.com/{repo}/{branch}/install.sh"
+
+
 def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
@@ -125,7 +133,7 @@ def generate_registration_token(server_id: str) -> RegistrationTokenResponse:
     repo.update_server(server_id, {"status": "pending", "status_reason": None})
 
     install_command = (
-        f"curl -fsSL {_hub_public_url()}/install.sh | "
+        f"curl -fsSL {_install_script_url()} | "
         f"sudo bash -s -- agent --hub {_hub_public_url()} --token {raw_token}"
     )
 
