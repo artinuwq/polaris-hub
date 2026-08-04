@@ -146,11 +146,28 @@ install_packages() {
     export DEBIAN_FRONTEND=noninteractive
     local ver
     ver="$(py_minor 2>/dev/null || echo "")"
-    apt-get update -y
-    apt-get install -y \
-      python3 python3-pip python3-venv \
-      ${ver:+python${ver}-venv} \
-      git curl ca-certificates
+    apt-get update -y || true
+
+    # Ставим по одному пакету, а не единой транзакцией: на серверах с
+    # частично незавершёнными обновлениями apt иногда ловит "Unmet
+    # dependencies" на одном пакете (например curl/libcurl) и из-за этого
+    # роняет ВСЮ команду — даже те пакеты, что установились бы нормально.
+    local pkgs=(python3 python3-pip python3-venv ${ver:+"python${ver}-venv"} git curl ca-certificates)
+    local pkg
+    for pkg in "${pkgs[@]}"; do
+      [[ -z "$pkg" ]] && continue
+      if dpkg -s "$pkg" >/dev/null 2>&1; then
+        continue  # уже установлен — не трогаем, чтобы не спровоцировать конфликт версий
+      fi
+      echo "  → устанавливаю $pkg"
+      if ! apt-get install -y --no-install-recommends "$pkg" 2>/tmp/apt_err.$$; then
+        echo "  ! $pkg не встал с первой попытки, пробую apt --fix-broken install" >&2
+        apt-get install -y -f || true
+        apt-get install -y --no-install-recommends "$pkg" || \
+          echo "  ! $pkg так и не установился (см. вывод apt выше) — если venv всё же появится, установка продолжится" >&2
+      fi
+      rm -f /tmp/apt_err.$$
+    done
   elif command -v dnf >/dev/null 2>&1; then
     dnf install -y python3 python3-pip git curl ca-certificates
   elif command -v yum >/dev/null 2>&1; then
@@ -178,6 +195,10 @@ fi
 
 if ! venv_ready; then
   echo "ensurepip/venv всё ещё недоступны после установки пакетов." >&2
+  echo "Похоже, apt на этом сервере в частично сломанном состоянии. Попробуйте руками:" >&2
+  echo "  sudo apt-get update && sudo apt-get install -y -f" >&2
+  echo "  sudo apt-get install -y python3-venv python3-pip" >&2
+  echo "и затем запустите установку Polaris ещё раз." >&2
   exit 1
 fi
 
