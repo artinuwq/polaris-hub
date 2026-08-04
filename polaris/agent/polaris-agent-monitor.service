@@ -1,0 +1,23 @@
+[Unit]
+Description=Polaris Agent (server monitoring)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=AGENT_USER
+Group=AGENT_GROUP
+WorkingDirectory=AGENT_DIR
+ExecStart=AGENT_VENV_PYTHON -m polaris_agent run --config AGENT_CONFIG_PATH
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+# Hardening — агент read-only и не должен уметь трогать систему сверх нужного.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=AGENT_CONFIG_DIR
+
+[Install]
+WantedBy=multi-user.target

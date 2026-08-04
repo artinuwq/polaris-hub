@@ -15,6 +15,8 @@ from polaris.integrations.telegram.auth import TelegramWebAppUser, authenticate_
 from polaris.modules.calendar.api import router as calendar_router
 from polaris.modules.events.api import router as events_router
 from polaris.modules.finance.api import router as finance_router
+from polaris.modules.servers.api import admin_router as servers_admin_router
+from polaris.modules.servers.api import agent_router as servers_agent_router
 from polaris.modules.todo.api import router as tasks_router
 from polaris.shared.exceptions import AuthorizationError, PolarisError
 from polaris.update.manager import UpdateManager
@@ -165,6 +167,8 @@ app.include_router(tasks_router)
 app.include_router(calendar_router)
 app.include_router(events_router)
 app.include_router(finance_router)
+app.include_router(servers_admin_router)
+app.include_router(servers_agent_router)
 
 
 # ─── Helpers ───

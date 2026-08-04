@@ -307,6 +307,11 @@
       window.FinanceModule.init('finance-container');
     }
 
+    // Initialize servers module when navigating to servers view
+    if (viewId === 'servers' && window.ServersModule) {
+      window.ServersModule.init('servers-container');
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -573,6 +578,13 @@
       return `
         ${renderNotice()}
         <div id="finance-container" class="finance-page"></div>
+      `;
+    }
+
+    if (view.id === 'servers') {
+      return `
+        ${renderNotice()}
+        <div id="servers-container" class="servers-page"></div>
       `;
     }
 

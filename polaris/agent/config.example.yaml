@@ -1,0 +1,28 @@
+# Пример конфигурации Polaris Agent.
+# Реальный файл создаётся автоматически командой `register` и хранится
+# в /etc/polaris-agent/config.yaml с правами 0600 (владелец — agent user).
+
+hub:
+  url: "https://polaris.example"
+
+agent:
+  id: ""      # заполняется автоматически при регистрации
+  token: ""   # заполняется автоматически при регистрации — секрет, не публиковать
+
+heartbeat:
+  interval: 15
+
+metrics:
+  interval: 30
+
+collectors:
+  cpu: true
+  memory: true
+  disk: true
+  network: true
+  system: true
+
+# Список systemd-сервисов для мониторинга. Не зашито жёстко — можно
+# дополнить своими: docker, xray, telemt и т.д.
+services:
+  - nginx

@@ -1,0 +1,195 @@
+/* ─── Servers Module ─── */
+
+.servers-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.servers-card {
+  padding: 18px;
+}
+
+.servers-back-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.servers-back-button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Server list grid */
+.servers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.servers-server-card {
+  padding: 14px;
+  cursor: pointer;
+  transition: all 160ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.servers-server-card:hover {
+  border-color: rgba(90, 184, 255, 0.3);
+  background: var(--surface-raised);
+}
+
+.servers-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.servers-card-name {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.servers-card-status {
+  font-size: 0.9rem;
+}
+
+.servers-card-status-label {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.servers-card-metrics {
+  display: flex;
+  gap: 10px;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.servers-card-footer {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Add server / waiting for agent */
+.servers-waiting-status {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 4px 0 6px;
+}
+
+.servers-install-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow-x: auto;
+}
+
+.servers-install-box code {
+  flex: 1;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.76rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.servers-token-timer {
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.servers-token-timer.expired {
+  color: #ff5d73;
+  font-weight: 600;
+}
+
+/* Detail view */
+.servers-detail-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.servers-detail-title-row h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.servers-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.servers-overview-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.servers-overview-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.servers-service-row,
+.servers-metric-row,
+.servers-event-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 0.84rem;
+}
+
+.servers-service-row:last-child,
+.servers-metric-row:last-child,
+.servers-event-row:last-child {
+  border-bottom: none;
+}
+
+.servers-metric-row {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.servers-event-row.severity-critical {
+  color: #ff5d73;
+}
+
+.servers-event-row.severity-warning {
+  color: #f5b942;
+}
+
+.servers-event-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 720px) {
+  .servers-grid {
+    grid-template-columns: 1fr;
+  }
+}
