@@ -28,6 +28,7 @@ NO_SERVICE=0
 AGENT_HUB_URL=""
 AGENT_TOKEN=""
 AGENT_SERVICES=""
+AGENT_URL="${POLARIS_AGENT_URL:-}"   # прямая ссылка на polaris-agent.py (по умолчанию — raw GitHub)
 
 # 1) Polaris Hub  2) Polaris Agent  3) Both
 COMPONENT=""
@@ -55,6 +56,7 @@ Usage:
   --hub URL           Адрес Polaris Hub (обязательно для agent)
   --token TOKEN       Одноразовый registration token из Hub UI (Servers → Add Server)
   --services LIST     systemd-сервисы для мониторинга через запятую, напр. nginx,docker
+  --agent-url URL     Откуда скачать polaris-agent.py (по умолчанию — raw GitHub репозитория)
 
 Примеры:
   install.sh agent --hub https://polaris.example --token plr_reg_xxx
@@ -79,6 +81,7 @@ while [[ $# -gt 0 ]]; do
     --admin-id) ADMIN_ID="${2:-}"; shift 2 ;;
     --hub) AGENT_HUB_URL="${2:-}"; shift 2 ;;
     --services) AGENT_SERVICES="${2:-}"; shift 2 ;;
+    --agent-url) AGENT_URL="${2:-}"; shift 2 ;;
     --non-interactive) NON_INTERACTIVE=1; shift ;;
     --no-service) NO_SERVICE=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -128,6 +131,208 @@ echo "Repo:      $REPO_URL"
 echo "Branch:    $BRANCH"
 echo "Dir:       $INSTALL_DIR"
 echo
+
+# ─────────────────────── Agent (лёгкий) ───────────────────────
+# Агент — один python-файл на стандартной библиотеке + systemd unit.
+# Никаких apt, git clone, venv и pip: именно они вешают маленькие VPS.
+AGENT_BIN_DIR="/opt/polaris-agent"
+AGENT_BIN="$AGENT_BIN_DIR/polaris-agent.py"
+AGENT_CONFIG_DIR="/etc/polaris-agent"
+AGENT_CONFIG="$AGENT_CONFIG_DIR/config.json"
+AGENT_UNIT="polaris-agent-monitor"
+AGENT_USER="polaris-agent"
+
+agent_default_url() {
+  # https://github.com/owner/repo(.git) -> raw.githubusercontent.com/owner/repo/BRANCH/...
+  local base="${REPO_URL%.git}"
+  case "$base" in
+    https://github.com/*)
+      echo "https://raw.githubusercontent.com/${base#https://github.com/}/$BRANCH/polaris/agent/polaris-agent.py" ;;
+    *) echo "" ;;
+  esac
+}
+
+download_file() {
+  local url="$1" dest="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --max-time 30 --retry 2 -o "$dest" "$url"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -T 30 -O "$dest" "$url"
+  else
+    python3 - "$url" "$dest" <<'PY'
+import sys, urllib.request
+with urllib.request.urlopen(sys.argv[1], timeout=30) as r, open(sys.argv[2], "wb") as f:
+    f.write(r.read(2_000_000))
+PY
+  fi
+}
+
+install_agent() {
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    echo "Запустите через sudo." >&2; exit 1
+  fi
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    echo "Агент поддерживает только Linux (читает /proc)." >&2; exit 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 7))'; then
+    echo "Нужен python3 версии 3.7+. Установите его (Debian/Ubuntu: apt-get install -y python3-minimal) и повторите." >&2
+    exit 1
+  fi
+
+  # Защита маленьких серверов: не стартуем, если памяти почти нет.
+  local avail_kb
+  avail_kb="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo "")"
+  if [[ -n "$avail_kb" && "$avail_kb" -lt 40000 ]]; then
+    echo "Свободно только $((avail_kb / 1024)) МБ памяти — не буду ничего ставить, чтобы не повесить сервер." >&2
+    echo "Освободите память или добавьте swap и повторите." >&2
+    exit 1
+  fi
+
+  # "both": токен берём у только что поднятого локального Hub через его admin API.
+  if [[ "$COMPONENT" == "both" ]]; then
+    [[ -z "$AGENT_HUB_URL" ]] && AGENT_HUB_URL="http://127.0.0.1:$(grep -oP '^WEB_PORT=\K.*' "$APP_DIR/.env" 2>/dev/null || echo 8000)"
+    if [[ -z "$AGENT_TOKEN" ]]; then
+      echo "→ Создаю запись сервера для локального Hub и получаю registration token…"
+      local update_token
+      update_token="$(grep -oP '^UPDATE_API_TOKEN=\K.*' "$APP_DIR/.env" 2>/dev/null || echo "")"
+      AGENT_TOKEN="$("$APP_DIR/.venv/bin/python" - "$AGENT_HUB_URL" "$update_token" <<'PY'
+import sys, json, urllib.request
+hub_url, token = sys.argv[1], sys.argv[2]
+req = urllib.request.Request(
+    f"{hub_url}/api/v1/servers",
+    data=json.dumps({"name": "this-server"}).encode(),
+    headers={"Content-Type": "application/json", "X-Polaris-Token": token},
+    method="POST",
+)
+with urllib.request.urlopen(req, timeout=10) as resp:
+    data = json.load(resp)
+print(data["data"]["registration_token"]["token"])
+PY
+)"
+    fi
+  fi
+
+  if [[ -z "$AGENT_HUB_URL" || -z "$AGENT_TOKEN" ]]; then
+    echo "Для установки Agent нужны --hub URL и --token TOKEN (см. Hub UI: Servers → Add Server)" >&2
+    exit 1
+  fi
+
+  echo "→ Скачиваю агент (один файл)"
+  mkdir -p "$AGENT_BIN_DIR"
+  local tmp="$AGENT_BIN_DIR/.polaris-agent.new"
+  local local_copy="${APP_DIR:-}/agent/polaris-agent.py"
+  if [[ -n "${APP_DIR:-}" && -f "$local_copy" ]]; then
+    cp "$local_copy" "$tmp"
+  else
+    local url="${AGENT_URL:-$(agent_default_url)}"
+    if [[ -z "$url" ]]; then
+      echo "Не удалось определить URL агента для репозитория $REPO_URL — укажите --agent-url." >&2
+      exit 1
+    fi
+    if ! download_file "$url" "$tmp"; then
+      rm -f "$tmp"
+      echo "Не удалось скачать $url" >&2
+      exit 1
+    fi
+  fi
+  if ! python3 -c 'import ast, sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())' "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    echo "Скачанный файл — не python-скрипт (проверьте URL/ветку)." >&2
+    exit 1
+  fi
+  chmod 0755 "$tmp"
+  mv -f "$tmp" "$AGENT_BIN"
+
+  if ! id -u "$AGENT_USER" >/dev/null 2>&1; then
+    echo "→ Создаю системного пользователя $AGENT_USER"
+    useradd --system --no-create-home --shell "$(command -v nologin || echo /bin/false)" "$AGENT_USER"
+  fi
+
+  mkdir -p "$AGENT_CONFIG_DIR"
+  local register_args=(register --hub "$AGENT_HUB_URL" --token "$AGENT_TOKEN" --config "$AGENT_CONFIG")
+  [[ -n "$AGENT_SERVICES" ]] && register_args+=(--services "$AGENT_SERVICES")
+  if ! PYTHONDONTWRITEBYTECODE=1 python3 "$AGENT_BIN" "${register_args[@]}"; then
+    echo "✗ Не удалось зарегистрировать Agent. Проверьте:" >&2
+    echo "  - URL Hub ($AGENT_HUB_URL)" >&2
+    echo "  - доступность Hub с этого сервера" >&2
+    echo "  - registration token (одноразовый, живёт недолго — создайте новый в Hub UI)" >&2
+    exit 1
+  fi
+  chown -R "$AGENT_USER:$AGENT_USER" "$AGENT_CONFIG_DIR"
+  chmod 750 "$AGENT_CONFIG_DIR"
+  chmod 600 "$AGENT_CONFIG"
+
+  if [[ "$NO_SERVICE" -eq 0 ]] && command -v systemctl >/dev/null 2>&1; then
+    local py
+    py="$(readlink -f "$(command -v python3)")"
+    echo "→ Устанавливаю systemd-сервис $AGENT_UNIT"
+    cat > "/etc/systemd/system/$AGENT_UNIT.service" <<UNIT
+[Unit]
+Description=Polaris Agent (lightweight server monitoring)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=$AGENT_USER
+Group=$AGENT_USER
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=$py $AGENT_BIN run --config $AGENT_CONFIG
+Restart=on-failure
+RestartSec=30
+
+# Агент не должен мешать серверу: минимальный приоритет и жёсткие лимиты.
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10
+CPUQuota=5%
+MemoryMax=64M
+TasksMax=8
+OOMScoreAdjust=800
+
+# Read-only агент: ничего лишнего трогать не может.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl daemon-reload
+    systemctl enable --now "$AGENT_UNIT"
+    sleep 3
+    if systemctl is-active --quiet "$AGENT_UNIT"; then
+      echo "✓ Сервис $AGENT_UNIT запущен"
+    else
+      echo "✗ Сервис не стартовал. Последние строки журнала:" >&2
+      journalctl -u "$AGENT_UNIT" -n 20 --no-pager >&2 || true
+      exit 1
+    fi
+  else
+    echo "! systemd пропущен — запускайте вручную:"
+    echo "  python3 $AGENT_BIN run --config $AGENT_CONFIG"
+  fi
+
+  echo
+  echo "✓ Polaris Agent установлен (без venv и pip)"
+  echo "  Hub:    $AGENT_HUB_URL"
+  echo "  Файл:   $AGENT_BIN"
+  echo "  Конфиг: $AGENT_CONFIG"
+}
+
+# Агент ставится отдельной лёгкой веткой — до apt/git/venv, которые нужны только Hub.
+if [[ "$COMPONENT" == "agent" ]]; then
+  echo "=== Polaris Agent (light) ==="
+  install_agent
+  exit 0
+fi
 
 # --- системные пакеты ---
 py_minor() {
@@ -257,104 +462,7 @@ install_hub() {
   fi
 }
 
-# ─────────────────────────── Agent ───────────────────────────
-install_agent() {
-  local agent_dir="$APP_DIR/agent"
-  if [[ ! -d "$agent_dir" ]]; then
-    echo "Каталог агента не найден: $agent_dir" >&2
-    exit 1
-  fi
-
-  # Если ставим "both" и токен/URL не переданы явно — берём их у только что
-  # поднятого локального Hub через его admin API (UPDATE_API_TOKEN из .env).
-  if [[ "$COMPONENT" == "both" ]]; then
-    [[ -z "$AGENT_HUB_URL" ]] && AGENT_HUB_URL="http://127.0.0.1:$(grep -oP '^WEB_PORT=\K.*' "$APP_DIR/.env" 2>/dev/null || echo 8000)"
-    if [[ -z "$AGENT_TOKEN" ]]; then
-      echo "→ Создаю запись сервера для локального Hub и получаю registration token…"
-      local update_token
-      update_token="$(grep -oP '^UPDATE_API_TOKEN=\K.*' "$APP_DIR/.env" 2>/dev/null || echo "")"
-      AGENT_TOKEN="$("$APP_DIR/.venv/bin/python" - "$AGENT_HUB_URL" "$update_token" <<'PY'
-import sys, json, urllib.request
-hub_url, token = sys.argv[1], sys.argv[2]
-req = urllib.request.Request(
-    f"{hub_url}/api/v1/servers",
-    data=json.dumps({"name": "this-server"}).encode(),
-    headers={"Content-Type": "application/json", "X-Polaris-Token": token},
-    method="POST",
-)
-with urllib.request.urlopen(req, timeout=10) as resp:
-    data = json.load(resp)
-print(data["data"]["registration_token"]["token"])
-PY
-)"
-    fi
-  fi
-
-  if [[ -z "$AGENT_HUB_URL" || -z "$AGENT_TOKEN" ]]; then
-    echo "Для установки Agent нужны --hub URL и --token TOKEN (см. Hub UI: Servers → Add Server)" >&2
-    exit 1
-  fi
-
-  # системный пользователь без логина — под ним работает сервис
-  if ! id -u polaris-agent >/dev/null 2>&1; then
-    echo "→ Создаю системного пользователя polaris-agent"
-    useradd --system --no-create-home --shell /usr/sbin/nologin polaris-agent 2>/dev/null || \
-      useradd --system --shell /usr/sbin/nologin polaris-agent
-  fi
-
-  echo "→ Устанавливаю зависимости Agent"
-  python3 -m venv "$agent_dir/.venv"
-  "$agent_dir/.venv/bin/pip" install --upgrade pip -q
-  "$agent_dir/.venv/bin/pip" install -q -r "$agent_dir/requirements.txt"
-
-  mkdir -p /etc/polaris-agent
-  local config_path="/etc/polaris-agent/config.yaml"
-
-  echo "→ Регистрируюсь в $AGENT_HUB_URL"
-  local register_args=(register --hub "$AGENT_HUB_URL" --token "$AGENT_TOKEN" --config "$config_path")
-  [[ -n "$AGENT_SERVICES" ]] && register_args+=(--services "$AGENT_SERVICES")
-
-  if ! PYTHONPATH="$agent_dir" "$agent_dir/.venv/bin/python" -m polaris_agent "${register_args[@]}"; then
-    echo "✗ Не удалось зарегистрировать Agent. Проверьте:" >&2
-    echo "  - URL Hub ($AGENT_HUB_URL)" >&2
-    echo "  - интернет/сетевую доступность до Hub" >&2
-    echo "  - registration token (мог истечь — сгенерируйте новый в Hub UI)" >&2
-    exit 1
-  fi
-
-  chown -R polaris-agent:polaris-agent /etc/polaris-agent
-  chmod 600 "$config_path"
-
-  if [[ "$NO_SERVICE" -eq 0 ]] && command -v systemctl >/dev/null 2>&1; then
-    echo "→ Устанавливаю systemd-сервис polaris-agent-monitor"
-    sed \
-      -e "s#AGENT_USER#polaris-agent#g" \
-      -e "s#AGENT_GROUP#polaris-agent#g" \
-      -e "s#AGENT_DIR#$agent_dir#g" \
-      -e "s#AGENT_VENV_PYTHON#$agent_dir/.venv/bin/python#g" \
-      -e "s#AGENT_CONFIG_PATH#$config_path#g" \
-      -e "s#AGENT_CONFIG_DIR#/etc/polaris-agent#g" \
-      "$agent_dir/polaris-agent-monitor.service" > /etc/systemd/system/polaris-agent-monitor.service
-
-    systemctl daemon-reload
-    systemctl enable --now polaris-agent-monitor
-    echo "✓ Сервис polaris-agent-monitor запущен"
-  else
-    echo "! systemd пропущен — запускайте вручную:"
-    echo "  PYTHONPATH=$agent_dir $agent_dir/.venv/bin/python -m polaris_agent run --config $config_path"
-  fi
-
-  echo
-  echo "✓ Downloaded agent"
-  echo "✓ Installed binary"
-  [[ "$NO_SERVICE" -eq 0 ]] && echo "✓ Created system service"
-  echo "✓ Registered with Polaris Hub"
-  echo "  Hub: $AGENT_HUB_URL"
-  echo "  Config: $config_path"
-}
-
 case "$COMPONENT" in
   hub) install_hub ;;
-  agent) install_agent ;;
   both) install_hub; install_agent ;;
 esac

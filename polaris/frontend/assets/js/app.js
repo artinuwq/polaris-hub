@@ -105,7 +105,7 @@
     { id: 'knowledge', label: 'Knowledge', subtitle: 'Заметки и база знаний', icon: 'knowledge' },
     { id: 'athena', label: 'Athena', subtitle: 'Интеллектуальный помощник', icon: 'athena' },
     { id: 'home', label: 'Home', subtitle: 'Home Assistant', icon: 'home' },
-    { id: 'settings', label: 'Settings', subtitle: 'Команды и доступ', icon: 'settings', footer: true },
+    { id: 'settings', label: 'Settings', subtitle: 'Скоро', icon: 'settings', footer: true },
   ];
 
   const state = {
@@ -465,22 +465,16 @@
       <section class="page-intro">
         <div>
           <p class="eyebrow">Attention</p>
-          <h1 class="page-title">Состояние Polaris</h1>
-          <p class="page-subtitle">Только то, что требует внимания сейчас.</p>
+          <h1 class="page-title">Что требует внимания</h1>
+          <p class="page-subtitle">Только то, что нужно сделать сейчас.</p>
         </div>
 
         <div class="page-actions">
-          <button class="small-button primary" type="button" data-action="check-update" ${actionBusy ? 'disabled' : ''}>
-            ${state.busy === 'check' ? 'Проверяю…' : 'Проверить'}
-          </button>
-          <button class="small-button" type="button" data-action="run-update" ${actionBusy ? 'disabled' : ''}>
-            ${state.busy === 'update' ? 'Обновляю…' : 'Обновить'}
-          </button>
-          <button class="small-button ghost" type="button" data-action="run-restart" ${actionBusy ? 'disabled' : ''}>
-            ${state.busy === 'restart' ? 'Перезапускаю…' : 'Перезапуск'}
-          </button>
+          <button class="small-button primary" type="button" data-action="attention-refresh">Обновить ленту</button>
         </div>
       </section>
+
+      <div id="attention-container" class="attention-page"></div>
 
       <article class="card status-card">
         <div class="status-card-copy">
@@ -493,6 +487,17 @@
           <span class="badge">${escapeHTML(state.update.loaded ? 'Проверено' : 'Ожидает проверки')}</span>
         </div>
       </article>
+      <div class="attn-update-actions">
+        <button class="small-button primary" type="button" data-action="check-update" ${actionBusy ? 'disabled' : ''}>
+          ${state.busy === 'check' ? 'Проверяю…' : 'Проверить'}
+        </button>
+        <button class="small-button" type="button" data-action="run-update" ${actionBusy ? 'disabled' : ''}>
+          ${state.busy === 'update' ? 'Обновляю…' : 'Обновить'}
+        </button>
+        <button class="small-button ghost" type="button" data-action="run-restart" ${actionBusy ? 'disabled' : ''}>
+          ${state.busy === 'restart' ? 'Перезапускаю…' : 'Перезапуск'}
+        </button>
+      </div>
     `;
   }
 
@@ -509,61 +514,12 @@
         ${renderNotice()}
         <section class="card module-card span-12">
           <p class="eyebrow">Settings</p>
-          <h1 class="module-title">Команды и доступ</h1>
-          <p class="module-text">
-            Настройки меняются из Telegram-бота. На компьютере используйте браузерный вход через token.
-          </p>
-          <div class="badge-row">
-            <span class="badge primary">/config</span>
-            <span class="badge">/browser</span>
-            <span class="badge">/restart</span>
-            <span class="badge">WEBAPP_URL</span>
+          <h1 class="module-title">Скоро</h1>
+          <p class="module-text">Экран настроек пока в разработке.</p>
+          <div class="inline-actions">
+            <button class="small-button primary" type="button" data-view="attention">Вернуться в Attention</button>
           </div>
-        </article>
-
-        <div class="grid">
-          <article class="card list-card span-8">
-            <h3>Команды</h3>
-            <div class="calm-steps">
-              <div class="calm-step">
-                <div>
-                  <strong>/config</strong>
-                  <span>Показать список поддерживаемых параметров.</span>
-                </div>
-                <span class="list-item-meta">overview</span>
-              </div>
-              <div class="calm-step">
-                <div>
-                  <strong>/config set WEBAPP_URL https://example.com</strong>
-                  <span>Сохранить URL Mini App в файле .env.</span>
-                </div>
-                <span class="list-item-meta">write</span>
-              </div>
-              <div class="calm-step">
-                <div>
-                  <strong>/config get WEBAPP_URL</strong>
-                  <span>Посмотреть текущее значение.</span>
-                </div>
-                <span class="list-item-meta">read</span>
-              </div>
-              <div class="calm-step">
-                <div>
-                  <strong>/restart</strong>
-                  <span>Перезапустить сервис после подтверждения.</span>
-                </div>
-                <span class="list-item-meta">service</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="card list-card span-4">
-            <h3>Правило</h3>
-            <p class="metric-subtext">
-              Polaris не должен заставлять пользователя помнить, где что лежит. Поиск и одна команда должны быть
-              быстрее навигации по меню.
-            </p>
-          </article>
-        </div>
+        </section>
       `;
     }
 
@@ -693,6 +649,10 @@
     }
 
     hydrateIcons(elements.mainContent);
+
+    if (state.authenticated && state.currentView === 'attention' && window.AttentionModule) {
+      window.AttentionModule.init('attention-container');
+    }
   }
 
   function renderSearchHints() {
@@ -700,7 +660,7 @@
       return;
     }
 
-    const hints = ['Attention', 'Tasks', 'Календарь', 'Servers', 'Finance', 'browser', 'restart', 'WEBAPP_URL', '/config'];
+    const hints = ['Attention', 'Tasks', 'Календарь', 'Servers', 'Finance', 'browser', 'restart'];
     elements.searchHints.innerHTML = hints
       .map(
         (hint) => `
@@ -952,6 +912,9 @@
     switch (action) {
       case 'open-search':
         openSearch();
+        break;
+      case 'attention-refresh':
+        window.AttentionModule?.reload();
         break;
       case 'check-update':
         checkUpdate();

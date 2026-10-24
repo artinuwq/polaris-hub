@@ -12,7 +12,7 @@ set -euo pipefail
 
 DEFAULT_DIR="${POLARIS_DIR:-/opt/polaris-hub}"
 SERVICE_NAME="${POLARIS_SERVICE:-polaris}"
-AGENT_SERVICE="${POLARIS_AGENT_SERVICE:-polaris-agent}"
+AGENT_SERVICE="${POLARIS_AGENT_SERVICE:-polaris-agent-monitor}"
 INSTALL_DIR="$DEFAULT_DIR"
 ASSUME_YES=0
 KEEP_DATA=0
@@ -95,6 +95,15 @@ stop_unit() {
 stop_unit "$SERVICE_NAME"
 stop_unit "$AGENT_SERVICE"
 
+# Лёгкий агент: один файл + конфиг + системный пользователь.
+if [[ -d /opt/polaris-agent || -d /etc/polaris-agent ]]; then
+  echo "→ Удаляю Polaris Agent (/opt/polaris-agent, /etc/polaris-agent)"
+  rm -rf /opt/polaris-agent /etc/polaris-agent
+fi
+if id -u polaris-agent >/dev/null 2>&1; then
+  userdel polaris-agent >/dev/null 2>&1 || true
+fi
+
 if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload || true
   systemctl reset-failed "$SERVICE_NAME" >/dev/null 2>&1 || true
@@ -112,7 +121,6 @@ if [[ "$KEEP_DATA" -eq 1 ]]; then
     "$INSTALL_DIR/polaris/services" \
     "$INSTALL_DIR/polaris/dev_tools" \
     "$INSTALL_DIR/polaris/tests" \
-    "$INSTALL_DIR/polaris/agents" \
     "$INSTALL_DIR/install.sh" \
     "$INSTALL_DIR/uninstall.sh"
   do
