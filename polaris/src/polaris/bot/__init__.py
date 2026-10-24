@@ -1,5 +1,7 @@
-"""Polaris Bot package - aiogram 3 version."""
+"""Polaris Bot package (aiogram 3).
 
-from .main import run_bot
+Ничего не импортируем на уровне пакета, чтобы `import polaris.bot`
+не требовал aiogram. Точка входа: polaris.bot.runtime.run_bot.
+"""
 
-__all__ = ["run_bot"]
+__all__: list[str] = []

@@ -1,14 +1,17 @@
-"""Polaris bot entry point — now using aiogram 3."""
+"""Polaris bot entry point — aiogram 3.
+
+`run_bot()` — синхронная обёртка, её используют scripts/run_bot.py
+и runtime/bot.py. Асинхронная версия — `run_bot_async()`.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 
 from polaris.infra.settings import Settings
 from polaris.shared.exceptions import ConfigurationError
-from polaris.bot.aiogram_bot import run_bot
+from polaris.bot.aiogram_bot import run_bot as run_bot_async
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,8 +26,12 @@ async def main() -> None:
     if not settings.telegram_bot_token:
         raise ConfigurationError("TELEGRAM_BOT_TOKEN не задан")
     logger.info("Starting Polaris bot (aiogram 3)…")
-    await run_bot()
+    await run_bot_async()
+
+
+def run_bot() -> None:
+    asyncio.run(main())
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_bot()
