@@ -1,0 +1,66 @@
+/* Email + Settings (mail) */
+.mail-list { display: flex; flex-direction: column; gap: 10px; }
+.mail-item { padding: 0; overflow: hidden; }
+.mail-item > summary {
+  display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; cursor: pointer; list-style: none;
+}
+.mail-item > summary::-webkit-details-marker { display: none; }
+.mail-item[open] > summary { border-bottom: 1px solid var(--border-soft); }
+.mail-avatar {
+  flex: 0 0 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface-raised); color: var(--text-secondary); font-weight: 600;
+}
+.mail-head { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mail-top { display: flex; justify-content: space-between; gap: 8px; }
+.mail-from { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-time { color: var(--text-muted); font-size: 0.8rem; flex-shrink: 0; }
+.mail-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-preview { color: var(--text-muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-item[open] .mail-subject, .mail-item[open] .mail-preview { white-space: normal; }
+.mail-item[open] .mail-preview { display: none; }
+.mail-expanded { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.mail-meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 0.85rem; }
+.mail-meta dt { color: var(--text-muted); }
+.mail-meta dd { margin: 0; overflow-wrap: anywhere; }
+.mail-attach { font-size: 0.85rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.mail-text {
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.92rem; line-height: 1.5;
+  border-left: 3px solid var(--border); padding-left: 12px; max-height: 60vh; overflow: auto;
+}
+.mail-foot { display: flex; gap: 8px; }
+.mail-more { display: flex; justify-content: center; }
+.mail-warn {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--error); color: var(--error); border-radius: var(--radius-sm);
+  padding: 8px 12px; font-size: 0.9rem;
+}
+
+.st-card { display: flex; flex-direction: column; gap: 12px; }
+.st-title { margin: 0; font-size: 1.15rem; }
+.st-subtitle { margin: 0 0 8px; font-size: 0.95rem; }
+.st-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border-soft); }
+.st-row-main { flex: 1 1 260px; min-width: 0; }
+.st-row-title { font-weight: 600; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.st-row-sub { color: var(--text-secondary); font-size: 0.85rem; overflow-wrap: anywhere; }
+.st-row-err { color: var(--error); font-size: 0.85rem; margin-top: 4px; overflow-wrap: anywhere; }
+.st-row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.st-form { border-top: 1px solid var(--border-soft); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.st-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.st-wide { grid-column: 1 / -1; }
+.st-inline { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.st-input {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 9px 12px; font: inherit; min-width: 0; width: 100%; box-sizing: border-box;
+}
+.st-inline .st-input { flex: 1 1 200px; width: auto; }
+.st-input:focus { outline: none; border-color: var(--primary); }
+.st-hint { margin: 0; color: var(--text-muted); font-size: 0.82rem; min-height: 1.2em; }
+.st-formats { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 0.82rem; display: flex; flex-direction: column; gap: 2px; }
+.st-formats code, .st-row-sub code { background: var(--surface-raised); padding: 1px 5px; border-radius: 4px; }
+.st-msg { border-radius: var(--radius-sm); padding: 9px 12px; font-size: 0.9rem; border: 1px solid var(--border-soft); background: var(--surface-raised); }
+.st-msg.is-ok { border-color: var(--success); }
+.st-msg.is-error { border-color: var(--error); color: var(--error); }
+.st-error { color: var(--error); }
+.st-soon { opacity: 0.7; }
+
+.email-page, .settings-page { display: flex; flex-direction: column; gap: 14px; }

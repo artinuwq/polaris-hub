@@ -28,6 +28,7 @@ from polaris.shared.exceptions import ConfigurationError, PolarisError
 from polaris.update.manager import UpdateManager
 from polaris.modules.attention import service as attention_service
 from polaris.modules.attention.models import UserAction, UserActionRequest
+from polaris.modules.mail.daemon import MailDaemon
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,7 @@ class PolarisBot:
         self.dp = Dispatcher()
         self._attention_notified: dict[tuple[int, str], float] = {}
         self._attention_task: asyncio.Task | None = None
+        self._mail_daemon: MailDaemon | None = None
         self._setup_routes()
 
     def _setup_routes(self) -> None:
@@ -334,6 +336,13 @@ class PolarisBot:
         await self.bot.delete_webhook(drop_pending_updates=False)
         logger.info("Polaris bot polling started (aiogram)")
         self._attention_task = asyncio.create_task(self._attention_notifier())
+        try:
+            self._mail_daemon = MailDaemon(self.settings.telegram_bot_token)
+            self._mail_daemon.start()
+        except Exception:
+            # Почта не должна мешать боту: если демон не поднялся, бот работает дальше.
+            logger.exception("Mail daemon failed to start")
+            self._mail_daemon = None
         await self.dp.start_polling(self.bot)
 
     async def stop(self) -> None:
@@ -343,6 +352,8 @@ class PolarisBot:
                 await self._attention_task
             except asyncio.CancelledError:
                 pass
+        if self._mail_daemon:
+            await asyncio.to_thread(self._mail_daemon.stop)
         await self.bot.session.close()
 
     async def _attention_notifier(self) -> None:

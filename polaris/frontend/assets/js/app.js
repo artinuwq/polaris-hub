@@ -74,6 +74,8 @@
       '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="6" rx="2"></rect><rect x="4" y="14" width="16" height="6" rx="2"></rect><path d="M8 7h.01M8 17h.01"></path></svg>',
     finance:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3Z"></path><path d="M12 8v8M9 11.5c0-1 .9-1.5 2.3-1.5h1.4c1.4 0 2.3.5 2.3 1.5S14.1 13 12.8 13h-1.6C9.9 13 9 13.5 9 14.5s.9 1.5 2.3 1.5h1.4c1.4 0 2.3-.5 2.3-1.5"></path></svg>',
+    mail:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m4 7 8 6 8-6"></path></svg>',
     knowledge:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h8a4 4 0 0 1 4 4v10a3 3 0 0 0-3-3H5z"></path><path d="M19 5h-2a4 4 0 0 0-4 4v10"></path></svg>',
     athena:
@@ -102,10 +104,11 @@
     { id: 'calendar', label: 'Календарь', subtitle: 'Задачи, события и платежи', icon: 'calendar' },
     { id: 'servers', label: 'Servers', subtitle: 'Инфраструктура', icon: 'servers' },
     { id: 'finance', label: 'Finance', subtitle: 'То, что требует оплаты', icon: 'finance' },
+    { id: 'email', label: 'Email', subtitle: 'Почта из всех ящиков', icon: 'mail' },
     { id: 'knowledge', label: 'Knowledge', subtitle: 'Заметки и база знаний', icon: 'knowledge' },
     { id: 'athena', label: 'Athena', subtitle: 'Интеллектуальный помощник', icon: 'athena' },
     { id: 'home', label: 'Home', subtitle: 'Home Assistant', icon: 'home' },
-    { id: 'settings', label: 'Settings', subtitle: 'Скоро', icon: 'settings', footer: true },
+    { id: 'settings', label: 'Settings', subtitle: 'Почта и уведомления', icon: 'settings', footer: true },
   ];
 
   const state = {
@@ -512,14 +515,24 @@
     if (view.id === 'settings') {
       return `
         ${renderNotice()}
-        <section class="card module-card span-12">
-          <p class="eyebrow">Settings</p>
-          <h1 class="module-title">Скоро</h1>
-          <p class="module-text">Экран настроек пока в разработке.</p>
-          <div class="inline-actions">
-            <button class="small-button primary" type="button" data-view="attention">Вернуться в Attention</button>
+        <div id="settings-container" class="settings-page"></div>
+      `;
+    }
+
+    if (view.id === 'email') {
+      return `
+        ${renderNotice()}
+        <section class="page-intro">
+          <div>
+            <p class="eyebrow">Email</p>
+            <h1 class="page-title">Почта</h1>
+            <p class="page-subtitle">Письма со всех подключённых ящиков.</p>
+          </div>
+          <div class="page-actions">
+            <button class="small-button primary" type="button" data-action="email-refresh">Обновить</button>
           </div>
         </section>
+        <div id="email-container" class="email-page"></div>
       `;
     }
 
@@ -650,8 +663,14 @@
 
     hydrateIcons(elements.mainContent);
 
-    if (state.authenticated && state.currentView === 'attention' && window.AttentionModule) {
-      window.AttentionModule.init('attention-container');
+    const mounts = {
+      attention: ['AttentionModule', 'attention-container'],
+      email: ['EmailModule', 'email-container'],
+      settings: ['SettingsModule', 'settings-container'],
+    };
+    const mount = mounts[state.currentView];
+    if (state.authenticated && mount && window[mount[0]]) {
+      window[mount[0]].init(mount[1]);
     }
   }
 
@@ -912,6 +931,9 @@
     switch (action) {
       case 'open-search':
         openSearch();
+        break;
+      case 'email-refresh':
+        window.EmailModule?.reload();
         break;
       case 'attention-refresh':
         window.AttentionModule?.reload();
