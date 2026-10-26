@@ -209,11 +209,24 @@ def _me_payload(user: TelegramWebAppUser | None) -> dict:
 
 # ─── Static files & SPA fallback ───
 
+class NoCacheStaticFiles(StaticFiles):
+    """Файлы отдаются с ETag, но браузер обязан сверяться с сервером перед каждым использованием.
+
+    Без этого Telegram WebView и браузеры держат старый app.js/index.html после обновления
+    и новые экраны «не появляются» (304 Not Modified — это дёшево, трафика почти нет).
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 if FRONTEND_DIR.exists():
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+        app.mount("/assets", NoCacheStaticFiles(directory=assets_dir), name="assets")
 
     @app.get("/")
     def mini_app():
-        return FileResponse(FRONTEND_DIR / "index.html")
+        return FileResponse(FRONTEND_DIR / "index.html", headers={"Cache-Control": "no-cache"})
