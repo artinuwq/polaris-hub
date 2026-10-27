@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+import subprocess
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -33,6 +34,24 @@ def _run_migrations() -> None:
     if MIGRATIONS_DIR.exists():
         for sql_file in sorted(MIGRATIONS_DIR.glob("*.sql")):
             run_migration(sql_file.read_text())
+
+
+def _git_version() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parents[3],
+        ).decode().strip()
+    except Exception:
+        return "dev"
+
+
+VERSION = _git_version()
+
+
+def _render_index() -> str:
+    template = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+    return template.replace("{{ VERSION }}", VERSION)
 
 
 @asynccontextmanager
@@ -227,6 +246,6 @@ if FRONTEND_DIR.exists():
     if assets_dir.exists():
         app.mount("/assets", NoCacheStaticFiles(directory=assets_dir), name="assets")
 
-    @app.get("/")
+    @app.get("/", response_class=HTMLResponse)
     def mini_app():
-        return FileResponse(FRONTEND_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+        return HTMLResponse(content=_render_index(), headers={"Cache-Control": "no-cache"})
