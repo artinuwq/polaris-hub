@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from polaris.infra.settings import Settings
@@ -45,6 +47,7 @@ class UpdateManager:
             nested = self.repo_dir / "polaris" / "database" / "data" / ".update_previous_sha"
             state_file = nested
         self.rollback = RollbackManager(state_file)
+        self.notice_file = state_file.parent / ".update_notice.json"
 
     def check(self) -> UpdateStatus:
         self.provider.ensure_repo()
@@ -70,7 +73,7 @@ class UpdateManager:
             message=message,
         )
 
-    def apply(self, force: bool = False) -> UpdateResult:
+    def apply(self, force: bool = False, restart: bool = True) -> UpdateResult:
         status = self.check()
         if status.up_to_date and not force:
             return UpdateResult(
@@ -84,6 +87,14 @@ class UpdateManager:
         self.rollback.remember(previous)
         new_sha = self.provider.checkout_remote()
         self.installer.install()
+        if not restart:
+            # вызывающий сам сообщит пользователю и перезапустит сервис отдельным шагом
+            return UpdateResult(
+                success=True,
+                message=f"Обновлено: {previous[:7]} → {new_sha[:7]}",
+                previous_sha=previous,
+                current_sha=new_sha,
+            )
         restarted, _ = self.restart_service()
         message = f"Обновлено: {previous[:7]} → {new_sha[:7]}"
         if restarted:
@@ -97,6 +108,31 @@ class UpdateManager:
             current_sha=new_sha,
             restarted=restarted,
         )
+
+    # ── сообщение «обновлено и запущено» после перезапуска сервиса ──
+    def save_notice(self, chat_id: int, message_id: int, sha: str) -> None:
+        self.notice_file.parent.mkdir(parents=True, exist_ok=True)
+        self.notice_file.write_text(
+            json.dumps({"chat_id": chat_id, "message_id": message_id, "sha": sha, "at": time.time()}),
+            encoding="utf-8",
+        )
+
+    def clear_notice(self) -> None:
+        try:
+            self.notice_file.unlink()
+        except FileNotFoundError:
+            pass
+
+    def pop_notice(self, max_age: int = 900) -> dict | None:
+        """Забирает сохранённое уведомление (и удаляет файл). Старше max_age секунд — игнорируем."""
+        try:
+            data = json.loads(self.notice_file.read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
+            return None
+        self.clear_notice()
+        if time.time() - float(data.get("at", 0)) > max_age:
+            return None
+        return data
 
     def restart_service(self) -> tuple[bool, str]:
         service = self.settings.update_service_name

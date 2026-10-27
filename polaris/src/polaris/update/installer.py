@@ -25,13 +25,18 @@ class Installer:
         if not requirements.exists():
             return
 
-        completed = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-r", str(requirements)],
-            cwd=requirements.parent,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--no-input",
+                 "-r", str(requirements)],
+                cwd=requirements.parent,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=900,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise InstallError("pip install не завершился за 15 минут — проверьте сеть сервера") from exc
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "").strip()
             raise InstallError(detail or "pip install failed")

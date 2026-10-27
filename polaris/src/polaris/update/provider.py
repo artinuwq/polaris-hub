@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -18,7 +19,9 @@ class UpdateProvider:
         self.remote = remote
         self.branch = branch
 
-    def _run(self, *args: str, check: bool = True) -> str:
+    def _run(self, *args: str, check: bool = True, timeout: int = 120) -> str:
+        # GIT_TERMINAL_PROMPT=0: если git захочет логин/пароль, он упадёт с ошибкой, а не зависнет навсегда.
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
         try:
             completed = subprocess.run(
                 ["git", *args],
@@ -26,9 +29,15 @@ class UpdateProvider:
                 capture_output=True,
                 text=True,
                 check=False,
+                env=env,
+                timeout=timeout,
             )
         except FileNotFoundError as exc:
             raise GitError("git не найден в PATH") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise GitError(
+                f"git {args[0]} не ответил за {timeout} с — проверьте сеть и доступ к репозиторию"
+            ) from exc
 
         if check and completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "").strip()
@@ -48,7 +57,7 @@ class UpdateProvider:
         return self._run("rev-parse", "HEAD")
 
     def remote_sha(self) -> str:
-        self._run("fetch", self.remote, self.branch)
+        self._run("fetch", self.remote, self.branch, timeout=180)
         return self._run("rev-parse", f"{self.remote}/{self.branch}")
 
     def is_dirty(self) -> bool:
@@ -59,7 +68,7 @@ class UpdateProvider:
 
     def checkout_remote(self) -> str:
         """Жёстко выровнять рабочую копию по remote/branch."""
-        self._run("fetch", self.remote, self.branch)
+        self._run("fetch", self.remote, self.branch, timeout=180)
         self._run("checkout", self.branch)
         self._run("reset", "--hard", f"{self.remote}/{self.branch}")
         return self.current_sha()
