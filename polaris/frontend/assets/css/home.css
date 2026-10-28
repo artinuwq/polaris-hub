@@ -1,0 +1,106 @@
+/* Home */
+.home-page { display: flex; flex-direction: column; gap: 18px; }
+
+.home-date {
+  margin: 4px 2px 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.home-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.home-card:hover { border-color: rgba(90, 184, 255, 0.3); background: var(--surface-raised); }
+.home-card:active { background: var(--surface-raised); }
+
+.home-card-title {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-card-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.home-day {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.home-time { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+.home-card-sub {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.home-card.is-accent .home-card-sub { color: var(--primary); }
+.home-card.is-warn .home-card-sub { color: var(--warning); }
+.home-card.is-good .home-card-sub { color: var(--success); }
+.home-card.is-bad .home-card-sub { color: var(--error); }
+
+.home-section { display: flex; flex-direction: column; gap: 10px; }
+.home-section-title { margin: 0 2px; font-size: 1.05rem; }
+
+.home-tasks { display: flex; flex-direction: column; gap: 8px; }
+.home-task {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 14px;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+.home-task:active { background: var(--surface-raised); }
+.home-task-title { font-weight: 600; overflow-wrap: anywhere; }
+.home-task-when { color: var(--text-muted); font-size: 0.82rem; }
+.home-task-when.is-overdue { color: var(--error); }
+
+.home-warning {
+  padding: 0 2px;
+  background: none;
+  border: 0;
+  color: var(--warning);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}

@@ -163,7 +163,7 @@
 /* Month grid */
 .calendar-month {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 2px;
 }
 
@@ -401,7 +401,7 @@
 /* Week view */
 .calendar-week {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -523,3 +523,18 @@
     justify-content: space-between;
   }
 }
+
+/* Календарь не должен вылезать за экран по горизонтали */
+.calendar-page,
+.calendar-wrapper,
+.calendar-month,
+.calendar-week {
+  max-width: 100%;
+  min-width: 0;
+}
+.calendar-page { overflow-x: clip; }
+.calendar-month > *,
+.calendar-week > * {
+  min-width: 0;
+}
+.calendar-month .calendar-day { overflow: hidden; }

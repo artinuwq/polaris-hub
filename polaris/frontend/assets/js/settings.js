@@ -1,6 +1,6 @@
 /* ─── Settings Module ───
-   Сейчас: почта — откуда собирать (ящики mail.ru / Google, любое количество)
-   и куда присылать уведомления (личка, группа, тема группы). */
+   Вкладки: «Почта» (ящики mail.ru / Google и получатели уведомлений:
+   личка, группа, тема группы) и «Система» (обновление и перезапуск). */
 window.SettingsModule = (() => {
   'use strict';
 
@@ -16,6 +16,8 @@ window.SettingsModule = (() => {
   let loaded = false;
   let error = '';
   let passwordEditId = null;
+  let tab = 'mail';       // 'mail' | 'system'
+  let mailTab = 'accounts'; // 'accounts' | 'dests'
 
   function escapeHTML(value) {
     return String(value ?? '')
@@ -176,20 +178,19 @@ window.SettingsModule = (() => {
     if (d) d.innerHTML = renderDestinations();
   }
 
-  function renderShell() {
-    const providers = (data.providers.length ? data.providers : [{ id: 'mailru', label: 'Mail.ru' }, { id: 'gmail', label: 'Google' }]);
-    container.innerHTML = `
-      <section class="page-intro">
-        <div>
-          <p class="eyebrow">Settings</p>
-          <h1 class="page-title">Настройки</h1>
-          <p class="page-subtitle">Почта: откуда собирать и куда присылать.</p>
-        </div>
-      </section>
-      <div id="st-msg" class="st-msg" hidden></div>
+  function renderTabs() {
+    const t = (id, label) => `<button type="button" class="st-tab${tab === id ? ' is-active' : ''}" data-st="tab" data-tab="${id}">${label}</button>`;
+    return `<div class="st-tabs">${t('mail', 'Почта')}${t('system', 'Система')}</div>`;
+  }
 
+  function renderMailSubTabs() {
+    const t = (id, label) => `<button type="button" class="st-tab${mailTab === id ? ' is-active' : ''}" data-st="mail-tab" data-tab="${id}">${label}</button>`;
+    return `<div class="st-tabs is-sub">${t('accounts', 'Ящики')}${t('dests', 'Получатели')}</div>`;
+  }
+
+  function renderAccountsCard(providers) {
+    return `
       <section class="card st-card">
-        <h2 class="st-title">Почта — ящики</h2>
         <p class="metric-subtext">Можно добавить сколько угодно ящиков mail.ru и Google. Письма собираются в разделе Email.</p>
         <div id="st-accounts"></div>
         <div class="st-form">
@@ -203,10 +204,12 @@ window.SettingsModule = (() => {
           <p class="st-hint" id="st-provider-hint">${escapeHTML(HINTS[providers[0].id] || '')}</p>
           <button type="button" class="small-button primary" data-st="acc-add" id="st-acc-add">Добавить и проверить</button>
         </div>
-      </section>
+      </section>`;
+  }
 
+  function renderDestsCard() {
+    return `
       <section class="card st-card">
-        <h2 class="st-title">Почта — куда присылать</h2>
         <p class="metric-subtext">Каждое новое письмо уходит во все включённые получатели. Текст письма — в раскрывающемся блоке.</p>
         <div id="st-dests"></div>
         <div class="st-form">
@@ -223,12 +226,26 @@ window.SettingsModule = (() => {
           </ul>
           <button type="button" class="small-button primary" data-st="dest-add" id="st-dest-add">Добавить получателя</button>
         </div>
-      </section>
-
-      <section class="card st-card st-soon">
-        <h2 class="st-title">Остальные настройки</h2>
-        <p class="metric-subtext">Скоро.</p>
       </section>`;
+  }
+
+  function renderShell() {
+    const providers = (data.providers.length ? data.providers : [{ id: 'mailru', label: 'Mail.ru' }, { id: 'gmail', label: 'Google' }]);
+    let body;
+    if (tab === 'system') {
+      body = window.PolarisUpdateUI ? window.PolarisUpdateUI.render() : '';
+    } else {
+      body = `${renderMailSubTabs()}${mailTab === 'dests' ? renderDestsCard() : renderAccountsCard(providers)}`;
+    }
+    container.innerHTML = `
+      <section class="page-intro">
+        <div>
+          <h1 class="page-title">Настройки</h1>
+        </div>
+      </section>
+      ${renderTabs()}
+      <div id="st-msg" class="st-msg" hidden></div>
+      ${body}`;
     renderLists();
   }
 
@@ -240,6 +257,14 @@ window.SettingsModule = (() => {
     const id = Number(btn.dataset.id);
 
     switch (btn.dataset.st) {
+      case 'tab':
+        tab = btn.dataset.tab === 'system' ? 'system' : 'mail';
+        renderShell();
+        break;
+      case 'mail-tab':
+        mailTab = btn.dataset.tab === 'dests' ? 'dests' : 'accounts';
+        renderShell();
+        break;
       case 'acc-add': {
         const body = {
           provider: $('st-provider').value,

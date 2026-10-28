@@ -99,7 +99,7 @@
   };
 
   const NAV_ITEMS = [
-    { id: 'attention', label: 'Attention', subtitle: 'Что сейчас заслуживает внимания', icon: 'star' },
+    { id: 'attention', label: 'Главная', subtitle: 'Сводка на сегодня', icon: 'star' },
     { id: 'tasks', label: 'Tasks', subtitle: 'Дела и быстрые действия', icon: 'tasks' },
     { id: 'calendar', label: 'Календарь', subtitle: 'Задачи, события и платежи', icon: 'calendar' },
     { id: 'servers', label: 'Servers', subtitle: 'Инфраструктура', icon: 'servers' },
@@ -108,7 +108,7 @@
     { id: 'knowledge', label: 'Knowledge', subtitle: 'Заметки и база знаний', icon: 'knowledge' },
     { id: 'athena', label: 'Athena', subtitle: 'Интеллектуальный помощник', icon: 'athena' },
     { id: 'home', label: 'Home', subtitle: 'Home Assistant', icon: 'home' },
-    { id: 'settings', label: 'Settings', subtitle: 'Почта и уведомления', icon: 'settings', footer: true },
+    { id: 'settings', label: 'Settings', subtitle: 'Почта и обновление', icon: 'settings', footer: true },
   ];
 
   const state = {
@@ -186,7 +186,7 @@
     }
     const capsuleText = document.getElementById('search-capsule-text');
     if (capsuleText) {
-      capsuleText.textContent = meta.label === 'Attention' ? 'Polaris' : meta.label;
+      capsuleText.textContent = meta.id === 'attention' ? 'Polaris' : meta.label;
     }
   }
 
@@ -458,27 +458,19 @@
     };
   }
 
-  function renderAttentionView() {
+  function renderHomeView() {
+    return `
+      ${renderNotice()}
+      <div id="home-container" class="home-page"></div>
+    `;
+  }
+
+  function renderUpdateBlock() {
     const update = updateSummary();
     const currentTone = update.tone === 'error' ? 'error' : update.tone === 'warning' ? 'warning' : 'success';
     const actionBusy = Boolean(state.busy);
 
     return `
-      ${renderNotice()}
-      <section class="page-intro">
-        <div>
-          <p class="eyebrow">Attention</p>
-          <h1 class="page-title">Что требует внимания</h1>
-          <p class="page-subtitle">Только то, что нужно сделать сейчас.</p>
-        </div>
-
-        <div class="page-actions">
-          <button class="small-button primary" type="button" data-action="attention-refresh">Обновить ленту</button>
-        </div>
-      </section>
-
-      <div id="attention-container" class="attention-page"></div>
-
       <article class="card status-card">
         <div class="status-card-copy">
           <p class="kicker">Обновления</p>
@@ -490,7 +482,7 @@
           <span class="badge">${escapeHTML(state.update.loaded ? 'Проверено' : 'Ожидает проверки')}</span>
         </div>
       </article>
-      <div class="attn-update-actions">
+      <div class="update-actions">
         <button class="small-button primary" type="button" data-action="check-update" ${actionBusy ? 'disabled' : ''}>
           ${state.busy === 'check' ? 'Проверяю…' : 'Проверить'}
         </button>
@@ -503,6 +495,9 @@
       </div>
     `;
   }
+
+  // Настройки показывают блок обновлений во вкладке «Система»
+  window.PolarisUpdateUI = { render: renderUpdateBlock };
 
   function renderModuleView(view) {
     if (view.id === 'tasks') {
@@ -565,7 +560,7 @@
         <p class="module-text">${escapeHTML(view.subtitle)}. Сейчас это спокойный каркас для будущих данных и действий.</p>
         <div class="inline-actions">
           <button class="small-button primary" type="button" data-action="open-search">Открыть поиск</button>
-          <button class="small-button" type="button" data-view="attention">Вернуться в Attention</button>
+          <button class="small-button" type="button" data-view="attention">Вернуться на главную</button>
         </div>
       </section>
 
@@ -650,7 +645,7 @@
     const view = getViewMeta(state.currentView);
     elements.mainContent.innerHTML = state.authenticated
       ? state.currentView === 'attention'
-        ? renderAttentionView()
+        ? renderHomeView()
         : renderModuleView(view)
       : renderAccessGate();
 
@@ -664,7 +659,7 @@
     hydrateIcons(elements.mainContent);
 
     const mounts = {
-      attention: ['AttentionModule', 'attention-container'],
+      attention: ['HomeModule', 'home-container'],
       email: ['EmailModule', 'email-container'],
       settings: ['SettingsModule', 'settings-container'],
     };
@@ -679,7 +674,7 @@
       return;
     }
 
-    const hints = ['Attention', 'Tasks', 'Календарь', 'Servers', 'Finance', 'browser', 'restart'];
+    const hints = ['Главная', 'Tasks', 'Календарь', 'Servers', 'Finance', 'browser', 'restart'];
     elements.searchHints.innerHTML = hints
       .map(
         (hint) => `
@@ -794,7 +789,7 @@
       elements.searchResults.innerHTML = `
         <div class="card list-card">
           <h3>Ничего не найдено</h3>
-          <p class="metric-subtext">Попробуйте Attention, update, browser, restart или WEBAPP_URL.</p>
+          <p class="metric-subtext">Попробуйте Главная, update, browser, restart или WEBAPP_URL.</p>
         </div>
       `;
       hydrateIcons(elements.searchResults);
@@ -934,9 +929,6 @@
         break;
       case 'email-refresh':
         window.EmailModule?.reload();
-        break;
-      case 'attention-refresh':
-        window.AttentionModule?.reload();
         break;
       case 'check-update':
         checkUpdate();

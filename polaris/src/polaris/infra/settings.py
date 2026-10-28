@@ -26,6 +26,7 @@ class Settings:
     update_repo_dir: str = ""
     update_service_name: str = ""
     update_api_token: str = ""
+    api_token: str = ""
     web_host: str = "127.0.0.1"
     web_port: int = 8000
     telegram_force_ipv4: bool = True
@@ -45,6 +46,7 @@ class Settings:
             update_repo_dir=os.getenv("UPDATE_REPO_DIR", ""),
             update_service_name=os.getenv("UPDATE_SERVICE_NAME", ""),
             update_api_token=os.getenv("UPDATE_API_TOKEN", ""),
+            api_token=os.getenv("API_TOKEN", ""),
             web_host=os.getenv("WEB_HOST", "127.0.0.1"),
             web_port=int(os.getenv("WEB_PORT", "8000")),
             telegram_force_ipv4=os.getenv("TELEGRAM_FORCE_IPV4", "true").lower()
