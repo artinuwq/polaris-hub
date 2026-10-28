@@ -16,14 +16,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  width: 100%;
 }
 
 .calendar-add-button {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 4px;
+  padding: 6px 7px;
   border: 1px solid var(--calendar-today);
   border-radius: var(--radius-sm);
   background: var(--calendar-today-soft);
@@ -62,6 +63,7 @@
 }
 
 .calendar-view-toggle {
+  flex: 0 0 auto;
   display: flex;
   gap: 4px;
   background: var(--surface);
@@ -71,12 +73,12 @@
 }
 
 .calendar-view-button {
-  padding: 6px 12px;
+  padding: 6px 7px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   cursor: pointer;
   transition: all 160ms ease;
 }
@@ -179,7 +181,8 @@
 
 .calendar-month .calendar-day {
   aspect-ratio: 1 / 1;
-  min-height: 60px;
+  min-height: 0;
+  min-width: 0;
   padding: 4px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
@@ -499,9 +502,8 @@
 
 /* Responsive */
 @media (max-width: 720px) {
-  .calendar-day {
-    min-height: 50px;
-    padding: 2px;
+  .calendar-month .calendar-day {
+    padding: 3px;
   }
   .calendar-day-number {
     font-size: 0.7rem;
@@ -517,10 +519,6 @@
   }
   .calendar-week-day {
     min-height: unset;
-  }
-  .calendar-header-actions {
-    width: 100%;
-    justify-content: space-between;
   }
 }
 
@@ -538,3 +536,32 @@
   min-width: 0;
 }
 .calendar-month .calendar-day { overflow: hidden; }
+
+/* Заголовок навигации: название + маленькая капсула «Сегодня» */
+.calendar-nav-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.calendar-nav-title h2 { white-space: nowrap; }
+.calendar-today-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+.calendar-today-chip:hover,
+.calendar-today-chip:active {
+  border-color: var(--calendar-today);
+  color: var(--text);
+  background: var(--calendar-today-soft);
+}

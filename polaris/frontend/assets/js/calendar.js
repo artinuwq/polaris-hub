@@ -202,15 +202,14 @@ window.CalendarModule = (() => {
   function renderHeader() {
     const viewToggle = `
       <div class="calendar-view-toggle">
-        <button class="calendar-view-button ${currentView === 'month' ? 'active' : ''}" type="button" data-action="set-view" data-view="month">Месяц</button>
-        <button class="calendar-view-button ${currentView === 'week' ? 'active' : ''}" type="button" data-action="set-view" data-view="week">Неделя</button>
-        <button class="calendar-view-button ${currentView === 'day' ? 'active' : ''}" type="button" data-action="set-view" data-view="day">День</button>
+        <button class="calendar-view-button ${currentView === 'month' ? 'active' : ''}" type="button" data-action="set-view" data-cal-view="month">Месяц</button>
+        <button class="calendar-view-button ${currentView === 'week' ? 'active' : ''}" type="button" data-action="set-view" data-cal-view="week">Неделя</button>
+        <button class="calendar-view-button ${currentView === 'day' ? 'active' : ''}" type="button" data-action="set-view" data-cal-view="day">День</button>
       </div>
     `;
 
     return `
       <div class="calendar-header">
-        <h1>Календарь</h1>
         <div class="calendar-header-actions">
           ${viewToggle}
           <button class="calendar-add-button" type="button" data-action="open-add-event">
@@ -236,7 +235,7 @@ window.CalendarModule = (() => {
           <button class="nav-button" type="button" data-action="prev-week" aria-label="Предыдущая неделя">
             <span class="icon" data-icon="chevronLeft" aria-hidden="true"></span>
           </button>
-          <h2>${label}</h2>
+          <div class="calendar-nav-title"><h2>${label}</h2><button class="calendar-today-chip" type="button" data-action="go-today">Сегодня</button></div>
           <button class="nav-button" type="button" data-action="next-week" aria-label="Следующая неделя">
             <span class="icon" data-icon="chevronRight" aria-hidden="true"></span>
           </button>
@@ -253,7 +252,7 @@ window.CalendarModule = (() => {
         <button class="nav-button" type="button" data-action="prev-month" aria-label="Предыдущий месяц">
           <span class="icon" data-icon="chevronLeft" aria-hidden="true"></span>
         </button>
-        <h2>${MONTH_NAMES[currentMonth - 1]} ${currentYear}</h2>
+        <div class="calendar-nav-title"><h2>${MONTH_NAMES[currentMonth - 1]} ${currentYear}</h2><button class="calendar-today-chip" type="button" data-action="go-today">Сегодня</button></div>
         <button class="nav-button" type="button" data-action="next-month" aria-label="Следующий месяц">
           <span class="icon" data-icon="chevronRight" aria-hidden="true"></span>
         </button>
@@ -357,7 +356,6 @@ window.CalendarModule = (() => {
     }
 
     return `
-      <button class="calendar-today-button" type="button" data-action="go-today">Сегодня</button>
       <div class="card calendar-card span-12">
         <div class="calendar-month">
           ${WEEKDAYS.map((d) => `<div class="calendar-day-header">${d}</div>`).join('')}
@@ -403,7 +401,6 @@ window.CalendarModule = (() => {
     }).join('');
 
     return `
-      <button class="calendar-today-button" type="button" data-action="go-today">Сегодня</button>
       <div class="card calendar-card span-12">
         <div class="calendar-week">
           ${dayCells}
@@ -817,7 +814,7 @@ window.CalendarModule = (() => {
       if (action === 'next-day') { event.preventDefault(); handleNextDay(); return; }
       if (action === 'prev-week') { event.preventDefault(); handlePrevWeek(); return; }
       if (action === 'next-week') { event.preventDefault(); handleNextWeek(); return; }
-      if (action === 'set-view') { event.preventDefault(); handleSetView(btn.dataset.view); return; }
+      if (action === 'set-view') { event.preventDefault(); handleSetView(btn.dataset.calView); return; }
       if (action === 'open-add-event') { event.preventDefault(); openCreateModal(); return; }
 
       const dayBtn = event.target.closest('[data-action="select-day"]');

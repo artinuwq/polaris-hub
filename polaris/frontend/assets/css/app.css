@@ -1001,7 +1001,7 @@ body.drawer-ready .swipe-hint {
     grid-template-columns: 1fr !important;
     gap: 8px;
     /* 40px — чтобы капля стояла в одном ряду с кнопками Telegram («Закрыть» / «⋮») */
-    padding-top: 40px;
+    padding-top: 43px;
     padding-bottom: 6px;
     min-height: 40px;
     position: fixed;
@@ -1017,6 +1017,6 @@ body.drawer-ready .swipe-hint {
 
   /* Место под закреплённую шапку на мобильном */
   .app-shell {
-    padding-top: 96px;
+    padding-top: 99px;
   }
 }
