@@ -147,7 +147,25 @@ class UpdateManager:
             text=True,
             check=False,
         )
-        if completed.returncode == 0:
-            return True, f"Сервис {service} перезапущен"
-        detail = (completed.stderr or completed.stdout or f"exit code {completed.returncode}").strip()
-        return False, f"Не удалось перезапустить {service}: {detail}"
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or f"exit code {completed.returncode}").strip()
+            return False, f"Не удалось перезапустить {service}: {detail}"
+        # ждём чуть-чуть и проверяем, что сервис реально активен
+        time.sleep(2)
+        check = subprocess.run(
+            [systemctl, "is-active", service],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if check.returncode == 0 and check.stdout.strip() == "active":
+            return True, f"Сервис {service} перезапущен и активен"
+        # если не активен — пробуем посмотреть статус для диагностики
+        status = subprocess.run(
+            [systemctl, "status", service, "--no-pager", "-n", "20"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        detail = (status.stdout or status.stderr or f"exit code {check.returncode}").strip()
+        return False, f"Сервис {service} не активен после рестарта: {detail}"
