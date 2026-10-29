@@ -138,22 +138,53 @@ window.CalendarModule = (() => {
     render();
   }
 
+  let daySeq = 0;
+
+  // Обновляет только карточку выбранного дня и подсветку в сетке, не трогая остальную страницу
+  function patchDayDetail() {
+    const card = document.querySelector('.calendar-day-detail-card');
+    if (!card) return false;
+    document.querySelectorAll('.calendar-month .calendar-day.selected').forEach((el) => el.classList.remove('selected'));
+    if (selectedDate) {
+      document.querySelector(`.calendar-month .calendar-day[data-date="${selectedDate}"]`)?.classList.add('selected');
+    }
+    const tpl = document.createElement('template');
+    tpl.innerHTML = renderDayDetailCard().trim();
+    const next = tpl.content.firstElementChild;
+    if (!next) return false;
+    card.replaceWith(next);
+    hydrateIcons(next);
+    return true;
+  }
+
   async function loadDay(dateStr) {
     if (!dateStr) return;
-    loading = true;
-    error = '';
-    render();
-
-    try {
-      const resp = await apiRequest(`/api/calendar/day?date=${dateStr}`);
-      events = resp.data?.events || [];
-    } catch (e) {
-      error = e.message;
-      events = [];
+    const seq = ++daySeq;
+    // Карточка дня уже на экране — обновляем её на месте, без «мигания» всей страницы
+    const silent = Boolean(document.querySelector('.calendar-day-detail-card')) && currentView !== 'week';
+    if (silent) {
+      document.querySelectorAll('.calendar-month .calendar-day.selected').forEach((el) => el.classList.remove('selected'));
+      document.querySelector(`.calendar-month .calendar-day[data-date="${dateStr}"]`)?.classList.add('selected');
+    } else {
+      loading = true;
+      error = '';
+      render();
     }
 
+    let nextEvents = [];
+    let nextError = '';
+    try {
+      const resp = await apiRequest(`/api/calendar/day?date=${dateStr}`);
+      nextEvents = resp.data?.events || [];
+    } catch (e) {
+      nextError = e.message;
+    }
+    if (seq !== daySeq) return; // пришёл более свежий запрос
+
+    events = nextEvents;
+    error = nextError;
     loading = false;
-    render();
+    if (!(silent && patchDayDetail())) render();
   }
 
   async function loadWeek(dateStr) {
@@ -783,18 +814,18 @@ window.CalendarModule = (() => {
           <label>Название</label>
           <input type="text" id="event-modal-title" class="create-modal-input" style="min-height:40px" placeholder="Например, встреча с командой" value="${escapeHTML(modalForm.title)}" ${modalSaving ? 'disabled' : ''} autofocus />
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
-          <div class="detail-field">
-            <label>Дата</label>
-            <input type="date" id="event-modal-date" value="${escapeHTML(modalForm.date)}" ${modalSaving ? 'disabled' : ''} />
-          </div>
+        <div class="detail-field" style="margin-top:10px">
+          <label>Дата</label>
+          <input type="date" id="event-modal-date" style="width:100%;min-width:0" value="${escapeHTML(modalForm.date)}" ${modalSaving ? 'disabled' : ''} />
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:10px">
           <div class="detail-field">
             <label>Начало</label>
-            <input type="time" id="event-modal-time" value="${escapeHTML(modalForm.time)}" ${modalSaving ? 'disabled' : ''} />
+            <input type="time" id="event-modal-time" style="width:100%;min-width:0" value="${escapeHTML(modalForm.time)}" ${modalSaving ? 'disabled' : ''} />
           </div>
           <div class="detail-field">
             <label>Конец</label>
-            <input type="time" id="event-modal-end-time" value="${escapeHTML(modalForm.end_time)}" ${modalSaving ? 'disabled' : ''} />
+            <input type="time" id="event-modal-end-time" style="width:100%;min-width:0" value="${escapeHTML(modalForm.end_time)}" ${modalSaving ? 'disabled' : ''} />
           </div>
         </div>
         <div class="detail-field" style="margin-top:10px">

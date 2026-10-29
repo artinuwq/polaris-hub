@@ -306,21 +306,35 @@ class PolarisBot:
 
         self.dp.include_router(router)
 
+    async def _safe_edit(self, message: Message, text: str, attempts: int = 3) -> bool:
+        """Правит сообщение с повторами. Telegram рвёт долго простаивающее соединение
+        (ServerDisconnectedError) — это не должно прерывать обновление и перезапуск."""
+        for attempt in range(1, attempts + 1):
+            try:
+                await message.edit_text(text)
+                return True
+            except Exception as exc:  # noqa: BLE001
+                if "message is not modified" in str(exc):
+                    return True
+                logger.warning("edit_text failed (%s/%s): %s", attempt, attempts, exc)
+                await asyncio.sleep(1.5 * attempt)
+        return False
+
     async def _update_flow(self, progress: Message) -> None:
         """Проверка → скачивание → установка → перезапуск. О каждом шаге и любой ошибке сообщает в чат."""
         manager = UpdateManager(self.settings)
         try:
             status = await asyncio.to_thread(manager.check)
             if status.up_to_date:
-                await progress.edit_text(f"✅ {status.message}")
+                await self._safe_edit(progress, f"✅ {status.message}")
                 return
-            await progress.edit_text(
+            await self._safe_edit(progress,
                 f"⏳ Устанавливаю {status.short_local} → {status.short_remote}…\nЭто может занять пару минут."
             )
             result = await asyncio.to_thread(manager.apply, False, False)  # без перезапуска: он — последним шагом
             versions = f"{(result.previous_sha or '')[:7]} → {(result.current_sha or '')[:7]}"
             if not self.settings.update_service_name:
-                await progress.edit_text(
+                await self._safe_edit(progress,
                     f"✅ Обновлено: {versions}\n⚠️ UPDATE_SERVICE_NAME не задан — перезапустите сервис вручную."
                 )
                 return
@@ -328,15 +342,15 @@ class PolarisBot:
             await asyncio.to_thread(
                 manager.save_notice, progress.chat.id, progress.message_id, result.current_sha or ""
             )
-            await progress.edit_text(f"✅ Обновлено: {versions}\n🔄 Перезапускаю сервис…")
+            await self._safe_edit(progress, f"✅ Обновлено: {versions}\n🔄 Перезапускаю сервис…")
             restarted, detail = await asyncio.to_thread(manager.restart_service)
             if not restarted:
                 await asyncio.to_thread(manager.clear_notice)
-                await progress.edit_text(f"✅ Обновлено: {versions}\n⚠️ {detail}")
+                await self._safe_edit(progress, f"✅ Обновлено: {versions}\n⚠️ {detail}")
         except Exception as exc:  # noqa: BLE001 — молчаливых зависаний быть не должно
             logger.exception("update failed")
             try:
-                await progress.edit_text(f"❌ Ошибка обновления: {exc}"[:3500])
+                await self._safe_edit(progress, f"❌ Ошибка обновления: {exc}"[:3500])
             except Exception:  # noqa: BLE001
                 pass
 

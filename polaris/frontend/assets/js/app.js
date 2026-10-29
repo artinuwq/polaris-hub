@@ -660,6 +660,10 @@
 
     hydrateIcons(elements.mainContent);
 
+    if (state.currentView !== 'servers') {
+      tg?.BackButton?.hide?.();
+    }
+
     const mounts = {
       attention: ['HomeModule', 'home-container'],
       email: ['EmailModule', 'email-container'],
@@ -877,12 +881,41 @@
       tg?.HapticFeedback?.notificationOccurred?.('success');
       await loadUpdateStatus();
     } catch (error) {
-      setNotice(`Ошибка обновления: ${error.message}`, 'error');
-      tg?.HapticFeedback?.notificationOccurred?.('error');
+      if (isConnectionDrop(error)) {
+        // Обновление перезапускает сервис — соединение обрывается само. Это не ошибка.
+        setNotice('Сервис перезапускается после обновления…', 'warning');
+        renderShell();
+        const back = await waitForService();
+        setNotice(back ? 'Обновление выполнено, сервис снова доступен.' : 'Сервис пока не отвечает — проверьте через минуту.', back ? 'success' : 'warning');
+        if (back) {
+          await loadUpdateStatus();
+        }
+      } else {
+        setNotice(`Ошибка обновления: ${error.message}`, 'error');
+        tg?.HapticFeedback?.notificationOccurred?.('error');
+      }
     } finally {
       state.busy = '';
       renderShell();
     }
+  }
+
+  function isConnectionDrop(error) {
+    return error instanceof TypeError || /Failed to fetch|Load failed|NetworkError|disconnected/i.test(String(error?.message || ''));
+  }
+
+  async function waitForService(timeoutMs = 45000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      try {
+        await request('/api/update/status');
+        return true;
+      } catch (_) {
+        // сервис ещё поднимается
+      }
+    }
+    return false;
   }
 
   async function runRestart() {

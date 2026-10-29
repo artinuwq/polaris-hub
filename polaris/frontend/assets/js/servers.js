@@ -14,10 +14,10 @@ window.ServersModule = (() => {
   };
 
   const STATUS_LABELS = {
-    pending: 'Waiting for agent',
+    pending: 'Ждёт агента',
     online: 'Online',
     offline: 'Offline',
-    error: 'Error',
+    error: 'Ошибка',
   };
 
   const STATUS_DOTS = {
@@ -62,6 +62,52 @@ window.ServersModule = (() => {
     root.querySelectorAll('[data-icon]').forEach((node) => {
       node.innerHTML = ICONS[node.dataset.icon] || '';
     });
+  }
+
+  /* ─── Цвета метрик: [граница зелёного, граница жёлтого], всё выше — красное ─── */
+  const METRIC_LIMITS = { cpu: [50, 75], ram: [60, 80], disk: [70, 87] };
+  const LEVEL_RANK = { good: 0, warn: 1, bad: 2 };
+
+  function metricLevel(kind, value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return 'none';
+    const v = Math.round(Number(value));
+    const [green, yellow] = METRIC_LIMITS[kind];
+    if (v <= green) return 'good';
+    if (v <= yellow) return 'warn';
+    return 'bad';
+  }
+
+  function metricChips(s) {
+    const items = [
+      ['CPU', 'cpu', s.cpu_usage],
+      ['RAM', 'ram', s.mem_percent],
+      ['Disk', 'disk', s.disk_percent],
+    ];
+    return items
+      .map(([label, kind, value]) => `<span class="servers-metric is-${metricLevel(kind, value)}"><span class="servers-metric-label">${label}</span><span class="servers-metric-value">${pct(value)}</span></span>`)
+      .join('');
+  }
+
+  // Общее состояние сервера по самой плохой метрике
+  function healthOf(s) {
+    if (s.status !== 'online') return null;
+    const levels = [metricLevel('cpu', s.cpu_usage), metricLevel('ram', s.mem_percent), metricLevel('disk', s.disk_percent)]
+      .filter((l) => l !== 'none');
+    if (!levels.length) return null;
+    const worst = levels.reduce((a, b) => (LEVEL_RANK[b] > LEVEL_RANK[a] ? b : a), 'good');
+    return { good: ['Хорошее', 'good'], warn: ['Удовлетворительно', 'warn'], bad: ['Критичное', 'bad'] }[worst];
+  }
+
+  // Системная кнопка «Назад» Telegram вместо стрелки в интерфейсе
+  const tgBack = window.Telegram?.WebApp?.initData ? window.Telegram.WebApp.BackButton : null;
+  let backBound = false;
+  function syncBackButton() {
+    if (!tgBack) return;
+    if (!backBound) {
+      tgBack.onClick(() => { if (view !== 'list') goToList(); });
+      backBound = true;
+    }
+    if (view === 'list') tgBack.hide(); else tgBack.show();
   }
 
   function pct(value) {
@@ -188,6 +234,7 @@ window.ServersModule = (() => {
     const fragment = document.createRange().createContextualFragment(renderPage());
     container.appendChild(fragment);
     hydrateIcons(container);
+    syncBackButton();
   }
 
   function renderPage() {
@@ -224,40 +271,33 @@ window.ServersModule = (() => {
   }
 
   function renderHeader(showBack) {
+    if (showBack) {
+      // В Telegram работает системная кнопка «Назад»; стрелка нужна только в браузере
+      return tgBack ? '' : `
+      <div class="servers-top-row">
+        <button class="servers-back-button" type="button" data-action="back-to-list"><span class="icon" data-icon="back"></span></button>
+      </div>`;
+    }
     return `
-      <div class="calendar-header">
-        <div style="display:flex;align-items:center;gap:8px">
-          ${showBack ? `<button class="servers-back-button" type="button" data-action="back-to-list"><span class="icon" data-icon="back"></span></button>` : ''}
-          <h1>Servers</h1>
-        </div>
-        ${!showBack ? `
-          <button class="calendar-add-button" type="button" data-action="open-add-server">
-            <span class="icon" data-icon="plus" aria-hidden="true"></span>
-            <span>Add Server</span>
-          </button>
-        ` : ''}
-      </div>
+      <button class="servers-add-button" type="button" data-action="open-add-server">
+        <span class="icon" data-icon="plus" aria-hidden="true"></span>
+        <span>Добавить сервер</span>
+      </button>
     `;
   }
 
   function renderServerCard(s) {
     const dot = STATUS_DOTS[s.status] || '⚪';
     const label = STATUS_LABELS[s.status] || s.status;
+    const live = s.status === 'online' || s.status === 'offline';
     return `
       <article class="card servers-server-card" data-action="open-server" data-server-id="${escapeHTML(s.id)}">
         <div class="servers-card-top">
           <span class="servers-card-name">${escapeHTML(s.name)}</span>
-          <span class="servers-card-status">${dot}</span>
+          <span class="servers-card-status" title="${escapeHTML(label)}">${dot}</span>
         </div>
-        <div class="servers-card-status-label">${escapeHTML(label)}${s.status === 'error' && s.status_reason === 'token_expired' ? ' · token expired' : ''}</div>
-        ${s.status === 'online' || s.status === 'offline' ? `
-          <div class="servers-card-metrics">
-            <span>CPU ${pct(s.cpu_usage)}</span>
-            <span>RAM ${pct(s.mem_percent)}</span>
-            <span>Disk ${pct(s.disk_percent)}</span>
-          </div>
-        ` : ''}
-        <div class="servers-card-footer">Last seen ${formatAgo(s.seconds_since_seen)}</div>
+        ${live ? `<div class="servers-metrics-row is-compact">${metricChips(s)}</div>` : `<div class="servers-card-status-label">${escapeHTML(label)}${s.status === 'error' && s.status_reason === 'token_expired' ? ' · токен истёк' : ''}</div>`}
+        ${s.status === 'offline' ? `<div class="servers-card-footer">${formatAgo(s.seconds_since_seen)}</div>` : ''}
       </article>
     `;
   }
@@ -283,7 +323,7 @@ window.ServersModule = (() => {
           ${addError ? `<p class="create-modal-hint" style="color:var(--error)">${escapeHTML(addError)}</p>` : ''}
           <div class="create-modal-actions" style="justify-content:flex-end;margin-top:14px">
             <button class="small-button ghost" type="button" data-action="back-to-list" ${addSaving ? 'disabled' : ''}>Отмена</button>
-            <button class="small-button primary" type="button" data-action="submit-add-server" ${addSaving ? 'disabled' : ''}>${addSaving ? 'Создаю…' : 'Create'}</button>
+            <button class="small-button primary" type="button" data-action="submit-add-server" ${addSaving ? 'disabled' : ''}>${addSaving ? 'Создаю…' : 'Создать'}</button>
           </div>
         </div>
       </div>
@@ -344,16 +384,16 @@ window.ServersModule = (() => {
         ${renderHeader(true)}
         <div class="card servers-card span-12">
           <div class="servers-detail-title-row">
-            <h2>${escapeHTML(s.name)}</h2>
-            <span>${dot} ${escapeHTML(label)}</span>
+            <div class="servers-detail-name">
+              <h2>${escapeHTML(s.name)}</h2>
+              ${s.hostname || s.address ? `<p class="metric-subtext">${escapeHTML(s.hostname || s.address)}</p>` : ''}
+            </div>
+            <div class="servers-detail-state">
+              <span>${dot} ${escapeHTML(label)}</span>
+              ${healthOf(s) ? `<span class="servers-health is-${healthOf(s)[1]}">${healthOf(s)[0]}</span>` : ''}
+            </div>
           </div>
-          ${s.hostname ? `<p class="metric-subtext">${escapeHTML(s.hostname)}${s.address ? ' · ' + escapeHTML(s.address) : ''}</p>` : ''}
-        </div>
-
-        <div class="grid finance-summary-grid">
-          <article class="card metric-card span-4"><h3>CPU</h3><div class="metric"><span class="metric-value">${pct(s.cpu_usage)}</span></div></article>
-          <article class="card metric-card span-4"><h3>RAM</h3><div class="metric"><span class="metric-value">${pct(s.mem_percent)}</span></div></article>
-          <article class="card metric-card span-4"><h3>Disk</h3><div class="metric"><span class="metric-value">${pct(s.disk_percent)}</span></div></article>
+          <div class="servers-metrics-row">${metricChips(s)}</div>
         </div>
 
         <div class="card servers-card span-12">
