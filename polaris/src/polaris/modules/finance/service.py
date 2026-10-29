@@ -221,9 +221,24 @@ def get_summary() -> FinanceSummary:
     )
 
 
+def _should_notify_now(days_until: int) -> bool:
+    """Проверить, нужно ли уведомление прямо сейчас.
+    Правило: ТОЛЬКО два раза — за 3 дня (days_until == 3) И в день оплаты после 15:00 (days_until == 0, час >= 15)."""
+    if days_until == 3:
+        return True
+    if days_until == 0:
+        from datetime import datetime
+        return datetime.now().hour >= 15
+    return False
+
+
 def get_attention_candidates() -> list[AttentionCandidate]:
-    """Сырые данные для будущего Attention Engine. Finance НЕ решает,
-    что важно — только предоставляет факты по каждому активному платежу."""
+    """Сырые данные для Attention Engine.
+    Возвращает ТОЛЬКО те активные платежи, которые должны уведомить сейчас:
+    - за 3 дня до оплаты (3, 2, 1 день)
+    - в день оплаты в 15:00+
+    Finance не решает приоритет — только фильтрует по времени уведомления.
+    """
     rows = [_ensure_current(r) for r in repo.get_all_payments()]
     today = date.today()
     candidates: list[AttentionCandidate] = []
@@ -237,6 +252,10 @@ def get_attention_candidates() -> list[AttentionCandidate]:
         except ValueError:
             continue
         days_until = (npd - today).days
+        
+        if not _should_notify_now(days_until):
+            continue
+            
         candidates.append(AttentionCandidate(
             id=r["id"],
             name=r.get("name", ""),
