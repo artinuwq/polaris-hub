@@ -1,0 +1,192 @@
+/* ─── Settings: Account Cards ─── */
+.st-card-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 20px;
+  border-top: 1px solid var(--border-soft);
+  background: var(--surface);
+  transition: background 160ms ease;
+}
+
+.st-card-row:first-child {
+  border-top: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.st-card-row:last-child {
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.st-card-row:hover {
+  background: var(--surface-raised);
+}
+
+.st-card-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.st-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.st-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.st-card-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.st-card-badge.success {
+  background: rgba(82, 210, 115, 0.15);
+  color: var(--success);
+  border: 1px solid rgba(82, 210, 115, 0.25);
+}
+
+.st-card-badge.error {
+  background: rgba(255, 93, 115, 0.15);
+  color: var(--error);
+  border: 1px solid rgba(255, 93, 115, 0.25);
+}
+
+.st-card-badge.warning {
+  background: rgba(245, 185, 66, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(245, 185, 66, 0.25);
+}
+
+.st-card-badge.disabled {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  border: 1px solid var(--border-soft);
+}
+
+.st-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.st-card-provider {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.st-card-email {
+  font-family: monospace;
+  color: var(--text-secondary);
+}
+
+.st-card-checked {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.st-card-error {
+  color: var(--error);
+  font-size: 0.8rem;
+  padding-top: 4px;
+}
+
+.st-card-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.st-card-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.st-menu-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: all 160ms ease;
+}
+
+.st-menu-btn:hover {
+  border-color: rgba(90, 184, 255, 0.42);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.st-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 var(--glass-highlight);
+}
+
+.st-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.88rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease;
+}
+
+.st-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.st-menu-item.danger {
+  color: var(--error);
+}
+
+.st-menu-item.danger:hover {
+  background: rgba(255, 93, 115, 0.12);
+}

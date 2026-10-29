@@ -121,23 +121,34 @@ window.SettingsModule = (() => {
       : '<div class="skeleton-line"></div><div class="skeleton-line"></div>';
     if (!data.accounts.length) return '<p class="metric-subtext">Ящиков пока нет — добавьте первый ниже.</p>';
     return data.accounts.map((a) => `
-      <div class="st-row">
-        <div class="st-row-main">
-          <div class="st-row-title">${escapeHTML(a.label || a.email)} ${accountStatus(a)}</div>
-          <div class="st-row-sub">${escapeHTML(providerLabel(a.provider))} · ${escapeHTML(a.email)} · писем: ${a.message_count}
-            ${a.enabled && a.last_checked_at ? `· проверено ${escapeHTML(relTime(a.last_checked_at))}` : ''}</div>
-          ${a.last_status === 'error' && a.enabled ? `<div class="st-row-err">${escapeHTML(a.last_error)}</div>` : ''}
+      <div class="st-card-row" data-id="${a.id}">
+        <div class="st-card-main">
+          <div class="st-card-header">
+            <span class="st-card-title">${escapeHTML(a.label || a.email)}</span>
+            <span class="st-card-badge ${a.enabled ? (a.last_status === 'ok' ? 'success' : a.last_status === 'error' ? 'error' : 'warning') : 'disabled'}">
+              ${a.enabled ? (a.last_status === 'ok' ? 'Работает' : a.last_status === 'error' ? 'Ошибка' : 'Подключаюсь…') : 'Выключен'}
+            </span>
+          </div>
+          <div class="st-card-meta">
+            <span class="st-card-provider">${escapeHTML(providerLabel(a.provider))}</span>
+            <span class="st-card-email">${escapeHTML(a.email)}</span>
+            ${a.enabled && a.last_checked_at ? `<span class="st-card-checked">проверено ${escapeHTML(relTime(a.last_checked_at))}</span>` : ''}
+          </div>
+          ${a.last_status === 'error' && a.enabled ? `<div class="st-card-error">${escapeHTML(a.last_error)}</div>` : ''}
           ${passwordEditId === a.id ? `
-            <div class="st-inline">
+            <div class="st-card-inline">
               <input class="st-input" id="st-newpass-${a.id}" type="password" autocomplete="new-password" placeholder="Новый пароль приложения" />
               <button type="button" class="small-button primary" data-st="acc-pass-save" data-id="${a.id}">Сохранить</button>
               <button type="button" class="small-button ghost" data-st="acc-pass" data-id="${a.id}">Отмена</button>
             </div>` : ''}
         </div>
-        <div class="st-row-actions">
-          <button type="button" class="small-button" data-st="acc-toggle" data-id="${a.id}" data-enabled="${a.enabled ? '0' : '1'}">${a.enabled ? 'Выключить' : 'Включить'}</button>
-          <button type="button" class="small-button" data-st="acc-pass" data-id="${a.id}">Пароль</button>
-          <button type="button" class="small-button ghost" data-st="acc-del" data-id="${a.id}">Удалить</button>
+        <div class="st-card-menu">
+          <button type="button" class="st-menu-btn" data-st="acc-menu" data-id="${a.id}" aria-label="Настройки ящика">⚙️</button>
+          <div class="st-menu-dropdown" id="st-menu-${a.id}" hidden>
+            <button type="button" class="st-menu-item" data-st="acc-toggle" data-id="${a.id}" data-enabled="${a.enabled ? '0' : '1'}">${a.enabled ? 'Выключить' : 'Включить'}</button>
+            <button type="button" class="st-menu-item" data-st="acc-pass" data-id="${a.id}">Поменять пароль</button>
+            <button type="button" class="st-menu-item danger" data-st="acc-del" data-id="${a.id}">Удалить ящик</button>
+          </div>
         </div>
       </div>`).join('');
   }
@@ -258,6 +269,14 @@ window.SettingsModule = (() => {
         mailTab = btn.dataset.tab === 'dests' ? 'dests' : 'accounts';
         renderShell();
         break;
+      case 'acc-menu': {
+        const menu = $(`st-menu-${id}`);
+        if (menu) {
+          document.querySelectorAll('.st-menu-dropdown').forEach(m => { if (m !== menu) m.hidden = true; });
+          menu.hidden = !menu.hidden;
+        }
+        break;
+      }
       case 'acc-add': {
         const body = {
           provider: $('st-provider').value,
@@ -349,11 +368,18 @@ window.SettingsModule = (() => {
     container.addEventListener('input', onInput);
     container.addEventListener('change', onChange);
     container.addEventListener('keydown', onKey);
+    document.addEventListener('click', onDocumentClick);
     load();
     timer = setInterval(() => {
       if (!isLive()) { clearInterval(timer); timer = null; return; }
       if (!document.hidden && passwordEditId === null) load();
     }, REFRESH_MS);
+  }
+
+  function onDocumentClick(event) {
+    if (!event.target.closest('.st-menu-dropdown') && !event.target.closest('.st-menu-btn')) {
+      document.querySelectorAll('.st-menu-dropdown').forEach(m => { m.hidden = true; });
+    }
   }
 
   return { init };
