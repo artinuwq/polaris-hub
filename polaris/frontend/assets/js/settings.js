@@ -191,7 +191,6 @@ window.SettingsModule = (() => {
   function renderAccountsCard(providers) {
     return `
       <section class="card st-card">
-        <p class="metric-subtext">Можно добавить сколько угодно ящиков mail.ru и Google. Письма собираются в разделе Email.</p>
         <div id="st-accounts"></div>
         <div class="st-form">
           <h3 class="st-subtitle">Добавить ящик</h3>
@@ -210,7 +209,6 @@ window.SettingsModule = (() => {
   function renderDestsCard() {
     return `
       <section class="card st-card">
-        <p class="metric-subtext">Каждое новое письмо уходит во все включённые получатели. Текст письма — в раскрывающемся блоке.</p>
         <div id="st-dests"></div>
         <div class="st-form">
           <h3 class="st-subtitle">Добавить получателя</h3>
@@ -219,11 +217,6 @@ window.SettingsModule = (() => {
             <input class="st-input" id="st-dlabel" type="text" maxlength="80" placeholder="Название (необязательно)" />
           </div>
           <p class="st-hint" id="st-target-preview">&nbsp;</p>
-          <ul class="st-formats">
-            <li><code>123456789</code> — личные сообщения (сначала нажмите /start у бота)</li>
-            <li><code>-1003281520729</code> — группа</li>
-            <li><code>-1003281520729/1279</code>, <code>3281520729/1279</code> или ссылка <code>https://t.me/c/3281520729/1279</code> — тема группы</li>
-          </ul>
           <button type="button" class="small-button primary" data-st="dest-add" id="st-dest-add">Добавить получателя</button>
         </div>
       </section>`;
