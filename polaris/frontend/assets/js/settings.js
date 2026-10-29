@@ -18,11 +18,15 @@ window.SettingsModule = (() => {
   let passwordEditId = null;
   let tab = 'mail';       // 'mail' | 'system'
   let mailTab = 'accounts'; // 'accounts' | 'dests'
+  let modalOpen = false;
+  let modalSaving = false;
+  let modalError = '';
+  let modalForm = { provider: 'mailru', email: '', password: '', label: '' };
 
   function escapeHTML(value) {
     return String(value ?? '')
-      .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+      .replaceAll('&', '&').replaceAll('<', '<').replaceAll('>', '>')
+      .replaceAll('"', '"').replaceAll("'", ''');
   }
 
   function requestHeaders() {
@@ -203,16 +207,11 @@ window.SettingsModule = (() => {
     return `
       <section class="card st-card">
         <div id="st-accounts"></div>
-        <div class="st-form">
-          <h3 class="st-subtitle">Добавить ящик</h3>
-          <div class="st-grid">
-            <select class="st-input" id="st-provider">${providers.map((p) => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.label)}</option>`).join('')}</select>
-            <input class="st-input" id="st-email" type="email" autocomplete="off" placeholder="адрес@почты" />
-            <input class="st-input" id="st-password" type="password" autocomplete="new-password" placeholder="Пароль приложения" />
-            <input class="st-input" id="st-label" type="text" maxlength="80" placeholder="Название (необязательно)" />
-          </div>
-          <p class="st-hint" id="st-provider-hint">${escapeHTML(HINTS[providers[0].id] || '')}</p>
-          <button type="button" class="small-button primary" data-st="acc-add" id="st-acc-add">Добавить и проверить</button>
+        <div class="st-form-footer">
+          <button type="button" class="st-add-account-btn" data-st="acc-add-modal">
+            <span class="icon" data-icon="plus" aria-hidden="true"></span>
+            <span>Добавить ящик</span>
+          </button>
         </div>
       </section>`;
   }
@@ -249,8 +248,50 @@ window.SettingsModule = (() => {
       </section>
       ${renderTabs()}
       <div id="st-msg" class="st-msg" hidden></div>
-      ${body}`;
+      ${body}
+      ${modalOpen ? renderModal() : ''}`;
     renderLists();
+    if (modalOpen) {
+      // focus first input
+      const firstInput = container.querySelector('.st-modal-input');
+      if (firstInput) firstInput.focus();
+    }
+  }
+
+  function renderModal() {
+    const providers = data.providers.length ? data.providers : [{ id: 'mailru', label: 'Mail.ru' }, { id: 'gmail', label: 'Google' }];
+    return `
+      <div class="st-modal-overlay" data-st="acc-modal-close">
+        <div class="st-modal" role="dialog" aria-modal="true" aria-labelledby="st-modal-title">
+          <h3 id="st-modal-title" class="st-modal-title">Добавить ящик</h3>
+          ${modalError ? `<p class="st-modal-error">${escapeHTML(modalError)}</p>` : ''}
+          <div class="st-modal-body">
+            <div class="st-modal-field">
+              <label class="st-modal-label" for="st-modal-provider">Провайдер</label>
+              <select class="st-modal-input" id="st-modal-provider" data-st="modal-provider">
+                ${providers.map((p) => `<option value="${escapeHTML(p.id)}" ${modalForm.provider === p.id ? 'selected' : ''}>${escapeHTML(p.label)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="st-modal-field">
+              <label class="st-modal-label" for="st-modal-email">Email</label>
+              <input class="st-modal-input" id="st-modal-email" type="email" autocomplete="off" placeholder="адрес@почты" value="${escapeHTML(modalForm.email)}" data-st="modal-email" />
+            </div>
+            <div class="st-modal-field">
+              <label class="st-modal-label" for="st-modal-password">Пароль приложения</label>
+              <input class="st-modal-input" id="st-modal-password" type="password" autocomplete="new-password" placeholder="Пароль приложения" value="${escapeHTML(modalForm.password)}" data-st="modal-password" />
+            </div>
+            <div class="st-modal-field">
+              <label class="st-modal-label" for="st-modal-label">Название (необязательно)</label>
+              <input class="st-modal-input" id="st-modal-label" type="text" maxlength="80" placeholder="Название ящика" value="${escapeHTML(modalForm.label)}" data-st="modal-label" />
+            </div>
+            <p class="st-modal-hint">${escapeHTML(HINTS[modalForm.provider] || '')}</p>
+          </div>
+          <div class="st-modal-actions">
+            <button type="button" class="small-button ghost" data-st="acc-modal-close">Отмена</button>
+            <button type="button" class="small-button primary" data-st="acc-add-submit" ${modalSaving ? 'disabled' : ''}>${modalSaving ? 'Проверяю…' : 'Добавить и проверить'}</button>
+          </div>
+        </div>
+      </div>`;
   }
 
   /* ─── Events ─── */
@@ -275,6 +316,40 @@ window.SettingsModule = (() => {
           document.querySelectorAll('.st-menu-dropdown').forEach(m => { if (m !== menu) m.hidden = true; });
           menu.hidden = !menu.hidden;
         }
+        break;
+      }
+      // MODAL CASES
+      case 'acc-add-modal':
+        modalOpen = true;
+        modalError = '';
+        modalForm = { provider: data.providers.length ? data.providers[0].id : 'mailru', email: '', password: '', label: '' };
+        renderShell();
+        break;
+      case 'acc-modal-close':
+        modalOpen = false;
+        renderShell();
+        break;
+      case 'modal-provider':
+        modalForm.provider = btn.value;
+        renderShell();
+        break;
+      case 'acc-add-submit': {
+        const provider = container.querySelector('[data-st="modal-provider"]').value;
+        const email = container.querySelector('[data-st="modal-email"]').value.trim();
+        const password = container.querySelector('[data-st="modal-password"]').value;
+        const label = container.querySelector('[data-st="modal-label"]').value.trim();
+        if (!email || !password) {
+          modalError = 'Заполните email и пароль';
+          renderShell();
+          break;
+        }
+        modalSaving = true;
+        modalError = '';
+        renderShell();
+        const ok = await act(() => api('/api/mail/accounts', 'POST', { provider, email, password, label }), 'Ящик добавлен. Письма появятся в разделе Email.');
+        modalSaving = false;
+        if (ok) modalOpen = false;
+        renderShell();
         break;
       }
       case 'acc-add': {
