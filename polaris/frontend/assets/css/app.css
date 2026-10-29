@@ -32,6 +32,7 @@
 html {
   min-height: 100%;
   background: var(--background);
+  overscroll-behavior-y: none;
 }
 
 body {

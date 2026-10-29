@@ -235,7 +235,7 @@ window.CalendarModule = (() => {
           <button class="nav-button" type="button" data-action="prev-week" aria-label="Предыдущая неделя">
             <span class="icon" data-icon="chevronLeft" aria-hidden="true"></span>
           </button>
-          <div class="calendar-nav-title"><h2>${label}</h2><button class="calendar-today-chip" type="button" data-action="go-today">Сегодня</button></div>
+          <div class="calendar-nav-title"><h2>${label}</h2><button class="calendar-today-chip" type="button" data-action="go-today" aria-label="Перейти к сегодняшнему дню">${todayChipLabel()}</button></div>
           <button class="nav-button" type="button" data-action="next-week" aria-label="Следующая неделя">
             <span class="icon" data-icon="chevronRight" aria-hidden="true"></span>
           </button>
@@ -252,7 +252,7 @@ window.CalendarModule = (() => {
         <button class="nav-button" type="button" data-action="prev-month" aria-label="Предыдущий месяц">
           <span class="icon" data-icon="chevronLeft" aria-hidden="true"></span>
         </button>
-        <div class="calendar-nav-title"><h2>${MONTH_NAMES[currentMonth - 1]} ${currentYear}</h2><button class="calendar-today-chip" type="button" data-action="go-today">Сегодня</button></div>
+        <div class="calendar-nav-title"><h2>${MONTH_NAMES[currentMonth - 1]} ${currentYear}</h2><button class="calendar-today-chip" type="button" data-action="go-today" aria-label="Перейти к сегодняшнему дню">${todayChipLabel()}</button></div>
         <button class="nav-button" type="button" data-action="next-month" aria-label="Следующий месяц">
           <span class="icon" data-icon="chevronRight" aria-hidden="true"></span>
         </button>
@@ -446,31 +446,66 @@ window.CalendarModule = (() => {
     `;
   }
 
+  const SHORT_MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  const FINANCE_SOURCES = ['billing', 'subscriptions', 'finance'];
+  const CURRENCY_SYMBOLS = { rub: '₽', rur: '₽', '₽': '₽', eur: '€', '€': '€', usd: '$', '$': '$', gbp: '£' };
+
+  function todayChipLabel() {
+    const d = new Date();
+    return `${d.getDate()} ${SHORT_MONTHS[d.getMonth()]}`;
+  }
+
+  // Платежи приходят как «💰 Название — 449.0 Rub (провайдер)». Разбираем на части.
+  function splitPayment(title) {
+    const m = String(title).match(/^(?:\p{Extended_Pictographic}\uFE0F?\s*)?(.*?)\s+—\s+([\d\s.,]+?)\s*([^\s(\d]*)\s*(?:\((.*)\))?\s*$/u);
+    if (!m) return { name: String(title).replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, ''), amount: '', note: '' };
+    const value = parseFloat(m[2].replace(/\s/g, '').replace(',', '.'));
+    const cur = CURRENCY_SYMBOLS[(m[3] || '').toLowerCase()] || m[3] || '';
+    const number = Number.isFinite(value)
+      ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)
+      : m[2].trim();
+    return { name: m[1], amount: `${number} ${cur}`.trim(), note: m[4] || '' };
+  }
+
   function renderEventItem(ev) {
     const typeLabel = ev.label || 'Событие';
     const color = ev.color || '#5ab8ff';
-    const projectDot = ev.project_color
-      ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${escapeHTML(ev.project_color)};margin-right:4px;vertical-align:middle"></span>`
-      : '';
-    const projectName = ev.project ? `${projectDot}${escapeHTML(ev.project)}` : '';
+    const isMoney = ev.type === 'payment' || ev.type === 'subscription';
     const timeStr = formatTime(ev.time);
+    const timeHtml = timeStr
+      ? `<div class="calendar-event-time"><span class="icon" data-icon="clock" aria-hidden="true"></span>${timeStr}</div>`
+      : '';
     const tagsHtml = (ev.tags || []).length > 0
       ? `<div class="calendar-event-meta">${ev.tags.map((t) => `<span class="calendar-event-tag">${escapeHTML(t)}</span>`).join('')}</div>`
       : '';
 
+    let title = ev.title;
+    let detailsHtml;
+    if (isMoney) {
+      // Финансы: название отдельной строкой, ниже сумма. Категорию (infra / subscriptions) не показываем.
+      const pay = splitPayment(ev.title);
+      title = pay.name;
+      detailsHtml = `
+        ${pay.amount ? `<div class="calendar-event-amount">${escapeHTML(pay.amount)}</div>` : ''}
+        ${pay.note ? `<div class="calendar-event-meta">${escapeHTML(pay.note)}</div>` : ''}
+        ${timeHtml}${tagsHtml}`;
+    } else {
+      const projectDot = ev.project_color
+        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${escapeHTML(ev.project_color)};margin-right:4px;vertical-align:middle"></span>`
+        : '';
+      const projectName = ev.project ? `${projectDot}${escapeHTML(ev.project)}` : '';
+      detailsHtml = `
+        ${timeHtml}
+        ${projectName ? `<div class="calendar-event-meta">${projectName}</div>` : ''}
+        ${tagsHtml}`;
+    }
+
     return `
       <div class="calendar-day-event" style="border-left-color:${color}" data-action="open-event" data-event-id="${escapeHTML(ev.id)}" data-event-source="${escapeHTML(ev.source)}">
-        <div class="calendar-event-meta-col">
-          <span class="calendar-event-type-badge calendar-event-type-${escapeHTML(ev.type)}">${escapeHTML(typeLabel)}</span>
-        </div>
         <div class="calendar-event-body">
-          <div class="calendar-event-title">${escapeHTML(ev.title)}</div>
-          ${timeStr
-            ? `<div class="calendar-event-time"><span class="icon" data-icon="clock" aria-hidden="true"></span>${timeStr}</div>`
-            : '<div style="height:14px"></div>'
-          }
-          ${projectName ? `<div class="calendar-event-meta">${projectName}</div>` : ''}
-          ${tagsHtml}
+          <span class="calendar-event-type-badge calendar-event-type-${escapeHTML(ev.type)}">${escapeHTML(typeLabel)}</span>
+          <div class="calendar-event-title">${escapeHTML(title)}</div>
+          ${detailsHtml}
         </div>
         <span class="icon" data-icon="external" aria-hidden="true" style="width:14px;height:14px;color:var(--text-muted);margin-left:auto"></span>
       </div>
@@ -571,6 +606,12 @@ window.CalendarModule = (() => {
     if (source === 'events') {
       const realId = eventId.replace('event-', '');
       openEditModal(realId);
+      return;
+    }
+
+    if (FINANCE_SOURCES.includes(source)) {
+      // Платежи и подписки живут в разделе «Финансы»
+      document.querySelector('[data-view="finance"]')?.click();
       return;
     }
 

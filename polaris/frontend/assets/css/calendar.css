@@ -195,9 +195,11 @@
   align-items: flex-start;
 }
 
-.calendar-month .calendar-day:hover {
-  border-color: rgba(90, 184, 255, 0.3);
-  background: var(--surface-raised);
+@media (hover: hover) {
+  .calendar-month .calendar-day:hover {
+    border-color: rgba(90, 184, 255, 0.3);
+    background: var(--surface-raised);
+  }
 }
 
 .calendar-month .calendar-day.empty {
@@ -293,9 +295,11 @@
   transition: border-color 160ms ease, background 160ms ease;
 }
 
-.calendar-day-event:hover {
-  border-color: rgba(90, 184, 255, 0.3);
-  background: var(--surface-raised);
+@media (hover: hover) {
+  .calendar-day-event:hover {
+    border-color: rgba(90, 184, 255, 0.3);
+    background: var(--surface-raised);
+  }
 }
 
 .calendar-event-type-badge {
@@ -564,4 +568,44 @@
   border-color: var(--calendar-today);
   color: var(--text);
   background: var(--calendar-today-soft);
+}
+
+/* Без синего квадрата при нажатии на дни и события */
+.calendar-wrapper,
+.calendar-wrapper * {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+.calendar-day,
+.calendar-day-event,
+.calendar-week-day,
+.calendar-week-event,
+.calendar-today-chip {
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Карточка события: тип → название → остальное */
+.calendar-event-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.calendar-event-body .calendar-event-title {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.calendar-event-amount {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.calendar-event-body .calendar-event-meta {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--text-muted);
 }

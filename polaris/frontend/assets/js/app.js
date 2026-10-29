@@ -11,6 +11,8 @@
 
   if (isMobile) {
     document.body.classList.add('tg-mobile');
+    // Не даём Telegram сворачивать/растягивать мини-приложение свайпом вниз
+    tg?.disableVerticalSwipes?.();
     // На телефоне раскрываем на весь экран с небольшой задержкой
     setTimeout(() => {
       tg?.expand?.();
