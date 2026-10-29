@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from polaris.infra.settings import Settings
@@ -211,7 +212,33 @@ def authenticate_agent(agent_id: str, agent_token: str) -> dict[str, Any] | None
 
 # ─────────────────────────── Agent: heartbeat / metrics / events ───────────────────────────
 
+def _parse_ts(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _record_gap(server_id: str) -> None:
+    """Если агент молчал дольше порога, а никто не успел это заметить (событие
+    agent_offline создаётся лениво, при чтении), фиксируем простой задним числом —
+    иначе аптайм за 7 дней был бы завышен."""
+    row = repo.get_server_by_id(server_id)
+    if not row or row.get("status") != "online":
+        return
+    seen = _parse_ts(row.get("last_seen"))
+    if not seen:
+        return
+    elapsed = (datetime.now(timezone.utc) - seen).total_seconds()
+    if elapsed > OFFLINE_THRESHOLD_SECONDS and not repo.has_unresolved_event(server_id, "agent_offline"):
+        repo.add_downtime(server_id, row["last_seen"], _iso_now())
+
+
 def record_heartbeat(server_id: str, agent_version: str = "") -> None:
+    _record_gap(server_id)
     updates: dict[str, Any] = {"status": "online", "status_reason": None, "last_seen": _iso_now()}
     if agent_version:
         updates["agent_version"] = agent_version
@@ -220,6 +247,7 @@ def record_heartbeat(server_id: str, agent_version: str = "") -> None:
 
 
 def ingest_metrics(server_id: str, payload: AgentMetricsRequest) -> None:
+    _record_gap(server_id)
     disk_dicts = [d.model_dump() for d in payload.disk]
 
     repo.insert_metric(server_id, {
@@ -359,3 +387,85 @@ def get_attention_candidates() -> list[dict[str, Any]]:
         })
 
     return candidates
+
+
+# ─────────────────────────── Сводка для страницы «Серверы» ───────────────────────────
+
+UPTIME_WINDOW_DAYS = 7
+UPTIME_MIN_OBSERVED_SECONDS = 300  # серверы моложе 5 минут в аптайм не учитываем
+
+
+def compute_uptime(
+    servers: list[dict[str, Any]],
+    offline_events: list[dict[str, Any]],
+    now: datetime,
+    window_days: int = UPTIME_WINDOW_DAYS,
+) -> tuple[float | None, int]:
+    """Общий аптайм (в процентах) за последние window_days дней, взвешенный по времени
+    наблюдения. Простой берётся из событий agent_offline: от последнего heartbeat
+    (payload.last_seen) до resolved_at (или до сейчас, если сервер ещё не вернулся).
+    Возвращает (процент | None, сколько серверов учтено)."""
+    window_start = now - timedelta(days=window_days)
+    by_server: dict[str, list[dict[str, Any]]] = {}
+    for ev in offline_events:
+        by_server.setdefault(ev["server_id"], []).append(ev)
+
+    total_observed = 0.0
+    total_down = 0.0
+    counted = 0
+    for srv in servers:
+        if not srv.get("agent_id") or srv.get("status") == "pending":
+            continue
+        created = _parse_ts(srv.get("created_at")) or window_start
+        start = max(created, window_start)
+        observed = (now - start).total_seconds()
+        if observed < UPTIME_MIN_OBSERVED_SECONDS:
+            continue
+
+        down = 0.0
+        for ev in by_server.get(srv["id"], []):
+            try:
+                payload = json.loads(ev.get("payload") or "{}")
+            except ValueError:
+                payload = {}
+            ev_start = _parse_ts(payload.get("last_seen")) or _parse_ts(ev.get("created_at"))
+            ev_end = _parse_ts(ev.get("resolved_at")) or now
+            if not ev_start:
+                continue
+            lo, hi = max(ev_start, start), min(ev_end, now)
+            if hi > lo:
+                down += (hi - lo).total_seconds()
+
+        total_observed += observed
+        total_down += min(down, observed)
+        counted += 1
+
+    if not counted or total_observed <= 0:
+        return None, 0
+    return round((1 - total_down / total_observed) * 100, 1), counted
+
+
+def get_summary() -> dict[str, Any]:
+    """Общие данные для верхних блоков страницы: аптайм за 7 дней и открытые проблемы сервисов.
+    Нагрузку и «онлайн / всего» фронтенд считает сам по списку серверов."""
+    rows = [_ensure_current_status(r) for r in repo.get_all_servers()]
+    now = datetime.now(timezone.utc)
+    window_start = (now - timedelta(days=UPTIME_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    uptime, counted = compute_uptime(rows, repo.get_events_overlapping("agent_offline", window_start), now)
+
+    names = {r["id"]: r["name"] for r in rows}
+    issues = []
+    for ev in repo.get_open_events("service_down"):
+        if ev["server_id"] not in names:
+            continue
+        try:
+            payload = json.loads(ev.get("payload") or "{}")
+        except ValueError:
+            payload = {}
+        issues.append({
+            "server_id": ev["server_id"],
+            "server_name": names[ev["server_id"]],
+            "service": payload.get("service", ""),
+            "severity": ev.get("severity", "warning"),
+        })
+    return {"uptime_7d": uptime, "uptime_servers": counted, "service_issues": issues}

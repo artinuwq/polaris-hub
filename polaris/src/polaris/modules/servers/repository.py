@@ -283,3 +283,44 @@ def resolve_events_of_type(server_id: str, type_: str, dedup_key: str | None = N
             conn.execute(
                 "UPDATE server_events SET resolved_at = ? WHERE id = ?", (now_iso(), row["id"])
             )
+
+
+# ─────────────────────────── Аптайм и открытые события ───────────────────────────
+
+def add_downtime(server_id: str, start_iso: str, end_iso: str) -> None:
+    """Записывает уже закончившийся простой (когда сервер никто не опрашивал и событие
+    agent_offline не успело появиться само)."""
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO server_events (id, server_id, type, severity, payload, created_at, resolved_at)
+               VALUES (?, ?, 'agent_offline', 'critical', ?, ?, ?)""",
+            (generate_uuid(), server_id, json.dumps({"last_seen": start_iso, "retro": True}), start_iso, end_iso),
+        )
+
+
+def has_unresolved_event(server_id: str, type_: str) -> bool:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM server_events WHERE server_id = ? AND type = ? AND resolved_at IS NULL LIMIT 1",
+            (server_id, type_),
+        ).fetchone()
+        return row is not None
+
+
+def get_events_overlapping(type_: str, since_iso: str) -> list[dict[str, Any]]:
+    """События типа type_, не закончившиеся раньше since_iso (открытые или закрытые позже)."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM server_events WHERE type = ? AND (resolved_at IS NULL OR resolved_at >= ?)",
+            (type_, since_iso),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_open_events(type_: str) -> list[dict[str, Any]]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM server_events WHERE type = ? AND resolved_at IS NULL ORDER BY created_at DESC",
+            (type_,),
+        ).fetchall()
+        return [dict(r) for r in rows]

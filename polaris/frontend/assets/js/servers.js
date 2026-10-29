@@ -32,6 +32,8 @@ window.ServersModule = (() => {
   /* ─── State ─── */
   let view = 'list'; // "list" | "add" | "detail"
   let servers = [];
+  let summary = null;        // /api/v1/servers/summary: аптайм за 7 дней, проблемы сервисов
+  let problemsOpen = false;  // раскрыт ли список проблем
   let loading = false;
   let error = '';
 
@@ -181,8 +183,12 @@ window.ServersModule = (() => {
   async function loadServers({ silent } = {}) {
     if (!silent) { loading = true; error = ''; render(); }
     try {
-      const resp = await apiRequest('/api/v1/servers');
+      const [resp, sumResp] = await Promise.all([
+        apiRequest('/api/v1/servers'),
+        apiRequest('/api/v1/servers/summary').catch(() => null), // сводка не критична для списка
+      ]);
       servers = resp.data?.servers || [];
+      summary = sumResp?.data || null;
     } catch (e) {
       error = e.message;
     }
@@ -243,6 +249,87 @@ window.ServersModule = (() => {
     return renderListView();
   }
 
+  /* ─── Сводка по всем серверам ─── */
+  function averageOf(key) {
+    const values = servers
+      .filter((s) => s.status === 'online')
+      .map((s) => s[key])
+      .filter((v) => v !== null && v !== undefined && !Number.isNaN(Number(v)))
+      .map(Number);
+    if (!values.length) return null;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }
+
+  function statCard(title, value, sub, level = 'none') {
+    return `
+      <div class="card servers-stat">
+        <span class="servers-stat-title">${escapeHTML(title)}</span>
+        <span class="servers-stat-value is-${level}">${escapeHTML(value)}</span>
+        <span class="servers-stat-sub">${escapeHTML(sub)}</span>
+      </div>`;
+  }
+
+  function renderStats() {
+    const total = servers.length;
+    const online = servers.filter((s) => s.status === 'online').length;
+    const onlineLevel = online === total ? 'good' : (online === 0 ? 'bad' : 'warn');
+
+    const uptime = summary && summary.uptime_7d !== null && summary.uptime_7d !== undefined
+      ? `${String(summary.uptime_7d).replace('.', ',')}%`
+      : '—';
+
+    const cpu = averageOf('cpu_usage');
+    const ram = averageOf('mem_percent');
+
+    return `
+      <div class="servers-stats">
+        ${statCard('Серверов онлайн', `${online} / ${total}`, 'сейчас в сети', onlineLevel)}
+        ${statCard('Аптайм', uptime, 'за последние 7 дней')}
+        ${statCard('Нагрузка CPU', cpu === null ? '—' : pct(cpu), 'в среднем по серверам', metricLevel('cpu', cpu))}
+        ${statCard('Нагрузка RAM', ram === null ? '—' : pct(ram), 'в среднем по серверам', metricLevel('ram', ram))}
+      </div>`;
+  }
+
+  // Проблема = сервер не в сети, критическая нагрузка (красная зона) или остановленный сервис
+  function collectProblems() {
+    const out = [];
+    servers.forEach((s) => {
+      if (s.status === 'offline') {
+        out.push({ id: s.id, name: s.name, text: 'Не в сети', level: 'bad' });
+      } else if (s.status === 'online') {
+        [['CPU', 'cpu', s.cpu_usage], ['RAM', 'ram', s.mem_percent], ['Disk', 'disk', s.disk_percent]].forEach(([label, kind, value]) => {
+          if (metricLevel(kind, value) === 'bad') {
+            out.push({ id: s.id, name: s.name, text: `${label} ${pct(value)} — критическая нагрузка`, level: 'bad' });
+          }
+        });
+      }
+    });
+    (summary?.service_issues || []).forEach((i) => {
+      out.push({ id: i.server_id, name: i.server_name, text: `Сервис ${i.service || '—'} не работает`, level: i.severity === 'critical' ? 'bad' : 'warn' });
+    });
+    return out;
+  }
+
+  function renderProblems() {
+    const problems = collectProblems();
+    if (!problems.length) {
+      return '<div class="card servers-problems is-ok"><span class="servers-problems-ok">Проблем не обнаружено</span></div>';
+    }
+    const rows = problems.map((p) => `
+      <div class="servers-problem-row is-${p.level}" data-action="open-server" data-server-id="${escapeHTML(p.id)}">
+        <span class="servers-problem-name">${escapeHTML(p.name)}</span>
+        <span class="servers-problem-text">${escapeHTML(p.text)}</span>
+      </div>`).join('');
+    return `
+      <section class="card servers-problems is-bad">
+        <button type="button" class="servers-problems-head" data-action="toggle-problems" aria-expanded="${problemsOpen}">
+          <span>Проблем обнаружено: ${problems.length}</span>
+          <span class="servers-chevron${problemsOpen ? ' is-open' : ''}" aria-hidden="true"></span>
+        </button>
+        <div class="servers-problems-list" id="servers-problems-list"${problemsOpen ? '' : ' hidden'}>${rows}</div>
+      </section>`;
+  }
+
   function renderListView() {
     if (loading && !servers.length) {
       return `<div class="servers-wrapper">${renderHeader(false)}<div class="card servers-card span-12"><p class="metric-subtext">Загружаю серверы…</p></div></div>`;
@@ -265,6 +352,8 @@ window.ServersModule = (() => {
     return `
       <div class="servers-wrapper">
         ${renderHeader(false)}
+        ${renderStats()}
+        ${renderProblems()}
         <div class="servers-grid">${cards}</div>
       </div>
     `;
@@ -589,6 +678,15 @@ window.ServersModule = (() => {
       if (!btn) return;
       const action = btn.dataset.action;
 
+      if (action === 'toggle-problems') {
+        event.preventDefault();
+        problemsOpen = !problemsOpen;
+        const list = container.querySelector('#servers-problems-list');
+        if (list) list.hidden = !problemsOpen;
+        btn.setAttribute('aria-expanded', String(problemsOpen));
+        btn.querySelector('.servers-chevron')?.classList.toggle('is-open', problemsOpen);
+        return;
+      }
       if (action === 'open-add-server') { event.preventDefault(); openAddServer(); return; }
       if (action === 'back-to-list') { event.preventDefault(); goToList(); return; }
       if (action === 'submit-add-server') { event.preventDefault(); submitAddServer(); return; }

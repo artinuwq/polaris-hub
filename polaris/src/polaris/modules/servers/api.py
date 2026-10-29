@@ -64,6 +64,11 @@ def create_server(body: ServerCreate, _user: TelegramWebAppUser | None = Depends
     }
 
 
+@admin_router.get("/summary")
+def servers_summary(_user: TelegramWebAppUser | None = Depends(require_admin)):
+    return {"success": True, "data": service.get_summary()}
+
+
 @admin_router.get("/attention-candidates")
 def attention_candidates(_user: TelegramWebAppUser | None = Depends(require_admin)):
     return {"success": True, "data": {"candidates": service.get_attention_candidates()}}

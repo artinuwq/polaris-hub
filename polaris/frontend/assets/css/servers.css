@@ -292,3 +292,70 @@
 
 .servers-overview-grid > div { min-width: 0; }
 .servers-overview-grid span { overflow-wrap: anywhere; }
+
+/* Общая сводка по серверам */
+.servers-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.servers-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+.servers-stat-title { color: var(--text-secondary); font-size: 0.78rem; }
+.servers-stat-value { font-size: 1.6rem; font-weight: 700; line-height: 1.15; white-space: nowrap; }
+.servers-stat-sub { color: var(--text-muted); font-size: 0.74rem; }
+.servers-stat-value.is-good { color: #52d273; }
+.servers-stat-value.is-warn { color: #f5b942; }
+.servers-stat-value.is-bad  { color: #ff5d73; }
+
+/* Блок проблем */
+.servers-problems { padding: 0; overflow: hidden; }
+.servers-problems.is-ok { padding: 12px 14px; }
+.servers-problems-ok { color: #52d273; font-weight: 600; }
+.servers-problems.is-bad { border-color: rgba(255, 93, 115, 0.35); }
+.servers-problems-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: 0;
+  color: #ff5d73;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.servers-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 160ms ease;
+  margin-right: 4px;
+}
+.servers-chevron.is-open { transform: rotate(-135deg); }
+.servers-problems-list { display: flex; flex-direction: column; border-top: 1px solid var(--border-soft); }
+.servers-problems-list[hidden] { display: none; }
+.servers-problem-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.servers-problem-row + .servers-problem-row { border-top: 1px solid var(--border-soft); }
+.servers-problem-row.is-bad  { border-left-color: #ff5d73; }
+.servers-problem-row.is-warn { border-left-color: #f5b942; }
+.servers-problem-name { font-weight: 600; font-size: 0.9rem; }
+.servers-problem-text { color: var(--text-secondary); font-size: 0.8rem; }
