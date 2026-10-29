@@ -25,8 +25,11 @@ window.SettingsModule = (() => {
 
   function escapeHTML(value) {
     return String(value ?? '')
-      .replaceAll('&', '&').replaceAll('<', '<').replaceAll('>', '>')
-      .replaceAll('"', '"').replaceAll("'", ''');
+      .replaceAll('&', '&')
+      .replaceAll('<', '<')
+      .replaceAll('>', '>')
+      .replaceAll('"', '"')
+      .replaceAll("'", ''');
   }
 
   function requestHeaders() {
