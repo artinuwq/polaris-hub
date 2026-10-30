@@ -255,7 +255,6 @@ window.SettingsModule = (() => {
       ${modalOpen ? renderModal() : ''}`;
     renderLists();
     if (modalOpen) {
-      // focus first input
       const firstInput = container.querySelector('.st-modal-input');
       if (firstInput) firstInput.focus();
     }
@@ -321,7 +320,6 @@ window.SettingsModule = (() => {
         }
         break;
       }
-      // MODAL CASES
       case 'acc-add-modal':
         modalOpen = true;
         modalError = '';
