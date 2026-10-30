@@ -70,7 +70,6 @@ window.TasksModule = (() => {
   ];
 
   const REPEAT_OPTIONS = [
-  const REPEAT_OPTIONS = [
     { id: 'never', label: 'Никогда' },
     { id: 'daily', label: 'Каждый день' },
     { id: 'weekly', label: 'Каждую неделю' },
@@ -114,12 +113,15 @@ window.TasksModule = (() => {
   /* ─── State ─── */
   let tasks = [];
   let tags = [];
+  let projects = [];
   let selectedTaskId = null;
   let createModalOpen = false;
+  let detailOpen = false;
   let view = 'list'; // 'list' | 'done'
+  let showDone = false;
+  let showHistory = false;
   let loading = false;
   let error = '';
-  let apiToken = '';
   let apiToken = '';
   let initialized = false;
 
@@ -687,7 +689,6 @@ window.TasksModule = (() => {
 
     // Auto-save
     const fields = overlay.querySelectorAll('[data-field]');
-    let saveTimer = null;
     fields.forEach((el) => {
       el.addEventListener('change', () => { scheduleSave(task.id); });
       el.addEventListener('blur', () => { scheduleSave(task.id); });
@@ -1079,11 +1080,19 @@ window.TasksModule = (() => {
     openDetail(taskId);
   }
 
+  function leave() {
+    closeCreateModal();
+    closeDetail();
+    const remindMenu = document.querySelector('.remind-menu');
+    if (remindMenu) remindMenu.remove();
+  }
+
   return {
     init,
     render,
     loadFromServer,
     openCreateModal,
     openDetail: openDetailSafe,
+    leave,
   };
 })();
