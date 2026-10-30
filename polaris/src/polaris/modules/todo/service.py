@@ -77,3 +77,25 @@ def create_tag(name: str) -> TagResponse:
     """Create a new tag."""
     row = repo.create_tag(name)
     return TagResponse.from_db_row(row)
+
+
+# ─── Reminders ───
+
+
+def list_reminders(task_id: str) -> list[dict] | None:
+    if not repo.get_task_by_id(task_id):
+        return None
+    return repo.list_reminders(task_id)
+
+
+def add_reminder(task_id: str, remind_at: str) -> dict | None:
+    """Добавляет напоминание. Бросает ValueError, если время не похоже на ISO datetime."""
+    if not repo.get_task_by_id(task_id):
+        return None
+    if repo._parse_iso(remind_at) is None:
+        raise ValueError("remind_at must be an ISO datetime")
+    return repo.add_reminder(task_id, remind_at)
+
+
+def delete_reminder(task_id: str, reminder_id: str) -> bool:
+    return repo.delete_reminder(task_id, reminder_id)

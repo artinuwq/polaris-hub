@@ -73,6 +73,42 @@ def delete_task(task_id: str, _user: TelegramWebAppUser | None = Depends(require
     }
 
 
+@router.get("/{task_id}/reminders")
+def list_task_reminders(task_id: str, _user: TelegramWebAppUser | None = Depends(require_admin)):
+    """Все напоминания задачи (по возрастанию времени)."""
+    items = service.list_reminders(task_id)
+    if items is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"success": True, "data": {"reminders": items}}
+
+
+@router.post("/{task_id}/reminders")
+def add_task_reminder(
+    task_id: str,
+    body: dict,
+    _user: TelegramWebAppUser | None = Depends(require_admin),
+):
+    """Добавить напоминание: {"remind_at": "2026-10-30T18:00:00+02:00"}."""
+    try:
+        item = service.add_reminder(task_id, str(body.get("remind_at", "")).strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"success": True, "data": item}
+
+
+@router.delete("/{task_id}/reminders/{reminder_id}")
+def delete_task_reminder(
+    task_id: str,
+    reminder_id: str,
+    _user: TelegramWebAppUser | None = Depends(require_admin),
+):
+    if not service.delete_reminder(task_id, reminder_id):
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return {"success": True, "message": "Reminder deleted"}
+
+
 @router.post("/projects")
 def create_project(
     body: dict,

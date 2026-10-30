@@ -60,6 +60,7 @@ window.TasksModule = (() => {
     { id: 'fire', label: 'Срочно' },
     { id: 'important', label: 'Важно' },
     { id: 'normal', label: 'Обычная' },
+    { id: 'someday', label: 'Когда-нибудь' },
   ];
 
   const STATUSES = [
@@ -112,14 +113,11 @@ window.TasksModule = (() => {
 
   /* ─── State ─── */
   let tasks = [];
-  let tags = [];
   let projects = [];
+  let tags = [];
   let selectedTaskId = null;
   let createModalOpen = false;
-  let detailOpen = false;
   let view = 'list'; // 'list' | 'done'
-  let showDone = false;
-  let showHistory = false;
   let loading = false;
   let error = '';
   let apiToken = '';
@@ -317,7 +315,6 @@ window.TasksModule = (() => {
         tags = cached.tags || [];
       }
     }
-    }
 
     render();
     refreshQuick();
@@ -420,7 +417,571 @@ window.TasksModule = (() => {
 
     if (task.date || task.time) {
       const text = [task.date ? formatDate(task.date) : '', task.time ? formatTime(task.time) : ''].filter(Boolean).join(' ');
-      chips.push(`<span class="task-meta-item${overdue ? 
+      chips.push(`<span class="task-meta-item${overdue ? ' overdue' : ''}"><span class="icon" data-icon="${task.date ? 'calendar' : 'clock'}" aria-hidden="true"></span>${escapeHTML(text)}</span>`);
+    }
+
+    const energy = ENERGY_OPTIONS.find((e) => e.id === task.energy);
+    if (energy) chips.push(`<span class="task-meta-item" title="${escapeHTML(energy.desc)}">${energy.label.split(' ')[0]}</span>`);
+
+    if (task.repeat && task.repeat !== 'never') {
+      chips.push(`<span class="task-meta-item" title="${escapeHTML(REPEAT_OPTIONS.find((r) => r.id === task.repeat)?.label || '')}"><span class="icon" data-icon="repeat" aria-hidden="true"></span></span>`);
+    }
+    if (task.project) {
+      chips.push(`<span class="task-meta-item">${projectDot(task.project_color)}${escapeHTML(task.project)}</span>`);
+    }
+    if (task.status !== 'todo' && !isDone) {
+      chips.push(`<span class="task-status-badge ${task.status}">${escapeHTML(STATUSES.find((s) => s.id === task.status)?.label || '')}</span>`);
+    }
+    if (task.checklist && task.checklist.length) {
+      const doneCount = task.checklist.filter((c) => c.done).length;
+      chips.push(`<span class="task-meta-item"><span class="icon" data-icon="list" aria-hidden="true"></span>${doneCount}/${task.checklist.length}</span>`);
+    }
+    (task.tags || []).forEach((t) => chips.push(`<span class="task-tag">${escapeHTML(t)}</span>`));
+
+    const remind = isDone ? '' : `
+      <button class="task-remind-btn" type="button" data-action="tk-remind" data-task-id="${escapeHTML(task.id)}">
+        <span class="icon" data-icon="bell" aria-hidden="true"></span>Напомнить позже
+      </button>`;
+
+    return `
+      <div class="task-card${overdue ? ' overdue' : ''}${isDone ? ' done' : ''}" data-action="tk-open" data-task-id="${escapeHTML(task.id)}">
+        <button class="task-check${isDone ? ' checked' : ''}" type="button" data-action="tk-toggle-done" data-task-id="${escapeHTML(task.id)}" aria-label="${isDone ? 'Вернуть в работу' : 'Отметить выполненной'}">
+          <span class="icon" data-icon="check" aria-hidden="true"></span>
+        </button>
+        <div class="task-body">
+          <div class="task-title">${escapeHTML(task.title)}</div>
+          <div class="task-meta-row">${chips.join('')}${remind}</div>
+        </div>
+      </div>`;
+  }
+
+  /* ─── Оверлеи (маленькие модалки) ─── */
+  const overlayClosers = {};
+
+  function openOverlay(id, html, onClose, cls = '') {
+    closeOverlay(id);
+    const overlay = document.createElement('div');
+    overlay.className = 'tk-overlay';
+    overlay.dataset.overlay = id;
+    overlay.innerHTML = `<div class="tk-modal ${cls}" role="dialog" aria-modal="true">${html}</div>`;
+    document.body.appendChild(overlay);
+    hydrateIcons(overlay);
+    overlayClosers[id] = onClose;
+    const openedAt = Date.now();
+    overlay.addEventListener('click', (e) => {
+      // «призрачный» клик мобильного WebView сразу после тапа не должен закрывать модалку
+      if (Date.now() - openedAt < 350) return;
+      if (e.target === overlay) onClose();
+    });
+    window.PolarisBack.push(id, onClose);
+    return overlay;
+  }
+
+  function closeOverlay(id) {
+    document.querySelector(`.tk-overlay[data-overlay="${id}"]`)?.remove();
+    delete overlayClosers[id];
+    window.PolarisBack.pop(id);
+  }
+
+  function updateOverlay(id, html) {
+    const modal = document.querySelector(`.tk-overlay[data-overlay="${id}"] .tk-modal`);
+    if (!modal) return;
+    modal.innerHTML = html;
+    hydrateIcons(modal);
+  }
+
+  function closeTopOverlay() {
+    const all = document.querySelectorAll('.tk-overlay');
+    const top = all[all.length - 1];
+    if (top && overlayClosers[top.dataset.overlay]) { overlayClosers[top.dataset.overlay](); return true; }
+    return false;
+  }
+
+  function closeAllOverlays() {
+    Object.keys(overlayClosers).forEach((id) => closeOverlay(id));
+  }
+
+  function toast(text) {
+    document.querySelector('.tk-toast')?.remove();
+    const el = document.createElement('div');
+    el.className = 'tk-toast';
+    el.textContent = text;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2600);
+  }
+
+  function askConfirm(text) {
+    return new Promise((resolve) => {
+      const tg = window.Telegram?.WebApp;
+      if (tg?.initData && typeof tg.showConfirm === 'function') {
+        try { tg.showConfirm(text, (ok) => resolve(Boolean(ok))); return; } catch (e) { /* fallback */ }
+      }
+      resolve(window.confirm(text));
+    });
+  }
+
+  /* ─── Быстрый просмотр (маленькая модалка) ─── */
+  const OV_QUICK = 'tasks-quick';
+  const OV_EDIT = 'tasks-edit';
+  const OV_REMIND = 'tasks-remind';
+  const OV_REMIND_LIST = 'tasks-remind-list';
+  const OV_REMIND_CUSTOM = 'tasks-remind-custom';
+
+  function quickHTML(task) {
+    const isDone = task.status === 'done';
+    const when = [task.date ? formatDateFull(task.date) : '', task.time ? formatTime(task.time) : ''].filter(Boolean).join(', ');
+    const checklist = (task.checklist || []).map((item, idx) => `
+      <label class="tk-check-row">
+        <button class="task-check${item.done ? ' checked' : ''}" type="button" data-action="tk-q-check" data-index="${idx}" aria-label="Отметить пункт">
+          <span class="icon" data-icon="check" aria-hidden="true"></span>
+        </button>
+        <span class="${item.done ? 'is-done' : ''}">${escapeHTML(item.text)}</span>
+      </label>`).join('');
+
+    return `
+      <div class="tk-head"><h3>${escapeHTML(task.title)}</h3>${when ? `<span class="tk-sub">${escapeHTML(when)}</span>` : ''}</div>
+      ${task.description ? `<p class="tk-desc">${escapeHTML(task.description)}</p>` : ''}
+      <div class="tk-field">
+        <label>Статус</label>
+        <select id="quick-status">${STATUSES.map((s) => `<option value="${s.id}"${task.status === s.id ? ' selected' : ''}>${escapeHTML(s.label)}</option>`).join('')}</select>
+      </div>
+      ${checklist ? `<div class="tk-checklist">${checklist}</div>` : ''}
+      <div class="tk-actions">
+        <button class="tk-btn primary" type="button" data-action="tk-q-edit">Редактировать</button>
+        <div class="tk-actions-row">
+          <button class="tk-btn ok" type="button" data-action="tk-q-complete">${isDone ? 'Вернуть' : 'Завершить'}</button>
+          <button class="tk-btn danger" type="button" data-action="tk-q-delete">Удалить</button>
+        </div>
+      </div>`;
+  }
+
+  function openQuick(taskId) {
+    const task = findTask(taskId);
+    if (!task) return;
+    selectedTaskId = task.id;
+    const overlay = openOverlay(OV_QUICK, quickHTML(task), closeQuick);
+    const select = overlay.querySelector('#quick-status');
+    select?.addEventListener('change', () => changeStatus(task.id, select.value));
+  }
+
+  function closeQuick() {
+    closeOverlay(OV_QUICK);
+    selectedTaskId = null;
+  }
+
+  function refreshQuick() {
+    const task = selectedTaskId ? findTask(selectedTaskId) : null;
+    if (!document.querySelector(`.tk-overlay[data-overlay="${OV_QUICK}"]`)) return;
+    if (!task) { closeQuick(); return; }
+    updateOverlay(OV_QUICK, quickHTML(task));
+    const select = document.querySelector('#quick-status');
+    select?.addEventListener('change', () => changeStatus(task.id, select.value));
+  }
+
+  /* ─── Изменение данных ─── */
+  async function patchTask(taskId, changes) {
+    await apiRequest(`/api/tasks/${taskId}`, 'PATCH', changes);
+    clearCache();
+    await loadFromServer();
+  }
+
+  async function changeStatus(taskId, status) {
+    try {
+      await patchTask(taskId, { status });
+      if (status === 'done') closeQuick(); else refreshQuick();
+    } catch (e) { error = e.message; render(); }
+  }
+
+  async function toggleDone(taskId) {
+    const task = findTask(taskId);
+    if (!task) return;
+    try {
+      await patchTask(taskId, { status: task.status === 'done' ? 'todo' : 'done' });
+      if (selectedTaskId && String(selectedTaskId) === String(taskId)) closeQuick();
+    } catch (e) { error = e.message; render(); }
+  }
+
+  async function toggleQuickChecklist(taskId, idx) {
+    const task = findTask(taskId);
+    if (!task || !task.checklist[idx]) return;
+    task.checklist[idx].done = !task.checklist[idx].done;
+    refreshQuick(); // мгновенный отклик, сохраняем следом
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, 'PATCH', { checklist: task.checklist });
+      clearCache();
+      render();
+    } catch (e) { error = e.message; render(); }
+  }
+
+  async function deleteTask(taskId) {
+    const ok = await askConfirm('Удалить задачу?');
+    if (!ok) return;
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, 'DELETE');
+      clearCache();
+      closeOverlay(OV_EDIT);
+      closeQuick();
+      await loadFromServer();
+    } catch (e) { error = e.message; render(); }
+  }
+
+  /* ─── Редактирование (полная форма) ─── */
+  let draft = null; // рабочая копия: чеклист правится локально до «Сохранить»
+
+  function checklistEditHTML() {
+    return (draft.checklist || []).map((item, idx) => `
+      <div class="tk-check-row">
+        <button class="task-check${item.done ? ' checked' : ''}" type="button" data-action="tk-e-check" data-index="${idx}" aria-label="Отметить пункт">
+          <span class="icon" data-icon="check" aria-hidden="true"></span>
+        </button>
+        <span class="tk-check-text ${item.done ? 'is-done' : ''}">${escapeHTML(item.text)}</span>
+        <button class="tk-x" type="button" data-action="tk-e-remove" data-index="${idx}" aria-label="Удалить пункт">×</button>
+      </div>`).join('');
+  }
+
+  function historyHTML(task) {
+    return `
+      <div class="tk-history">
+        <span>Создано: ${escapeHTML(formatDateFull(task.created_at))}</span>
+        <span>Изменено: ${escapeHTML(formatDateFull(task.updated_at))}</span>
+        ${task.done_at ? `<span>Выполнено: ${escapeHTML(formatDateFull(task.done_at))}</span>` : ''}
+      </div>`;
+  }
+
+  function openEdit(taskId) {
+    const task = findTask(taskId);
+    if (!task) return;
+    selectedTaskId = task.id;
+    draft = { checklist: (task.checklist || []).map((c) => ({ text: c.text, done: Boolean(c.done) })) };
+
+    const opts = (list, current) => list.map((o) => `<option value="${o.id}"${current === o.id ? ' selected' : ''}>${escapeHTML(o.label)}</option>`).join('');
+    const html = `
+      <div class="tk-form">
+        <div class="tk-field">
+          <label>Название</label>
+          <input type="text" id="ed-title" value="${escapeHTML(task.title)}" maxlength="500" />
+        </div>
+        <div class="tk-field">
+          <label>Описание</label>
+          <textarea id="ed-desc" rows="2">${escapeHTML(task.description || '')}</textarea>
+        </div>
+        <div class="tk-field">
+          <label>Чеклист</label>
+          <div id="ed-checklist">${checklistEditHTML()}</div>
+          <div class="tk-inline-add">
+            <input type="text" id="ed-check-input" placeholder="Новый пункт" />
+            <button class="tk-btn small" type="button" data-action="tk-e-add">+</button>
+          </div>
+        </div>
+
+        <div class="tk-grid">
+          <div class="tk-field"><label>Дата</label><input type="date" id="ed-date" value="${escapeHTML(task.date || '')}" /></div>
+          <div class="tk-field"><label>Время</label><input type="time" id="ed-time" value="${escapeHTML(task.time || '')}" /></div>
+          <div class="tk-field"><label>Энергия</label><select id="ed-energy">${ENERGY_OPTIONS.map((e) => `<option value="${e.id}"${task.energy === e.id ? ' selected' : ''}>${escapeHTML(e.label)}</option>`).join('')}</select></div>
+          <div class="tk-field"><label>Статус</label><select id="ed-status">${opts(STATUSES, task.status)}</select></div>
+          <div class="tk-field"><label>Теги</label><input type="text" id="ed-tags" value="${escapeHTML((task.tags || []).join(', '))}" placeholder="через запятую" /></div>
+          <div class="tk-field"><label>Проект</label>
+            <select id="ed-project"><option value="">Без проекта</option>${(task.project && !projects.some((p) => p.name === task.project) ? [{ name: task.project }, ...projects] : projects).map((p) => `<option value="${escapeHTML(p.name)}"${task.project === p.name ? ' selected' : ''}>${escapeHTML(p.name)}</option>`).join('')}</select>
+          </div>
+          <div class="tk-field"><label>Повтор</label><select id="ed-repeat">${opts(REPEAT_OPTIONS, task.repeat)}</select></div>
+          <div class="tk-field"><label>Напоминания</label>
+            <button class="tk-btn small wide" type="button" data-action="tk-e-reminders"><span class="icon" data-icon="bell" aria-hidden="true"></span><span id="ed-remind-count">Открыть</span></button>
+          </div>
+        </div>
+
+        <button class="tk-link" type="button" data-action="tk-e-history"><span class="icon" data-icon="history" aria-hidden="true"></span>История</button>
+        <div id="ed-history" hidden>${historyHTML(task)}</div>
+
+        <div class="tk-actions">
+          <div class="tk-actions-row">
+            <button class="tk-btn primary" type="button" data-action="tk-e-save">Сохранить</button>
+            <button class="tk-btn" type="button" data-action="tk-e-cancel">Отменить</button>
+          </div>
+          <div class="tk-actions-row">
+            <button class="tk-btn danger" type="button" data-action="tk-e-delete">Удалить</button>
+            <button class="tk-btn ok" type="button" data-action="tk-e-complete">${task.status === 'done' ? 'Вернуть' : 'Завершить'}</button>
+          </div>
+        </div>
+      </div>`;
+
+    const overlay = openOverlay(OV_EDIT, html, closeEdit, 'is-edit');
+    overlay.querySelector('#ed-check-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addDraftChecklist(); }
+    });
+    refreshReminderCount(task.id);
+  }
+
+  function closeEdit() {
+    closeOverlay(OV_EDIT);
+    draft = null;
+  }
+
+  function addDraftChecklist() {
+    const input = document.getElementById('ed-check-input');
+    const text = input?.value.trim();
+    if (!text || !draft) return;
+    draft.checklist.push({ text, done: false });
+    input.value = '';
+    redrawDraftChecklist();
+  }
+
+  function redrawDraftChecklist() {
+    const box = document.getElementById('ed-checklist');
+    if (!box) return;
+    box.innerHTML = checklistEditHTML();
+    hydrateIcons(box);
+  }
+
+  async function submitEdit(forceStatus) {
+    const task = findTask(selectedTaskId);
+    if (!task || !draft) return;
+    const title = document.getElementById('ed-title').value.trim();
+    if (!title) { toast('Укажите название задачи'); return; }
+
+    const project = document.getElementById('ed-project').value;
+    const tagList = document.getElementById('ed-tags').value
+      .split(/[,;\n]+/)
+      .map((t) => t.trim().replace(/^#/, ''))
+      .filter(Boolean);
+
+    const changes = {
+      title,
+      description: document.getElementById('ed-desc').value.trim(),
+      date: document.getElementById('ed-date').value,
+      time: document.getElementById('ed-time').value,
+      energy: document.getElementById('ed-energy').value,
+      status: forceStatus || document.getElementById('ed-status').value,
+      repeat: document.getElementById('ed-repeat').value,
+      tags: Array.from(new Set(tagList)),
+      project,
+      project_color: projects.find((p) => p.name === project)?.color || (project === task.project ? task.project_color || '' : ''),
+      checklist: draft.checklist,
+    };
+
+    try {
+      await patchTask(task.id, changes);
+      closeEdit();
+      closeQuick();
+    } catch (e) { toast(`Не удалось сохранить: ${e.message}`); }
+  }
+
+  /* ─── Напоминания ─── */
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  // ISO со смещением часового пояса: календарь показывает время именно так, как мы его задали
+  function toLocalISO(d) {
+    const off = -d.getTimezoneOffset();
+    const sign = off >= 0 ? '+' : '-';
+    const abs = Math.abs(off);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:00${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+  }
+
+  function presetDate(kind) {
+    const now = new Date();
+    const d = new Date(now);
+    if (kind === '1h') return new Date(now.getTime() + 60 * 60 * 1000);
+    if (kind === 'evening') {
+      d.setHours(18, 0, 0, 0);
+      if (d <= now) d.setDate(d.getDate() + 1);
+      return d;
+    }
+    d.setDate(d.getDate() + 1); // tomorrow
+    d.setHours(9, 0, 0, 0);
+    return d;
+  }
+
+  function fmtReminder(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const day = key === todayStr() ? 'Сегодня' : key === inDaysStr(1) ? 'Завтра' : formatDate(key);
+    return `${day}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  async function loadReminders(taskId) {
+    const result = await apiRequest(`/api/tasks/${taskId}/reminders`);
+    return (result.data || result).reminders || [];
+  }
+
+  async function refreshReminderCount(taskId) {
+    try {
+      const items = await loadReminders(taskId);
+      const label = document.getElementById('ed-remind-count');
+      if (label) label.textContent = items.length ? `Открыть · ${items.length}` : 'Добавить';
+      const link = document.querySelector('[data-action="tk-r-all"] span');
+      if (link) link.textContent = items.length ? `Все напоминания · ${items.length}` : 'Все напоминания';
+    } catch (e) { /* не критично */ }
+  }
+
+  // Маленькое окно выбора: через час / вечером / завтра / другое время / отмена
+  function openRemindChoice(taskId, after) {
+    remindAfter = after || null;
+    selectedRemindTask = taskId;
+    openOverlay(OV_REMIND, `
+      <div class="tk-head"><h3>Напомнить позже</h3></div>
+      <div class="tk-choice">
+        <button class="tk-btn" type="button" data-action="tk-r-pick" data-kind="1h">Через час</button>
+        <button class="tk-btn" type="button" data-action="tk-r-pick" data-kind="evening">Вечером</button>
+        <button class="tk-btn" type="button" data-action="tk-r-pick" data-kind="tomorrow">Завтра</button>
+        <button class="tk-btn" type="button" data-action="tk-r-custom">Выбрать другое время</button>
+        ${remindAfter ? '' : '<button class="tk-link center" type="button" data-action="tk-r-all"><span>Все напоминания</span></button>'}
+        <button class="tk-btn ghost" type="button" data-action="tk-r-cancel">Отмена</button>
+      </div>`, closeRemindChoice, 'is-small');
+    refreshReminderCount(taskId);
+  }
+
+  let remindAfter = null;
+  let selectedRemindTask = null;
+
+  function closeRemindChoice() { closeOverlay(OV_REMIND); }
+
+  function openRemindCustom() {
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+    openOverlay(OV_REMIND_CUSTOM, `
+      <div class="tk-head"><h3>Другое время</h3></div>
+      <div class="tk-grid">
+        <div class="tk-field"><label>Дата</label><input type="date" id="rc-date" value="${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}" /></div>
+        <div class="tk-field"><label>Время</label><input type="time" id="rc-time" value="${pad2(d.getHours())}:${pad2(d.getMinutes())}" /></div>
+      </div>
+      <div class="tk-actions"><div class="tk-actions-row">
+        <button class="tk-btn primary" type="button" data-action="tk-rc-save">Добавить</button>
+        <button class="tk-btn" type="button" data-action="tk-rc-cancel">Отмена</button>
+      </div></div>`, () => closeOverlay(OV_REMIND_CUSTOM), 'is-small');
+  }
+
+  async function addReminder(taskId, date) {
+    if (date.getTime() <= Date.now() - 60000) { toast('Это время уже прошло'); return false; }
+    try {
+      await apiRequest(`/api/tasks/${taskId}/reminders`, 'POST', { remind_at: toLocalISO(date) });
+      clearCache();
+      toast(`🔔 Напомню: ${fmtReminder(date.toISOString())}`);
+      return true;
+    } catch (e) { toast(`Не удалось: ${e.message}`); return false; }
+  }
+
+  async function pickReminder(date) {
+    const taskId = selectedRemindTask;
+    if (!taskId || !(await addReminder(taskId, date))) return;
+    closeOverlay(OV_REMIND_CUSTOM);
+    closeRemindChoice();
+    if (remindAfter) remindAfter();
+    refreshReminderCount(taskId);
+  }
+
+  // Список всех напоминаний задачи
+  async function openRemindList(taskId) {
+    selectedRemindTask = taskId;
+    openOverlay(OV_REMIND_LIST, '<div class="tk-head"><h3>Напоминания</h3></div><p class="tk-desc">Загружаю…</p>', closeRemindList, 'is-small');
+    await redrawRemindList();
+  }
+
+  function closeRemindList() { closeOverlay(OV_REMIND_LIST); }
+
+  async function redrawRemindList() {
+    const taskId = selectedRemindTask;
+    let items = [];
+    try { items = await loadReminders(taskId); } catch (e) { toast(e.message); }
+    const now = Date.now();
+    const rows = items.map((r) => `
+      <div class="tk-remind-row${new Date(r.remind_at).getTime() < now ? ' is-past' : ''}">
+        <span class="icon" data-icon="bell" aria-hidden="true"></span>
+        <span class="tk-remind-time">${escapeHTML(fmtReminder(r.remind_at))}</span>
+        <button class="tk-x" type="button" data-action="tk-rl-delete" data-id="${escapeHTML(r.id)}" aria-label="Удалить напоминание">×</button>
+      </div>`).join('');
+    updateOverlay(OV_REMIND_LIST, `
+      <div class="tk-head"><h3>Напоминания</h3></div>
+      ${rows ? `<div class="tk-remind-list">${rows}</div>` : '<p class="tk-desc">Напоминаний пока нет.</p>'}
+      <div class="tk-actions"><div class="tk-actions-row">
+        <button class="tk-btn primary" type="button" data-action="tk-rl-add">+ Добавить</button>
+        <button class="tk-btn" type="button" data-action="tk-rl-close">Закрыть</button>
+      </div></div>`);
+    refreshReminderCount(taskId);
+  }
+
+  /* ─── Event Delegation ─── */
+  function handleClick(e) {
+    const el = e.target.closest('[data-action^="tk-"], [data-action="close-create-modal"], [data-action="submit-create-task"]');
+    if (!el) return;
+    const action = el.dataset.action;
+    const taskId = el.dataset.taskId;
+
+    switch (action) {
+      // страница
+      case 'tk-create': openCreateModal(); break;
+      case 'tk-open-done': openDone(); break;
+      case 'tk-close-done': closeDone(); break;
+      case 'tk-open': openQuick(taskId); break;
+      case 'tk-toggle-done': e.stopPropagation(); toggleDone(taskId); break;
+      case 'tk-remind': e.stopPropagation(); openRemindChoice(taskId); break;
+      // создание
+      case 'close-create-modal': closeCreateModal(); break;
+      case 'submit-create-task': submitCreate(); break;
+      // быстрый просмотр
+      case 'tk-q-edit': openEdit(selectedTaskId); break;
+      case 'tk-q-complete': toggleDone(selectedTaskId); break;
+      case 'tk-q-delete': deleteTask(selectedTaskId); break;
+      case 'tk-q-check': toggleQuickChecklist(selectedTaskId, Number(el.dataset.index)); break;
+      // редактирование
+      case 'tk-e-save': submitEdit(); break;
+      case 'tk-e-cancel': closeEdit(); break;
+      case 'tk-e-complete': submitEdit(findTask(selectedTaskId)?.status === 'done' ? 'todo' : 'done'); break;
+      case 'tk-e-delete': deleteTask(selectedTaskId); break;
+      case 'tk-e-add': addDraftChecklist(); break;
+      case 'tk-e-check': {
+        const item = draft?.checklist[Number(el.dataset.index)];
+        if (item) { item.done = !item.done; redrawDraftChecklist(); }
+        break;
+      }
+      case 'tk-e-remove':
+        draft?.checklist.splice(Number(el.dataset.index), 1);
+        redrawDraftChecklist();
+        break;
+      case 'tk-e-history': {
+        const box = document.getElementById('ed-history');
+        if (box) box.hidden = !box.hidden;
+        break;
+      }
+      case 'tk-e-reminders': openRemindList(selectedTaskId); break;
+      // напоминания
+      case 'tk-r-pick': pickReminder(presetDate(el.dataset.kind)); break;
+      case 'tk-r-custom': openRemindCustom(); break;
+      case 'tk-r-cancel': closeRemindChoice(); break;
+      case 'tk-r-all': closeRemindChoice(); openRemindList(selectedRemindTask); break;
+      case 'tk-rc-cancel': closeOverlay(OV_REMIND_CUSTOM); break;
+      case 'tk-rc-save': {
+        const date = document.getElementById('rc-date')?.value;
+        const time = document.getElementById('rc-time')?.value;
+        if (!date || !time) { toast('Укажите дату и время'); break; }
+        pickReminder(new Date(`${date}T${time}`));
+        break;
+      }
+      case 'tk-rl-add': openRemindChoice(selectedRemindTask, redrawRemindList); break;
+      case 'tk-rl-close': closeRemindList(); break;
+      case 'tk-rl-delete':
+        apiRequest(`/api/tasks/${selectedRemindTask}/reminders/${el.dataset.id}`, 'DELETE')
+          .then(() => { clearCache(); return redrawRemindList(); })
+          .catch((err) => toast(err.message));
+        break;
+      default: break;
+    }
+  }
+
+  /* ─── Список выполненных ─── */
+  function openDone() {
+    view = 'done';
+    window.PolarisBack.push('tasks-done', closeDone);
+    render();
+  }
+
+  function closeDone() {
+    view = 'list';
+    window.PolarisBack.pop('tasks-done');
+    render();
+  }
+
+  /* ─── Create Modal ─── */
+  function renderCreateModal() {
     const existing = document.querySelector('.create-modal-overlay');
     if (existing) existing.remove();
 
@@ -530,501 +1091,27 @@ window.TasksModule = (() => {
     }
   }
 
-  /* ─── Detail Panel ─── */
-  function renderDetailPanel() {
-    const existing = document.querySelector('.detail-overlay');
-    if (existing) existing.remove();
-
-    const task = tasks.find((t) => String(t.id) === String(selectedTaskId));
-    if (!task) {
-      detailOpen = false;
-      window.PolarisBack.pop('tasks-detail');
-      return;
-    }
-
-    const energyIcon = task.energy === 'quick' ? '🟢' : task.energy === 'medium' ? '🟡' : '🔴';
-    const energyLabel = ENERGY_OPTIONS.find((e) => e.id === task.energy)?.label || '🟡 Средняя';
-
-    const overlay = document.createElement('div');
-    overlay.className = 'detail-overlay';
-    overlay.innerHTML = `
-      <div class="detail-panel" role="dialog" aria-modal="true" aria-label="Детали задачи">
-        <div class="detail-header">
-          <h2>${escapeHTML(task.title)}</h2>
-        </div>
-
-        <!-- Title (editable) -->
-        <div class="detail-section">
-          <div class="detail-section-title">Название</div>
-          <input type="text" data-field="title" value="${escapeHTML(task.title)}" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.95rem;outline:none" />
-        </div>
-
-        <div class="detail-divider"></div>
-
-        <!-- Date & Time -->
-        <div class="detail-section">
-          <div class="detail-section-title">Дата и время</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div class="detail-field">
-              <label>Дата</label>
-              <input type="date" data-field="date" value="${escapeHTML(task.date)}" />
-            </div>
-            <div class="detail-field">
-              <label>Время</label>
-              <input type="time" data-field="time" value="${escapeHTML(task.time)}" />
-            </div>
-          </div>
-        </div>
-
-        <div class="detail-divider"></div>
-
-        <!-- Repeat -->
-        <div class="detail-section">
-          <div class="detail-section-title">Повторение</div>
-          <select data-field="repeat">
-            ${REPEAT_OPTIONS.map((r) => `<option value="${r.id}"${task.repeat === r.id ? ' selected' : ''}>${escapeHTML(r.label)}</option>`).join('')}
-          </select>
-        </div>
-
-        <div class="detail-divider"></div>
-
-        <!-- Energy -->
-        <div class="detail-section">
-          <div class="detail-section-title">Энергия задачи</div>
-          <select data-field="energy">
-            ${ENERGY_OPTIONS.map((e) => `<option value="${e.id}"${task.energy === e.id ? ' selected' : ''}>${escapeHTML(e.label)} — ${escapeHTML(e.desc)}</option>`).join('')}
-          </select>
-        </div>
-
-        <div class="detail-divider"></div>
-
-        <!-- Status -->
-        <div class="detail-section">
-          <div class="detail-section-title">Статус</div>
-          <select data-field="status">
-            ${STATUSES.map((s) => `<option value="${s.id}"${task.status === s.id ? ' selected' : ''}>${escapeHTML(s.label)}</option>`).join('')}
-          </select>
-        </div>
-
-        <div class="detail-divider"></div>
-
-        <!-- Tags -->
-        <div class="detail-section">
-          <div class="detail-section-title">Теги</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px" id="detail-tags">
-            ${(task.tags || []).map((t) => `<span class="task-tag" style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px">${escapeHTML(t)} <button type="button" data-action="remove-tag" data-tag="${escapeHTML(t)}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0;font-size:0.7rem">×</button></span>`).join('')}
-          </div>
-          <div style="display:flex;gap:4px">
-            <input type="text" id="detail-tag-input" placeholder="Добавить тег" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.82rem;outline:none" />
-            <button class="small-button" type="button" data-action="add-tag" style="min-height:32px;padding:0 10px;font-size:0.78rem">+</button>
-          </div>
-        </div>
-
-        <div class="detail-divider"></div>
-
-        <!-- Project -->
-        <div class="detail-section">
-          <div class="detail-section-title">Проект</div>
-          <select data-field="project">
-            <option value="">Без проекта</option>
-            ${projects.map((p) => {
-              const color = p.color || '#5ab8ff';
-              const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${escapeHTML(color)};margin-right:6px;vertical-align:middle"></span>`;
-              const sel = task.project === p.name ? ' selected' : '';
-              return `<option value="${escapeHTML(p.name)}"${sel}>${dot}${escapeHTML(p.name)}</option>`;
-            }).join('')}
-          </select>
-        </div>
-
-        <div class="detail-divider"></div>
-
-        <!-- Checklist -->
-        <div class="detail-section">
-          <div class="detail-section-title">Чеклист</div>
-          <div id="detail-checklist">
-            ${(task.checklist || []).map((item, idx) => `
-              <div class="checklist-item">
-                <button class="task-check${item.done ? ' checked' : ''}" type="button" data-action="toggle-checklist" data-checklist-index="${idx}">
-                  <span class="icon" data-icon="check" aria-hidden="true"></span>
-                </button>
-                <span style="flex:1;${item.done ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${escapeHTML(item.text)}</span>
-                <button type="button" data-action="remove-checklist" data-checklist-index="${idx}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px;font-size:0.8rem">×</button>
-              </div>
-            `).join('')}
-          </div>
-          <div style="display:flex;gap:4px;margin-top:6px">
-            <input type="text" id="detail-checklist-input" placeholder="Добавить пункт" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.82rem;outline:none" />
-            <button class="small-button" type="button" data-action="add-checklist" style="min-height:32px;padding:0 10px;font-size:0.78rem">+</button>
-          </div>
-        </div>
-
-        <div class="detail-divider"></div>
-
-        <!-- History (collapsible) -->
-        <div class="detail-section">
-          <div class="detail-section-title" style="cursor:pointer;display:flex;align-items:center;gap:6px" data-action="toggle-history">
-            История
-            <span class="icon" data-icon="${showHistory ? 'chevronDown' : 'chevronRight'}" aria-hidden="true" style="width:12px;height:12px"></span>
-          </div>
-          ${showHistory ? `
-          <div style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--text-muted);margin-top:6px">
-            <span>Создано: ${formatDateFull(task.created_at)}</span>
-            <span>Изменено: ${formatDateFull(task.updated_at)}</span>
-            ${task.done_at ? `<span>Выполнено: ${formatDateFull(task.done_at)}</span>` : ''}
-          </div>` : ''}
-        </div>
-
-        <div class="detail-divider"></div>
-
-        <!-- Actions -->
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="small-button primary" type="button" data-action="complete-task" style="background:var(--status-done);color:#06111b;border-color:transparent;font-weight:700">Завершить задачу</button>
-          <button class="small-button" type="button" data-action="delete-task" style="color:var(--error);border-color:rgba(255,93,115,0.3)">Удалить задачу</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(overlay);
-    hydrateIcons(overlay);
-
-    // Auto-save
-    const fields = overlay.querySelectorAll('[data-field]');
-    fields.forEach((el) => {
-      el.addEventListener('change', () => { scheduleSave(task.id); });
-      el.addEventListener('blur', () => { scheduleSave(task.id); });
-    });
-
-    // Tag input
-    const tagInput = overlay.querySelector('#detail-tag-input');
-    if (tagInput) {
-      tagInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); addTagToTask(task.id, tagInput.value); tagInput.value = ''; }
-      });
-    }
-
-    // Checklist input
-    const clInput = overlay.querySelector('#detail-checklist-input');
-    if (clInput) {
-      clInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); addChecklistItem(task.id, clInput.value); clInput.value = ''; renderDetailPanel(); }
-      });
-    }
-
-    const openedAt = Date.now();
-    overlay.addEventListener('click', (e) => {
-      if (Date.now() - openedAt < 350) return;
-      if (e.target === overlay) closeDetail();
-    });
-  }
-
-  let saveTimer = null;
-
-  function scheduleSave(taskId) {
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => saveDetailChanges(taskId), 500);
-  }
-
-  async function saveDetailChanges(taskId) {
-    const overlay = document.querySelector('.detail-overlay');
-    if (!overlay) return;
-
-    const changes = {};
-    overlay.querySelectorAll('[data-field]').forEach((el) => {
-      const field = el.dataset.field;
-      changes[field] = el.value;
-    });
-
-    try {
-      await apiRequest(`/api/tasks/${taskId}`, 'PATCH', changes);
-      clearCache();
-      await loadFromServer();
-    } catch (e) {
-      error = e.message;
-    }
-  }
-
-  async function addTagToTask(taskId, tagName) {
-    const trimmed = tagName.trim();
-    if (!trimmed) return;
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    if (!task.tags.includes(trimmed)) {
-      task.tags.push(trimmed);
-      try {
-        await apiRequest(`/api/tasks/${taskId}`, 'PATCH', { tags: task.tags });
-        clearCache();
-        await loadFromServer();
-        renderDetailPanel();
-      } catch (e) { error = e.message; render(); }
-    }
-  }
-
-  function openDetail(taskId) {
-    selectedTaskId = taskId;
-    detailOpen = true;
-    window.PolarisBack.push('tasks-detail', closeDetail);
-    render();
-  }
-
-  function closeDetail() {
-    detailOpen = false;
-    selectedTaskId = null;
-    window.PolarisBack.pop('tasks-detail');
-    const overlay = document.querySelector('.detail-overlay');
-    if (overlay) overlay.remove();
-    render();
-  }
-
-  /* ─── Mutations ─── */
-  async function toggleDone(taskId) {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    const newStatus = task.status === 'done' ? 'todo' : 'done';
-    try {
-      await apiRequest(`/api/tasks/${taskId}`, 'PATCH', { status: newStatus });
-      clearCache();
-      await loadFromServer();
-      if (detailOpen && selectedTaskId === taskId) {
-        closeDetail();
-      }
-    } catch (e) { error = e.message; render(); }
-  }
-
-  async function addChecklistItem(taskId, text) {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    task.checklist.push({ text: trimmed, done: false });
-    try {
-      await apiRequest(`/api/tasks/${taskId}`, 'PATCH', { checklist: task.checklist });
-      clearCache();
-    } catch (e) { error = e.message; }
-  }
-
-  async function toggleChecklist(taskId, idx) {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    const item = task.checklist[idx];
-    if (!item) return;
-    item.done = !item.done;
-    try {
-      await apiRequest(`/api/tasks/${taskId}`, 'PATCH', { checklist: task.checklist });
-      clearCache();
-    } catch (e) { error = e.message; }
-  }
-
-  async function removeChecklistItem(taskId, idx) {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    task.checklist.splice(idx, 1);
-    try {
-      await apiRequest(`/api/tasks/${taskId}`, 'PATCH', { checklist: task.checklist });
-      clearCache();
-    } catch (e) { error = e.message; }
-  }
-
-  async function deleteTask(taskId) {
-    try {
-      await apiRequest(`/api/tasks/${taskId}`, 'DELETE');
-      clearCache();
-      closeDetail();
-      await loadFromServer();
-    } catch (e) { error = e.message; render(); }
-  }
-
-  async function remindLater(taskId, option) {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-
-    const now = new Date();
-    let remindDate = null;
-
-    switch (option) {
-      case '1h':
-        remindDate = new Date(now.getTime() + 60 * 60 * 1000);
-        break;
-      case 'evening':
-        remindDate = new Date(now);
-        remindDate.setHours(18, 0, 0, 0);
-        if (remindDate < now) remindDate.setDate(remindDate.getDate() + 1);
-        break;
-      case 'tomorrow':
-        remindDate = new Date(now);
-        remindDate.setDate(remindDate.getDate() + 1);
-        remindDate.setHours(9, 0, 0, 0);
-        break;
-      case '1w':
-        remindDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-        break;
-    }
-
-    if (remindDate) {
-      const remindAt = remindDate.toISOString();
-      try {
-        await apiRequest(`/api/tasks/${taskId}`, 'PATCH', { remind_at: remindAt });
-        clearCache();
-        await loadFromServer();
-      } catch (e) { error = e.message; render(); }
-    }
-  }
-
-  /* ─── Event Delegation ─── */
-  function handleClick(e) {
-    const target = e.target;
-
-    // Toggle done
-    const toggleBtn = target.closest('[data-action="toggle-done"]');
-    if (toggleBtn) {
-      e.stopPropagation();
-      toggleDone(parseInt(toggleBtn.dataset.taskId, 10) || toggleBtn.dataset.taskId);
-      return;
-    }
-
-    // Open task detail
-    const card = target.closest('.task-card');
-    if (card && !target.closest('[data-action="toggle-done"]') && !target.closest('[data-action="remind-later"]')) {
-      openDetail(card.dataset.taskId);
-      return;
-    }
-
-    // Create modal
-    if (target.closest('[data-action="open-create-modal"]')) { openCreateModal(); return; }
-    if (target.closest('[data-action="close-create-modal"]')) { closeCreateModal(); return; }
-    if (target.closest('[data-action="submit-create-task"]')) { submitCreate(); return; }
-
-    // Detail actions
-    if (target.closest('[data-action="close-detail"]')) { closeDetail(); return; }
-
-    const deleteBtn = target.closest('[data-action="delete-task"]');
-    if (deleteBtn && selectedTaskId && confirm('Удалить задачу?')) { deleteTask(selectedTaskId); return; }
-
-    const completeBtn = target.closest('[data-action="complete-task"]');
-    if (completeBtn && selectedTaskId) { toggleDone(selectedTaskId); return; }
-
-    // Checklist
-    if (target.closest('[data-action="toggle-checklist"]')) {
-      const idx = parseInt(target.closest('[data-action="toggle-checklist"]').dataset.checklistIndex, 10);
-      if (selectedTaskId) { toggleChecklist(selectedTaskId, idx); setTimeout(renderDetailPanel, 200); }
-      return;
-    }
-    if (target.closest('[data-action="remove-checklist"]')) {
-      const idx = parseInt(target.closest('[data-action="remove-checklist"]').dataset.checklistIndex, 10);
-      if (selectedTaskId) { removeChecklistItem(selectedTaskId, idx); renderDetailPanel(); }
-      return;
-    }
-
-    // Tags
-    if (target.closest('[data-action="add-tag"]')) {
-      const input = document.getElementById('detail-tag-input');
-      if (input && selectedTaskId) { addTagToTask(selectedTaskId, input.value); input.value = ''; }
-      return;
-    }
-    if (target.closest('[data-action="remove-tag"]')) {
-      const btn = target.closest('[data-action="remove-tag"]');
-      const tagName = btn.dataset.tag;
-      if (selectedTaskId) {
-        const task = tasks.find((t) => t.id === selectedTaskId);
-        if (task) {
-          task.tags = task.tags.filter((t) => t !== tagName);
-          apiRequest(`/api/tasks/${selectedTaskId}`, 'PATCH', { tags: task.tags }).then(() => {
-            clearCache(); loadFromServer();
-          });
-          renderDetailPanel();
-        }
-      }
-      return;
-    }
-
-    // Add checklist item
-    if (target.closest('[data-action="add-checklist"]')) {
-      const input = document.getElementById('detail-checklist-input');
-      if (input && selectedTaskId) { addChecklistItem(selectedTaskId, input.value); input.value = ''; renderDetailPanel(); }
-      return;
-    }
-
-    // Toggle done section
-    if (target.closest('[data-action="toggle-done"]')) {
-      showDone = !showDone;
-      render();
-      return;
-    }
-
-    // Toggle history
-    if (target.closest('[data-action="toggle-history"]')) {
-      showHistory = !showHistory;
-      renderDetailPanel();
-      return;
-    }
-
-    // Remind later
-    const remindBtn = target.closest('[data-action="remind-later"]');
-    if (remindBtn) {
-      e.stopPropagation();
-      const taskId = remindBtn.dataset.taskId;
-      renderRemindMenu(taskId, remindBtn);
-      return;
-    }
-  }
-
-  function renderRemindMenu(taskId, anchor) {
-    const existing = document.querySelector('.remind-menu');
-    if (existing) existing.remove();
-
-    const menu = document.createElement('div');
-    menu.className = 'remind-menu';
-    menu.style.cssText = `
-      position:fixed;z-index:60;background:#0d1018;border:1px solid var(--border);
-      border-radius:var(--radius-sm);box-shadow:var(--shadow);padding:4px;min-width:160px;
-    `;
-
-    const rect = anchor.getBoundingClientRect();
-    menu.style.top = `${rect.bottom + 4}px`;
-    menu.style.left = `${rect.left}px`;
-
-    menu.innerHTML = REMIND_OPTIONS.map((opt) => `
-      <button class="remind-menu-item" type="button" data-remind-value="${opt.value}" data-remind-task="${taskId}" style="
-        display:block;width:100%;padding:8px 12px;border:none;background:transparent;
-        color:var(--text-secondary);cursor:pointer;text-align:left;font-size:0.84rem;border-radius:6px;
-      ">${escapeHTML(opt.label)}</button>
-    `).join('');
-
-    document.body.appendChild(menu);
-
-    const closeMenu = (e) => {
-      if (!menu.contains(e.target) && e.target !== anchor) {
-        menu.remove();
-        document.removeEventListener('click', closeMenu);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', closeMenu), 10);
-
-    menu.querySelectorAll('[data-remind-value]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        remindLater(btn.dataset.remindTask, btn.dataset.remindValue);
-        menu.remove();
-      });
-      btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--surface-raised)'; btn.style.color = 'var(--text)'; });
-      btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; btn.style.color = 'var(--text-secondary)'; });
-    });
-  }
-
   /* ─── Keyboard shortcuts ─── */
   function handleKeydown(e) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
-      if (!createModalOpen) { e.preventDefault(); openCreateModal(); }
+      if (!createModalOpen && document.getElementById('tasks-container')) { e.preventDefault(); openCreateModal(); }
       return;
     }
     if (e.key === 'Escape') {
       if (createModalOpen) { closeCreateModal(); return; }
-      if (detailOpen) { closeDetail(); return; }
+      if (closeTopOverlay()) return;
+      if (view === 'done') closeDone();
     }
   }
 
   /* ─── Init ─── */
   function init(containerId) {
+    // при каждом заходе на страницу показываем основной список
+    if (view !== 'list') window.PolarisBack.pop('tasks-done');
+    view = 'list';
     if (initialized) {
       render();
+      loadFromServer();
       return;
     }
 
@@ -1065,26 +1152,27 @@ window.TasksModule = (() => {
   }
 
   /* ─── Public API ─── */
-  function openDetailSafe(taskId) {
+  async function openDetailSafe(taskId) {
+    // открывают, например, из календаря — задачи могут быть ещё не загружены
     if (loading) {
-      const wait = () => {
-        if (loading) {
-          setTimeout(wait, 120);
-          return;
-        }
-        openDetail(taskId);
-      };
-      wait();
-      return;
+      await new Promise((resolve) => {
+        const wait = () => (loading ? setTimeout(wait, 120) : resolve());
+        wait();
+      });
+    } else if (!findTask(taskId)) {
+      await loadFromServer();
     }
-    openDetail(taskId);
+    openQuick(taskId);
   }
 
+  // Уход со страницы: закрываем модалки и снимаем кнопку «Назад»
   function leave() {
-    closeCreateModal();
-    closeDetail();
-    const remindMenu = document.querySelector('.remind-menu');
-    if (remindMenu) remindMenu.remove();
+    closeAllOverlays();
+    draft = null;
+    selectedTaskId = null;
+    if (createModalOpen) closeCreateModal();
+    if (view !== 'list') window.PolarisBack.pop('tasks-done');
+    view = 'list';
   }
 
   return {
