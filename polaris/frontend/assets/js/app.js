@@ -660,9 +660,9 @@
 
     hydrateIcons(elements.mainContent);
 
-    if (state.currentView !== 'servers') {
-      tg?.BackButton?.hide?.();
-    }
+    // Уходим со страницы — снимаем её кнопку «Назад» и закрываем её модалки
+    if (state.currentView !== 'servers') window.PolarisBack?.pop('servers-sub');
+    if (state.currentView !== 'tasks') window.TasksModule?.leave?.();
 
     const mounts = {
       attention: ['HomeModule', 'home-container'],

@@ -100,16 +100,14 @@ window.ServersModule = (() => {
     return { good: ['Хорошее', 'good'], warn: ['Удовлетворительно', 'warn'], bad: ['Критичное', 'bad'] }[worst];
   }
 
-  // Системная кнопка «Назад» Telegram вместо стрелки в интерфейсе
-  const tgBack = window.Telegram?.WebApp?.initData ? window.Telegram.WebApp.BackButton : null;
-  let backBound = false;
+  // Системная кнопка «Назад» Telegram вместо стрелки в интерфейсе.
+  // Работает через общий стек window.PolarisBack (его же используют меню и модалки),
+  // иначе разные части приложения скрывали бы кнопку друг у друга.
+  const tgBack = Boolean(window.Telegram?.WebApp?.initData);
   function syncBackButton() {
-    if (!tgBack) return;
-    if (!backBound) {
-      tgBack.onClick(() => { if (view !== 'list') goToList(); });
-      backBound = true;
-    }
-    if (view === 'list') tgBack.hide(); else tgBack.show();
+    if (!tgBack || !window.PolarisBack) return;
+    if (view === 'list') window.PolarisBack.pop('servers-sub');
+    else window.PolarisBack.push('servers-sub', () => { if (view !== 'list') goToList(); });
   }
 
   function pct(value) {

@@ -51,6 +51,7 @@ window.TasksModule = (() => {
     energy: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>',
     bell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>',
     chevronDown: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>',
+    back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>',
     chevronRight: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>',
   };
 
@@ -59,16 +60,16 @@ window.TasksModule = (() => {
     { id: 'fire', label: 'Срочно' },
     { id: 'important', label: 'Важно' },
     { id: 'normal', label: 'Обычная' },
-    { id: 'someday', label: 'Когда-нибудь' },
   ];
 
   const STATUSES = [
-    { id: 'todo', label: 'Todo' },
-    { id: 'in-progress', label: 'In Progress' },
-    { id: 'waiting', label: 'Waiting' },
-    { id: 'done', label: 'Done' },
+    { id: 'todo', label: 'К выполнению' },
+    { id: 'in-progress', label: 'В работе' },
+    { id: 'waiting', label: 'Ожидание' },
+    { id: 'done', label: 'Готово' },
   ];
 
+  const REPEAT_OPTIONS = [
   const REPEAT_OPTIONS = [
     { id: 'never', label: 'Никогда' },
     { id: 'daily', label: 'Каждый день' },
@@ -112,15 +113,13 @@ window.TasksModule = (() => {
 
   /* ─── State ─── */
   let tasks = [];
-  let projects = [];
   let tags = [];
   let selectedTaskId = null;
   let createModalOpen = false;
-  let detailOpen = false;
-  let showDone = false;
-  let showHistory = false;
+  let view = 'list'; // 'list' | 'done'
   let loading = false;
   let error = '';
+  let apiToken = '';
   let apiToken = '';
   let initialized = false;
 
@@ -316,260 +315,110 @@ window.TasksModule = (() => {
         tags = cached.tags || [];
       }
     }
+    }
 
     render();
+    refreshQuick();
   }
 
-  /* ─── Group Tasks ─── */
-  function groupTasks() {
-    const groups = {
-      overdue: [],
-      today: [],
-      next7: [],
-      rest: [],
-      nodate: [],
-    };
+  /* ─── Sorting (по срочности, без разделения на группы) ─── */
+  const PRIORITY_ORDER = { fire: 0, important: 1, normal: 2, someday: 3 };
 
-    const active = tasks.filter((t) => t.status !== 'done');
-    const done = tasks.filter((t) => t.status === 'done');
-
-    active.forEach((task) => {
-      if (task.date && isOverdue(task.date)) {
-        groups.overdue.push(task);
-      } else if (task.date && isToday(task.date)) {
-        groups.today.push(task);
-      } else if (task.date && isThisWeek(task.date)) {
-        groups.next7.push(task);
-      } else if (task.date) {
-        groups.rest.push(task);
-      } else {
-        groups.nodate.push(task);
-      }
-    });
-
-    // Sort: by priority then by date
-    const priorityOrder = { fire: 0, important: 1, normal: 2, someday: 3 };
-    Object.keys(groups).forEach((key) => {
-      groups[key].sort((a, b) => {
-        const pa = priorityOrder[a.priority] ?? 99;
-        const pb = priorityOrder[b.priority] ?? 99;
-        if (pa !== pb) return pa - pb;
-        if (a.date && b.date) return a.date.localeCompare(b.date);
-        if (a.date) return -1;
-        if (b.date) return 1;
-        return 0;
-      });
-    });
-
-    // Done sorted by done_at desc
-    done.sort((a, b) => {
-      const da = a.done_at || a.updated_at || '';
-      const db = b.done_at || b.updated_at || '';
-      return db.localeCompare(da);
-    });
-
-    return { ...groups, done };
+  function urgencyRank(task) {
+    if (!task.date) return 4;
+    if (isOverdue(task.date)) return 0;
+    if (isToday(task.date)) return 1;
+    if (isThisWeek(task.date)) return 2;
+    return 3;
   }
 
-  /* ─── Render ─── */
+  function compareByUrgency(a, b) {
+    const ra = urgencyRank(a);
+    const rb = urgencyRank(b);
+    if (ra !== rb) return ra - rb;
+    const pa = PRIORITY_ORDER[a.priority] ?? 99;
+    const pb = PRIORITY_ORDER[b.priority] ?? 99;
+    if (pa !== pb) return pa - pb;
+    if (a.date && b.date && a.date !== b.date) return a.date.localeCompare(b.date);
+    return (a.time || '99:99').localeCompare(b.time || '99:99');
+  }
+
+  const activeTasks = () => tasks.filter((t) => t.status !== 'done').sort(compareByUrgency);
+  const doneTasks = () => tasks
+    .filter((t) => t.status === 'done')
+    .sort((a, b) => (b.done_at || b.updated_at || '').localeCompare(a.done_at || a.updated_at || ''));
+  const findTask = (id) => tasks.find((t) => String(t.id) === String(id));
+
+  /* ─── Render: страница ─── */
+  const hasTgBack = () => Boolean(window.Telegram?.WebApp?.initData);
+
   function render() {
     const container = document.getElementById('tasks-container');
     if (!container) return;
 
-    const groups = groupTasks();
-    let html = '';
-
-    // Header
-    html += `
-      <div class="tasks-header">
-        <h1>Tasks</h1>
-        <button class="small-button primary" type="button" data-action="open-create-modal" ${loading ? 'disabled' : ''}>
-          <span class="icon" data-icon="plus" aria-hidden="true" style="width:16px;height:16px"></span>
-          Новая задача
-        </button>
-      </div>
-    `;
-
-    // Loading / Error
-    if (loading && tasks.length === 0) {
-      html += `<div class="tasks-empty"><p>Загружаю задачи…</p></div>`;
-      container.innerHTML = html;
-      hydrateIcons(container);
-      return;
-    }
-
-    if (error) {
-      html += `<div class="auth-banner err">${escapeHTML(error)}</div>`;
-    }
-
-    // Overdue
-    if (groups.overdue.length > 0) {
-      html += renderOverdueBlock(groups.overdue);
-    }
-
-    // Today
-    if (groups.today.length > 0) {
-      html += renderGroup('Сегодня', groups.today);
-    }
-
-    // Next 7 days
-    if (groups.next7.length > 0) {
-      html += renderGroup('Следующие 7 дней', groups.next7);
-    }
-
-    // Rest
-    if (groups.rest.length > 0) {
-      html += renderGroup('Остальное', groups.rest);
-    }
-
-    // No date
-    if (groups.nodate.length > 0) {
-      html += renderGroup('Без даты', groups.nodate);
-    }
-
-    // Empty state
-    if (tasks.length === 0) {
-      html += `
-        <div class="tasks-empty">
-          <span class="icon" data-icon="list" aria-hidden="true"></span>
-          <p>Нет задач. Создайте первую.</p>
-        </div>
-      `;
-    }
-
-    // Done (collapsible)
-    if (groups.done.length > 0) {
-      html += `
-        <div class="task-group">
-          <div class="task-group-header" style="cursor:pointer" data-action="toggle-done">
-            <h2>Выполнено (${groups.done.length})</h2>
-            <span class="icon" data-icon="${showDone ? 'chevronDown' : 'chevronRight'}" aria-hidden="true" style="width:14px;height:14px;color:var(--text-muted)"></span>
-          </div>
-          <div class="task-group-divider"></div>
-          ${showDone ? groups.done.map((t) => renderTaskCard(t)).join('') : ''}
-        </div>
-      `;
-    }
-
-    // Quick create
-    html += `
-      <div class="quick-create" data-action="open-create-modal">
-        <span class="icon" data-icon="plus" aria-hidden="true"></span>
-        <span>Быстрое создание</span>
-      </div>
-    `;
-
+    let html = view === 'done' ? renderDoneView() : renderListView();
     container.innerHTML = html;
     hydrateIcons(container);
 
     if (createModalOpen) renderCreateModal();
-    if (detailOpen && selectedTaskId) renderDetailPanel();
   }
 
-  function renderOverdueBlock(items) {
+  function renderListView() {
+    let html = `
+      <div class="tasks-toolbar">
+        <button class="tasks-add-button" type="button" data-action="tk-create" ${loading ? 'disabled' : ''}>
+          <span class="icon" data-icon="plus" aria-hidden="true"></span>
+          <span>Добавить задачу</span>
+        </button>
+        <button class="tasks-done-button" type="button" data-action="tk-open-done">Выполненные</button>
+      </div>`;
+
+    if (loading && tasks.length === 0) {
+      return `${html}<div class="tasks-empty"><p>Загружаю задачи…</p></div>`;
+    }
+    if (error) html += `<div class="auth-banner err">${escapeHTML(error)}</div>`;
+
+    const list = activeTasks();
+    if (!list.length) {
+      html += `
+        <div class="tasks-empty">
+          <span class="icon" data-icon="list" aria-hidden="true"></span>
+          <p>${tasks.length ? 'Все задачи выполнены.' : 'Нет задач. Создайте первую.'}</p>
+        </div>`;
+    } else {
+      html += `<div class="tasks-list">${list.map((t) => renderTaskCard(t)).join('')}</div>`;
+    }
+    return html;
+  }
+
+  function renderDoneView() {
+    const list = doneTasks();
+    const back = hasTgBack() ? '' : `
+      <button class="tasks-back-button" type="button" data-action="tk-close-done" aria-label="Назад">
+        <span class="icon" data-icon="back" aria-hidden="true"></span>
+      </button>`;
     return `
-      <div class="overdue-block">
-        <div class="task-group">
-          <div class="task-group-header">
-            <h2>🔴 Просрочено</h2>
-            <span class="task-group-count">${items.length}</span>
-          </div>
-          <div class="task-group-divider"></div>
-          ${items.map((t) => renderTaskCard(t)).join('')}
-        </div>
-      </div>
-    `;
+      <div class="tasks-done-head">${back}<h2>Выполненные${list.length ? ` · ${list.length}` : ''}</h2></div>
+      ${list.length
+        ? `<div class="tasks-list">${list.map((t) => renderTaskCard(t)).join('')}</div>`
+        : '<div class="tasks-empty"><span class="icon" data-icon="check" aria-hidden="true"></span><p>Пока ничего не выполнено.</p></div>'}`;
   }
 
-  function renderGroup(label, items) {
-    return `
-      <div class="task-group">
-        <div class="task-group-header">
-          <h2>${escapeHTML(label)}</h2>
-          <span class="task-group-count">${items.length}</span>
-        </div>
-        <div class="task-group-divider"></div>
-        ${items.map((t) => renderTaskCard(t)).join('')}
-      </div>
-    `;
+  function projectDot(color) {
+    return color
+      ? `<span class="task-project-dot" style="background:${escapeHTML(color)}"></span>`
+      : '';
   }
 
+  // Компактная карточка: заголовок + одна строка параметров, кнопка напоминания справа
   function renderTaskCard(task) {
     const isDone = task.status === 'done';
     const overdue = !isDone && task.date && isOverdue(task.date);
-    const projectColor = task.project_color || '';
-    const energyIcon = task.energy === 'quick' ? '🟢' : task.energy === 'medium' ? '🟡' : '🔴';
+    const chips = [];
 
-    let metaHtml = '';
-    let tagsHtml = '';
-
-    // Energy badge
-    const energyLabel = ENERGY_OPTIONS.find((e) => e.id === task.energy)?.desc || '';
-    metaHtml += `<span class="task-meta-item energy-${task.energy}">${energyIcon} ${escapeHTML(energyLabel)}</span>`;
-
-    // Date
-    if (task.date) {
-      const oc = overdue ? ' overdue' : '';
-      metaHtml += `<span class="task-meta-item${oc}"><span class="icon" data-icon="calendar" aria-hidden="true"></span>${escapeHTML(formatDate(task.date))}</span>`;
-    }
-
-    // Time
-    if (task.time) {
-      metaHtml += `<span class="task-meta-item"><span class="icon" data-icon="clock" aria-hidden="true"></span>${escapeHTML(formatTime(task.time))}</span>`;
-    }
-
-    // Repeat
-    if (task.repeat && task.repeat !== 'never') {
-      metaHtml += `<span class="task-meta-item"><span class="icon" data-icon="repeat" aria-hidden="true"></span>${escapeHTML(REPEAT_OPTIONS.find((r) => r.id === task.repeat)?.label || '')}</span>`;
-    }
-
-    // Project with color
-    if (task.project) {
-      const dot = projectColor
-        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${escapeHTML(projectColor)};margin-right:3px;flex-shrink:0"></span>`
-        : '';
-      metaHtml += `<span class="task-meta-item">${dot}${escapeHTML(task.project)}</span>`;
-    }
-
-    // Status badge (only if not todo)
-    if (task.status !== 'todo') {
-      metaHtml += `<span class="task-status-badge ${task.status}">${escapeHTML(STATUSES.find((s) => s.id === task.status)?.label || '')}</span>`;
-    }
-
-    // Tags
-    if (task.tags && task.tags.length > 0) {
-      tagsHtml = `<div class="task-tags">${task.tags.map((t) => `<span class="task-tag">${escapeHTML(t)}</span>`).join('')}</div>`;
-    }
-
-    // Checklist progress
-    if (task.checklist && task.checklist.length > 0) {
-      const done = task.checklist.filter((c) => c.done).length;
-      const total = task.checklist.length;
-      metaHtml += `<span class="task-meta-item"><span class="icon" data-icon="list" aria-hidden="true"></span>${done}/${total}</span>`;
-    }
-
-    return `
-      <div class="task-card${overdue ? ' overdue' : ''}${isDone ? ' done' : ''}" data-task-id="${task.id}">
-        <button class="task-check${isDone ? ' checked' : ''}" type="button" data-action="toggle-done" data-task-id="${task.id}" aria-label="${isDone ? 'Отметить невыполненным' : 'Отметить выполненным'}">
-          <span class="icon" data-icon="check" aria-hidden="true"></span>
-        </button>
-        <div class="task-body">
-          <div class="task-title">${escapeHTML(task.title)}</div>
-          <div class="task-meta">${metaHtml}</div>
-          ${tagsHtml}
-          <div class="task-card-actions">
-            <button class="small-button ghost" type="button" data-action="remind-later" data-task-id="${task.id}" style="min-height:26px;padding:0 8px;font-size:0.72rem;margin-top:4px">
-              <span class="icon" data-icon="bell" aria-hidden="true" style="width:12px;height:12px"></span>
-              Напомнить позже
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  /* ─── Create Modal ─── */
-  function renderCreateModal() {
+    if (task.date || task.time) {
+      const text = [task.date ? formatDate(task.date) : '', task.time ? formatTime(task.time) : ''].filter(Boolean).join(' ');
+      chips.push(`<span class="task-meta-item${overdue ? 
     const existing = document.querySelector('.create-modal-overlay');
     if (existing) existing.remove();
 
