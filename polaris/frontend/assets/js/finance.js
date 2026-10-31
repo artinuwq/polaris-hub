@@ -222,68 +222,34 @@ window.FinanceModule = (() => {
 
   function renderHeader() {
     return `
-      <div class="calendar-header">
-        <h1>Finance</h1>
-        <button class="calendar-add-button" type="button" data-action="open-add-payment">
-          <span class="icon" data-icon="plus" aria-hidden="true"></span>
-          <span>Добавить платёж</span>
-        </button>
-      </div>
+      <button class="finance-add-button" type="button" data-action="open-add-payment">
+        <span class="icon" data-icon="plus" aria-hidden="true"></span>
+        <span>Добавить платёж</span>
+      </button>
     `;
   }
 
   function renderSummary() {
     if (!summary) return '';
 
-    const cards = [];
+    const totals = (summary.totals_by_currency || []).map((t) => `
+      <div class="finance-total">
+        <span class="finance-stat-value">${formatAmount(t.monthly_total, t.currency)}<small> / мес</small></span>
+        <span class="finance-stat-sub">${formatAmount(t.yearly_total, t.currency)} / год</span>
+      </div>`).join('');
 
-    cards.push(`
-      <article class="card metric-card span-4">
-        <h3>Активные платежи</h3>
-        <div class="metric">
-          <span class="metric-value">${summary.active_count}</span>
-          <p class="metric-subtext">регулярных обязательств отслеживается</p>
-        </div>
-      </article>
-    `);
-
-    if (summary.next_payment) {
-      const np = summary.next_payment;
-      cards.push(`
-        <article class="card metric-card span-4">
-          <h3>Ближайший платёж</h3>
-          <div class="metric">
-            <span class="metric-value">${escapeHTML(np.name)} — ${formatAmount(np.amount, np.currency)}</span>
-            <p class="metric-subtext">${formatDateShort(np.next_payment_date)} · ${formatDaysUntil(np.days_until)}</p>
-          </div>
+    return `
+      <div class="finance-summary-row">
+        <article class="card finance-stat">
+          <span class="finance-stat-title">Активные платежи</span>
+          <span class="finance-stat-value">${summary.active_count}</span>
+          <span class="finance-stat-sub">регулярных обязательств</span>
         </article>
-      `);
-    } else {
-      cards.push(`
-        <article class="card metric-card span-4">
-          <h3>Ближайший платёж</h3>
-          <div class="metric">
-            <p class="metric-subtext">Нет активных платежей</p>
-          </div>
+        <article class="card finance-stat">
+          <span class="finance-stat-title">Сумма обязательств</span>
+          ${totals || '<span class="finance-stat-value">—</span>'}
         </article>
-      `);
-    }
-
-    if (summary.totals_by_currency && summary.totals_by_currency.length) {
-      const lines = summary.totals_by_currency.map((t) =>
-        `<span class="metric-value" style="font-size:0.95rem">${formatAmount(t.monthly_total, t.currency)} / мес · ${formatAmount(t.yearly_total, t.currency)} / год</span>`
-      ).join('');
-      cards.push(`
-        <article class="card metric-card span-4">
-          <h3>Сумма обязательств</h3>
-          <div class="metric">
-            ${lines}
-          </div>
-        </article>
-      `);
-    }
-
-    return `<div class="grid finance-summary-grid">${cards.join('')}</div>`;
+      </div>`;
   }
 
   function renderUpcoming() {

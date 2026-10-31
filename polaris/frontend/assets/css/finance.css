@@ -286,3 +286,43 @@
     align-items: flex-start;
   }
 }
+
+/* Кнопка добавления на всю ширину (без заголовка «Finance») */
+.finance-add-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--calendar-today, rgba(120, 100, 255, 0.7));
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.finance-add-button .icon { width: 16px; height: 16px; }
+
+/* Два смысловых блока в одну строку */
+.finance-summary-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.finance-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+.finance-stat-title { color: var(--text-secondary); font-size: 0.78rem; }
+.finance-stat-value { font-size: 1.45rem; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
+.finance-stat-value small { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
+.finance-stat-sub { color: var(--text-muted); font-size: 0.78rem; }
+.finance-total { display: flex; flex-direction: column; gap: 2px; }
+.finance-total + .finance-total { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--border-soft); }
+
