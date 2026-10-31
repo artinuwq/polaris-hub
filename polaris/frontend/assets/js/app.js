@@ -519,16 +519,6 @@
     if (view.id === 'email') {
       return `
         ${renderNotice()}
-        <section class="page-intro">
-          <div>
-            <p class="eyebrow">Email</p>
-            <h1 class="page-title">Почта</h1>
-            <p class="page-subtitle">Письма со всех подключённых ящиков.</p>
-          </div>
-          <div class="page-actions">
-            <button class="small-button primary" type="button" data-action="email-refresh">Обновить</button>
-          </div>
-        </section>
         <div id="email-container" class="email-page"></div>
       `;
     }
@@ -663,6 +653,7 @@
     // Уходим со страницы — снимаем её кнопку «Назад» и закрываем её модалки
     if (state.currentView !== 'servers') window.PolarisBack?.pop('servers-sub');
     if (state.currentView !== 'tasks') window.TasksModule?.leave?.();
+    if (state.currentView !== 'email') window.EmailModule?.leave?.();
 
     const mounts = {
       attention: ['HomeModule', 'home-container'],

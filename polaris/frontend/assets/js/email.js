@@ -12,11 +12,50 @@ window.EmailModule = (() => {
   let accounts = [];
   let messages = [];
   let hasMore = false;
-  let filter = null; // account id | null
+  const STORAGE_KEY = 'polaris_mail_accounts';
+  let selected = readSelection(); // null — все ящики, иначе массив id
+  let filterOpen = false;
+  let selectedAtOpen = '';
   let loaded = false;
   let loading = false;
   let error = '';
   let lastLoad = 0;
+
+  function readSelection() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      return Array.isArray(raw) && raw.length ? raw.map(Number) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveSelection() {
+    try {
+      if (selected) localStorage.setItem(STORAGE_KEY, JSON.stringify(selected));
+      else localStorage.removeItem(STORAGE_KEY);
+    } catch (e) { /* хранилище недоступно — выбор живёт до перезагрузки */ }
+  }
+
+  // Приводит выбор в порядок: убирает удалённые ящики, «все выбраны» = null
+  function normalizeSelection() {
+    if (!selected) return;
+    const ids = new Set(accounts.map((a) => a.id));
+    selected = selected.filter((id) => ids.has(id));
+    if (!selected.length || selected.length >= accounts.length) selected = null;
+    saveSelection();
+  }
+
+  const accountQuery = () => (selected ? `&account_ids=${selected.join(',')}` : '');
+
+  function filterLabel() {
+    if (!selected) return 'Все ящики';
+    if (selected.length === 1) {
+      const acc = accounts.find((a) => a.id === selected[0]);
+      return acc ? (acc.label || acc.email) : 'Ящик';
+    }
+    return `${selected.length} из ${accounts.length}`;
+  }
 
   function escapeHTML(value) {
     return String(value ?? '')
@@ -76,9 +115,10 @@ window.EmailModule = (() => {
     if (!silent && !loaded) render();
     try {
       const keep = Math.min(100, Math.max(PAGE, messages.length));
-      const query = `limit=${keep}${filter ? `&account_id=${filter}` : ''}`;
+      const query = `limit=${keep}${accountQuery()}`;
       const [overview, list] = await Promise.all([api('/api/mail/overview'), api(`/api/mail/messages?${query}`)]);
       accounts = overview.accounts || [];
+      normalizeSelection();
       messages = list.messages || [];
       hasMore = Boolean(list.has_more);
       error = '';
@@ -98,7 +138,7 @@ window.EmailModule = (() => {
     render();
     try {
       const last = messages[messages.length - 1].id;
-      const query = `limit=${PAGE}&before_id=${last}${filter ? `&account_id=${filter}` : ''}`;
+      const query = `limit=${PAGE}&before_id=${last}${accountQuery()}`;
       const list = await api(`/api/mail/messages?${query}`);
       messages = messages.concat(list.messages || []);
       hasMore = Boolean(list.has_more);
@@ -181,29 +221,88 @@ window.EmailModule = (() => {
       <div class="mail-warn">⚠️ ${escapeHTML(a.label || a.email)}: ${escapeHTML(a.last_error || 'ошибка подключения')}
         <button type="button" class="small-button" data-view="settings">Исправить</button></div>`).join('');
 
-    const chips = accounts.length > 1
-      ? `<div class="attn-filters">
-          <button type="button" class="attn-chip${filter === null ? ' is-active' : ''}" data-mail-action="filter" data-id="">Все</button>
-          ${accounts.map((a) => `<button type="button" class="attn-chip${filter === a.id ? ' is-active' : ''}"
-            data-mail-action="filter" data-id="${a.id}">${escapeHTML(a.label || a.email)} <span>${a.message_count}</span></button>`).join('')}
-        </div>`
-      : '';
+    const toolbar = `
+      <div class="mail-toolbar">
+        <button type="button" class="mail-refresh" data-mail-action="reload" ${loading ? 'disabled' : ''}>${loading ? 'Обновляю…' : 'Обновить'}</button>
+        ${accounts.length > 1 ? `<button type="button" class="mail-filter-button" data-mail-action="filter-open">${escapeHTML(filterLabel())}<span class="mail-chevron" aria-hidden="true"></span></button>` : ''}
+      </div>`;
 
-    container.innerHTML = `${warn}${chips}${renderBody()}`;
+    container.innerHTML = `${toolbar}${warn}${renderBody()}`;
+  }
+
+  /* ─── Выбор ящиков (маленькая модалка) ─── */
+  function filterModalHTML() {
+    const isAll = !selected;
+    const row = (id, title, sub, on) => `
+      <button type="button" class="mail-pick${on ? ' is-on' : ''}" data-mail-action="pick" data-id="${id}">
+        <span class="mail-pick-box"><span class="mail-pick-tick"></span></span>
+        <span class="mail-pick-text"><span class="mail-pick-title">${escapeHTML(title)}</span>${sub ? `<span class="mail-pick-sub">${escapeHTML(sub)}</span>` : ''}</span>
+      </button>`;
+    return `
+      <div class="mail-modal-head"><h3>Какие ящики показывать</h3></div>
+      <div class="mail-picks">
+        ${row('all', 'Все ящики', '', isAll)}
+        ${accounts.map((a) => row(a.id, a.label || a.email, a.label ? a.email : '', isAll || selected.includes(a.id))).join('')}
+      </div>
+      <button type="button" class="mail-modal-done" data-mail-action="filter-close">Готово</button>`;
+  }
+
+  function openFilter() {
+    closeFilter(false);
+    filterOpen = true;
+    selectedAtOpen = JSON.stringify(selected);
+    const overlay = document.createElement('div');
+    overlay.className = 'mail-overlay';
+    overlay.innerHTML = `<div class="mail-modal" role="dialog" aria-modal="true">${filterModalHTML()}</div>`;
+    const openedAt = Date.now();
+    overlay.addEventListener('click', (e) => {
+      if (Date.now() - openedAt < 350) return;
+      if (e.target === overlay) closeFilter(true);
+    });
+    overlay.addEventListener('click', onClick);
+    document.body.appendChild(overlay);
+    window.PolarisBack?.push('mail-filter', () => closeFilter(true));
+  }
+
+  function closeFilter(apply) {
+    const overlay = document.querySelector('.mail-overlay');
+    if (overlay) overlay.remove();
+    if (filterOpen) window.PolarisBack?.pop('mail-filter');
+    filterOpen = false;
+    if (apply && JSON.stringify(selected) !== selectedAtOpen) {
+      messages = [];
+      load();
+    }
+  }
+
+  function togglePick(id) {
+    const all = accounts.map((a) => a.id);
+    if (id === 'all') {
+      selected = null;
+    } else {
+      const current = new Set(selected || all);
+      const num = Number(id);
+      if (current.has(num)) current.delete(num); else current.add(num);
+      selected = current.size && current.size < all.length ? [...current] : null; // пусто → снова все
+    }
+    saveSelection();
+    const modal = document.querySelector('.mail-modal');
+    if (modal) modal.innerHTML = filterModalHTML();
+    const btn = container?.querySelector('.mail-filter-button');
+    if (btn) btn.firstChild.textContent = filterLabel();
   }
 
   function onClick(event) {
     const btn = event.target.closest('[data-mail-action]');
-    if (!btn || !container.contains(btn)) return;
+    if (!btn) return;
+    if (!container?.contains(btn) && !btn.closest('.mail-overlay')) return;
     event.preventDefault();
     const action = btn.dataset.mailAction;
     if (action === 'reload') load();
     else if (action === 'more') loadMore();
-    else if (action === 'filter') {
-      filter = btn.dataset.id ? Number(btn.dataset.id) : null;
-      messages = [];
-      load();
-    }
+    else if (action === 'filter-open') openFilter();
+    else if (action === 'filter-close') closeFilter(true);
+    else if (action === 'pick') togglePick(btn.dataset.id);
   }
 
   function init(containerId) {
@@ -211,7 +310,7 @@ window.EmailModule = (() => {
     if (!el) return;
     clearInterval(timer);
     container = el;
-    container.addEventListener('click', onClick);
+    if (!container.dataset.mailBound) { container.dataset.mailBound = '1'; container.addEventListener('click', onClick); }
     render();
     if (!loaded || Date.now() - lastLoad > 15000) load({ silent: loaded });
     timer = setInterval(() => {
@@ -220,5 +319,8 @@ window.EmailModule = (() => {
     }, REFRESH_MS);
   }
 
-  return { init, reload: () => load() };
+  // Уход со страницы: закрываем модалку и снимаем «Назад»
+  function leave() { closeFilter(false); }
+
+  return { init, reload: () => load(), leave };
 })();

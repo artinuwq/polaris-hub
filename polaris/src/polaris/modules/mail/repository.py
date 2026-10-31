@@ -257,17 +257,28 @@ def _message_row(row) -> dict[str, Any]:
     return data
 
 
-def list_messages(account_id: int | None = None, limit: int = 30, before_id: int | None = None) -> list[dict[str, Any]]:
+def list_messages(
+    account_ids: list[int] | None = None,
+    limit: int = 30,
+    before_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Письма, новые сверху. account_ids — показать только эти ящики (None — все)."""
+    where = ["(? IS NULL OR m.id < ?)"]
+    params: list[Any] = [before_id, before_id]
+    if account_ids:
+        where.append(f"m.account_id IN ({','.join('?' for _ in account_ids)})")
+        params.extend(account_ids)
+    params.append(limit)
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT m.*, a.email AS account_email, a.label AS account_label, a.provider AS provider,
+            f"""SELECT m.*, a.email AS account_email, a.label AS account_label, a.provider AS provider,
                  (SELECT COUNT(*) FROM mail_deliveries d WHERE d.message_id = m.id AND d.status = 'sent')    AS sent_count,
                  (SELECT COUNT(*) FROM mail_deliveries d WHERE d.message_id = m.id AND d.status = 'pending') AS pending_count,
                  (SELECT COUNT(*) FROM mail_deliveries d WHERE d.message_id = m.id AND d.status = 'failed')  AS failed_count
                FROM mail_messages m JOIN mail_accounts a ON a.id = m.account_id
-               WHERE (? IS NULL OR m.account_id = ?) AND (? IS NULL OR m.id < ?)
+               WHERE {' AND '.join(where)}
                ORDER BY m.id DESC LIMIT ?""",
-            (account_id, account_id, before_id, before_id, limit),
+            params,
         ).fetchall()
     return [_message_row(r) for r in rows]
 

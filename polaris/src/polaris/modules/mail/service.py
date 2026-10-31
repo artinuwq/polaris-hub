@@ -144,7 +144,11 @@ def test_destination(destination_id: int, bot_token: str) -> None:
 
 # ───────────────────────────── messages ─────────────────────────────
 
-def list_messages(account_id: int | None = None, limit: int = 30, before_id: int | None = None) -> dict[str, Any]:
+def list_messages(
+    account_ids: list[int] | None = None,
+    limit: int = 30,
+    before_id: int | None = None,
+) -> dict[str, Any]:
     limit = max(1, min(int(limit), 100))
-    rows = repository.list_messages(account_id, limit + 1, before_id)
+    rows = repository.list_messages(account_ids, limit + 1, before_id)
     return {"messages": rows[:limit], "has_more": len(rows) > limit}

@@ -8,7 +8,7 @@
   PATCH  /api/mail/destinations/{id}           — название / включить-выключить
   DELETE /api/mail/destinations/{id}
   POST   /api/mail/destinations/{id}/test      — отправить тестовое сообщение
-  GET    /api/mail/messages                    — письма (?account_id=&limit=&before_id=)
+  GET    /api/mail/messages                    — письма (?account_ids=1,2&limit=&before_id=; account_id= — один ящик)
 
 Пароли ящиков наружу не отдаются.
 """
@@ -88,8 +88,17 @@ def test_destination(destination_id: int, _user: TelegramWebAppUser | None = Dep
 @router.get("/messages")
 def list_messages(
     account_id: int | None = Query(default=None),
+    account_ids: str | None = Query(default=None, description="Ящики через запятую: 1,2,3"),
     limit: int = Query(default=30, ge=1, le=100),
     before_id: int | None = Query(default=None),
     _user: TelegramWebAppUser | None = Depends(require_admin),
 ):
-    return {"success": True, "data": service.list_messages(account_id, limit, before_id)}
+    ids: list[int] = []
+    if account_id is not None:
+        ids.append(account_id)
+    if account_ids:
+        try:
+            ids.extend(int(x) for x in account_ids.split(",") if x.strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="account_ids must be integers") from exc
+    return {"success": True, "data": service.list_messages(ids or None, limit, before_id)}

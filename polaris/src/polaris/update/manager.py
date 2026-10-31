@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -147,6 +149,10 @@ class UpdateManager:
             text=True,
             check=False,
         )
+        if completed.returncode < 0:
+            # systemctl убит сигналом (обычно -15): сервис перезапускает сам себя, и systemd
+            # снёс весь cgroup вместе с нашим systemctl. Рестарт при этом ИДЁТ — это не ошибка.
+            return True, f"Перезапуск {service} запущен"
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or f"exit code {completed.returncode}").strip()
             return False, f"Не удалось перезапустить {service}: {detail}"
@@ -169,3 +175,60 @@ class UpdateManager:
         )
         detail = (status.stdout or status.stderr or f"exit code {check.returncode}").strip()
         return False, f"Сервис {service} не активен после рестарта: {detail}"
+
+    # ── перезапуск со «сторожем»: ждём до минуты и честно сообщаем итог ──
+    def _start_watcher(self, chat_id: int, message_id: int, versions: str, before: str) -> bool:
+        """Запускает сторожа вне cgroup сервиса, иначе рестарт убьёт и его.
+        Токен бота передаётся через окружение, а не аргументами (их видно в ps)."""
+        service = self.settings.update_service_name
+        script = Path(__file__).resolve().with_name("watcher.py")
+        args = [
+            sys.executable, str(script),
+            "--service", service,
+            "--chat-id", str(chat_id),
+            "--message-id", str(message_id),
+            "--versions", versions,
+            "--before", before,
+            "--host", self.settings.web_host,
+            "--port", str(self.settings.web_port),
+            "--timeout", "60",
+        ]
+        env = {**os.environ, "POLARIS_WATCH_TOKEN": self.settings.telegram_bot_token}
+        try:
+            systemd_run = shutil.which("systemd-run")
+            if systemd_run:
+                unit = f"polaris-update-watch-{int(time.time())}"
+                subprocess.run(
+                    [systemd_run, "--no-block", "--collect", "--quiet", f"--unit={unit}",
+                     "--setenv=POLARIS_WATCH_TOKEN", *args],
+                    env=env, check=True, capture_output=True, text=True, timeout=15,
+                )
+                return True
+            # без systemd-run: отдельная сессия (переживёт рестарт, только если KillMode=process)
+            subprocess.Popen(args, env=env, start_new_session=True,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def restart_with_watcher(self, chat_id: int, message_id: int, versions: str) -> tuple[bool, str]:
+        """Перезапускает сервис. Итог («запущен» / «не поднялся за минуту») в сообщение chat_id/message_id
+        напишет сторож. Если сторожа запустить не удалось — возвращаем (None-подобное) False с detail
+        'no-watcher', и вызывающий откатывается на старую схему с notice-файлом."""
+        service = self.settings.update_service_name
+        if not service:
+            return False, "UPDATE_SERVICE_NAME не задан"
+        systemctl = shutil.which("systemctl")
+        if not systemctl:
+            return False, "systemctl не найден"
+        before = subprocess.run(
+            [systemctl, "show", service, "-p", "ActiveEnterTimestampMonotonic", "--value"],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip()
+        if not self._start_watcher(chat_id, message_id, versions, before):
+            return False, "no-watcher"
+        completed = subprocess.run([systemctl, "restart", service], capture_output=True, text=True, check=False)
+        if completed.returncode > 0:
+            detail = (completed.stderr or completed.stdout or f"exit code {completed.returncode}").strip()
+            return False, f"Не удалось перезапустить {service}: {detail}"
+        return True, f"Перезапуск {service} запущен"

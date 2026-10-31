@@ -338,15 +338,24 @@ class PolarisBot:
                     f"✅ Обновлено: {versions}\n⚠️ UPDATE_SERVICE_NAME не задан — перезапустите сервис вручную."
                 )
                 return
-            # Перезапуск убьёт этот процесс, поэтому итог пишем заранее, а после старта бот дописывает «запущено».
-            await asyncio.to_thread(
-                manager.save_notice, progress.chat.id, progress.message_id, result.current_sha or ""
-            )
             await self._safe_edit(progress, f"✅ Обновлено: {versions}\n🔄 Перезапускаю сервис…")
-            restarted, detail = await asyncio.to_thread(manager.restart_service)
-            if not restarted:
+            # Перезапуск убивает этот процесс, поэтому итог пишет отдельный «сторож»: ждёт до минуты,
+            # пока сервис поднимется, и правит это сообщение («успешно» или «не удалось»).
+            started, detail = await asyncio.to_thread(
+                manager.restart_with_watcher, progress.chat.id, progress.message_id, versions
+            )
+            if started:
+                return
+            if detail == "no-watcher":
+                # запасной путь: итог дозапишет новый процесс бота при старте
+                await asyncio.to_thread(
+                    manager.save_notice, progress.chat.id, progress.message_id, result.current_sha or ""
+                )
+                restarted, detail = await asyncio.to_thread(manager.restart_service)
+                if restarted:
+                    return
                 await asyncio.to_thread(manager.clear_notice)
-                await self._safe_edit(progress, f"✅ Обновлено: {versions}\n⚠️ {detail}")
+            await self._safe_edit(progress, f"✅ Обновлено: {versions}\n⚠️ {detail}")
         except Exception as exc:  # noqa: BLE001 — молчаливых зависаний быть не должно
             logger.exception("update failed")
             try:
