@@ -18,10 +18,16 @@ window.SettingsModule = (() => {
   let passwordEditId = null;
   let tab = 'mail';       // 'mail' | 'system'
   let mailTab = 'accounts'; // 'accounts' | 'dests'
-  let modalOpen = false;
-  let modalSaving = false;
-  let modalError = '';
-  let modalForm = { provider: 'mailru', email: '', password: '', label: '' };
+
+  const ICONS = {
+    plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>',
+  };
+
+  function hydrateIcons(root) {
+    root.querySelectorAll('[data-icon]').forEach((node) => {
+      node.innerHTML = ICONS[node.dataset.icon] || '';
+    });
+  }
 
   function escapeHTML(value) {
     return String(value ?? '')
@@ -111,89 +117,83 @@ window.SettingsModule = (() => {
     return Number.isNaN(date.getTime()) ? '—' : date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   }
 
-  function accountStatus(a) {
-    if (!a.enabled) return '<span class="badge">Выключен</span>';
-    if (a.last_status === 'ok') return '<span class="badge success">Работает</span>';
-    if (a.last_status === 'error') return '<span class="badge error">Ошибка</span>';
-    return '<span class="badge warning">Подключаюсь…</span>';
-  }
-
   function providerLabel(id) {
     return (data.providers.find((p) => p.id === id) || {}).label || id;
   }
 
-  function renderAccounts() {
-    if (!loaded) return error
-      ? `<p class="st-error">${escapeHTML(error)}</p>`
-      : '<div class="skeleton-line"></div><div class="skeleton-line"></div>';
-    if (!data.accounts.length) return '<p class="metric-subtext">Ящиков пока нет — добавьте первый ниже.</p>';
-    return data.accounts.map((a) => `
-      <div class="st-card-row" data-id="${a.id}">
-        <div class="st-card-main">
-          <div class="st-card-header">
-            <span class="st-card-title">${escapeHTML(a.label || a.email)}</span>
-            <span class="st-card-badge ${a.enabled ? (a.last_status === 'ok' ? 'success' : a.last_status === 'error' ? 'error' : 'warning') : 'disabled'}">
-              ${a.enabled ? (a.last_status === 'ok' ? 'Работает' : a.last_status === 'error' ? 'Ошибка' : 'Подключаюсь…') : 'Выключен'}
-            </span>
-          </div>
-          <div class="st-card-meta">
-            <span class="st-card-provider">${escapeHTML(providerLabel(a.provider))}</span>
-            <span class="st-card-email">${escapeHTML(a.email)}</span>
-            ${a.enabled && a.last_checked_at ? `<span class="st-card-checked">проверено ${escapeHTML(relTime(a.last_checked_at))}</span>` : ''}
-          </div>
-          ${a.last_status === 'error' && a.enabled ? `<div class="st-card-error">${escapeHTML(a.last_error)}</div>` : ''}
-          ${passwordEditId === a.id ? `
-            <div class="st-card-inline">
-              <input class="st-input" id="st-newpass-${a.id}" type="password" autocomplete="new-password" placeholder="Новый пароль приложения" />
-              <button type="button" class="small-button primary" data-st="acc-pass-save" data-id="${a.id}">Сохранить</button>
-              <button type="button" class="small-button ghost" data-st="acc-pass" data-id="${a.id}">Отмена</button>
-            </div>` : ''}
-        </div>
-        <div class="st-card-menu">
-          <button type="button" class="st-menu-btn" data-st="acc-menu" data-id="${a.id}" aria-label="Настройки ящика">⚙️</button>
-          <div class="st-menu-dropdown" id="st-menu-${a.id}" hidden>
-            <button type="button" class="st-menu-item" data-st="acc-toggle" data-id="${a.id}" data-enabled="${a.enabled ? '0' : '1'}">${a.enabled ? 'Выключить' : 'Включить'}</button>
-            <button type="button" class="st-menu-item" data-st="acc-pass" data-id="${a.id}">Поменять пароль</button>
-            <button type="button" class="st-menu-item danger" data-st="acc-del" data-id="${a.id}">Удалить ящик</button>
-          </div>
-        </div>
-      </div>`).join('');
-  }
-
-  function destStatus(d) {
-    if (!d.enabled) return '<span class="badge">Выключен</span>';
-    if (d.last_status === 'ok') return '<span class="badge success">Доставляется</span>';
-    if (d.last_status === 'error') return '<span class="badge error">Ошибка</span>';
-    return '<span class="badge warning">Не проверен</span>';
-  }
-
   const KIND = { user: 'Личные сообщения', group: 'Группа', topic: 'Тема группы', channel: 'Канал / группа' };
 
+  function badge(kind, text) {
+    return `<span class="st-badge is-${kind}">${escapeHTML(text)}</span>`;
+  }
+
+  function accountBadge(a) {
+    if (!a.enabled) return badge('off', 'Выключен');
+    if (a.last_status === 'ok') return badge('ok', 'Работает');
+    if (a.last_status === 'error') return badge('err', 'Ошибка');
+    return badge('warn', 'Подключаюсь…');
+  }
+
+  function destBadge(d) {
+    if (!d.enabled) return badge('off', 'Выключен');
+    if (d.last_status === 'ok') return badge('ok', 'Доставляется');
+    if (d.last_status === 'error') return badge('err', 'Ошибка');
+    return badge('warn', 'Не проверен');
+  }
+
+  const skeleton = '<div class="card st-item"><div class="skeleton-line"></div><div class="skeleton-line"></div></div>';
+
+  function renderAccounts() {
+    if (!loaded) return error ? `<p class="st-error">${escapeHTML(error)}</p>` : skeleton;
+    if (!data.accounts.length) return '<p class="st-empty">Ящиков пока нет. Добавьте первый — письма появятся в разделе Email.</p>';
+    return data.accounts.map((a) => `
+      <article class="card st-item" data-id="${a.id}">
+        <div class="st-item-head">
+          <span class="st-item-title">${escapeHTML(a.label || a.email)}</span>
+          ${accountBadge(a)}
+        </div>
+        <div class="st-item-sub">${escapeHTML(providerLabel(a.provider))} · ${escapeHTML(a.email)}${a.enabled && a.last_checked_at ? ` · проверено ${escapeHTML(relTime(a.last_checked_at))}` : ''}</div>
+        ${a.last_status === 'error' && a.enabled ? `<div class="st-item-error">${escapeHTML(a.last_error)}</div>` : ''}
+        ${passwordEditId === a.id ? `
+          <div class="st-item-inline">
+            <input class="st-input" id="st-newpass-${a.id}" type="password" autocomplete="new-password" placeholder="Новый пароль приложения" />
+            <div class="st-item-actions">
+              <button type="button" class="st-btn primary" data-st="acc-pass-save" data-id="${a.id}">Сохранить</button>
+              <button type="button" class="st-btn" data-st="acc-pass" data-id="${a.id}">Отмена</button>
+            </div>
+          </div>` : `
+          <div class="st-item-actions">
+            <button type="button" class="st-btn" data-st="acc-toggle" data-id="${a.id}" data-enabled="${a.enabled ? '0' : '1'}">${a.enabled ? 'Выключить' : 'Включить'}</button>
+            <button type="button" class="st-btn" data-st="acc-pass" data-id="${a.id}">Пароль</button>
+            <button type="button" class="st-btn danger" data-st="acc-del" data-id="${a.id}">Удалить</button>
+          </div>`}
+      </article>`).join('');
+  }
+
   function renderDestinations() {
-    if (!loaded) return '<div class="skeleton-line"></div>';
-    if (!data.destinations.length) return '<p class="metric-subtext">Получателей нет — письма будут только в разделе Email. Добавьте получателя ниже.</p>';
+    if (!loaded) return error ? `<p class="st-error">${escapeHTML(error)}</p>` : skeleton;
+    if (!data.destinations.length) return '<p class="st-empty">Получателей нет — письма будут только в разделе Email. Добавьте получателя, чтобы они приходили в Telegram.</p>';
     return data.destinations.map((d) => `
-      <div class="st-row">
-        <div class="st-row-main">
-          <div class="st-row-title">${escapeHTML(d.label)} ${destStatus(d)}</div>
-          <div class="st-row-sub">${escapeHTML(KIND[d.kind] || d.kind)} · <code>${escapeHTML(d.chat_id)}</code>${d.thread_id ? ` · тема ${d.thread_id}` : ''}
-            · отправлено: ${d.sent_count}${d.pending_count ? ` · в очереди: ${d.pending_count}` : ''}${d.failed_count ? ` · не доставлено: ${d.failed_count}` : ''}</div>
-          ${d.last_status === 'error' && d.enabled ? `<div class="st-row-err">${escapeHTML(d.last_error)}</div>` : ''}
+      <article class="card st-item" data-id="${d.id}">
+        <div class="st-item-head">
+          <span class="st-item-title">${escapeHTML(d.label)}</span>
+          ${destBadge(d)}
         </div>
-        <div class="st-row-actions">
-          <button type="button" class="small-button primary" data-st="dest-test" data-id="${d.id}">Тест</button>
-          <button type="button" class="small-button" data-st="dest-toggle" data-id="${d.id}" data-enabled="${d.enabled ? '0' : '1'}">${d.enabled ? 'Выключить' : 'Включить'}</button>
-          <button type="button" class="small-button ghost" data-st="dest-del" data-id="${d.id}">Удалить</button>
+        <div class="st-item-sub">${escapeHTML(KIND[d.kind] || d.kind)} · <code>${escapeHTML(d.chat_id)}</code>${d.thread_id ? ` · тема ${d.thread_id}` : ''}</div>
+        <div class="st-item-sub">отправлено: ${d.sent_count}${d.pending_count ? ` · в очереди: ${d.pending_count}` : ''}${d.failed_count ? ` · не доставлено: ${d.failed_count}` : ''}</div>
+        ${d.last_status === 'error' && d.enabled ? `<div class="st-item-error">${escapeHTML(d.last_error)}</div>` : ''}
+        <div class="st-item-actions">
+          <button type="button" class="st-btn" data-st="dest-test" data-id="${d.id}">Тест</button>
+          <button type="button" class="st-btn" data-st="dest-toggle" data-id="${d.id}" data-enabled="${d.enabled ? '0' : '1'}">${d.enabled ? 'Выключить' : 'Включить'}</button>
+          <button type="button" class="st-btn danger" data-st="dest-del" data-id="${d.id}">Удалить</button>
         </div>
-      </div>`).join('');
+      </article>`).join('');
   }
 
   function renderLists() {
     if (!container) return;
-    const a = $('st-accounts');
-    const d = $('st-dests');
-    if (a) a.innerHTML = renderAccounts();
-    if (d) d.innerHTML = renderDestinations();
+    const list = $('st-list');
+    if (list) list.innerHTML = mailTab === 'dests' ? renderDestinations() : renderAccounts();
   }
 
   function renderTabs() {
@@ -206,95 +206,149 @@ window.SettingsModule = (() => {
     return `<div class="st-tabs is-sub">${t('accounts', 'Ящики')}${t('dests', 'Получатели')}</div>`;
   }
 
-  function renderAccountsCard(providers) {
+  function renderMailBody() {
+    const isDests = mailTab === 'dests';
     return `
-      <section class="card st-card">
-        <div id="st-accounts"></div>
-        <div class="st-form-footer">
-          <button type="button" class="st-add-account-btn" data-st="acc-add-modal">
-            <span class="icon" data-icon="plus" aria-hidden="true"></span>
-            <span>Добавить ящик</span>
-          </button>
-        </div>
-      </section>`;
-  }
-
-  function renderDestsCard() {
-    return `
-      <section class="card st-card">
-        <div id="st-dests"></div>
-        <div class="st-form">
-          <h3 class="st-subtitle">Добавить получателя</h3>
-          <div class="st-grid">
-            <input class="st-input st-wide" id="st-target" type="text" autocomplete="off" placeholder="ID, -100…, 3281520729/1279 или ссылка t.me/c/…" />
-            <input class="st-input" id="st-dlabel" type="text" maxlength="80" placeholder="Название (необязательно)" />
-          </div>
-          <p class="st-hint" id="st-target-preview">&nbsp;</p>
-          <button type="button" class="small-button primary" data-st="dest-add" id="st-dest-add">Добавить получателя</button>
-        </div>
-      </section>`;
+      ${renderMailSubTabs()}
+      <button type="button" class="st-add-button" data-st="open-add">
+        <span class="icon" data-icon="plus" aria-hidden="true"></span>
+        <span>${isDests ? 'Добавить получателя' : 'Добавить ящик'}</span>
+      </button>
+      <div id="st-list" class="st-list"></div>`;
   }
 
   function renderShell() {
-    const providers = (data.providers.length ? data.providers : [{ id: 'mailru', label: 'Mail.ru' }, { id: 'gmail', label: 'Google' }]);
-    let body;
-    if (tab === 'system') {
-      body = window.PolarisUpdateUI ? window.PolarisUpdateUI.render() : '';
-    } else {
-      body = `${renderMailSubTabs()}${mailTab === 'dests' ? renderDestsCard() : renderAccountsCard(providers)}`;
-    }
+    const body = tab === 'system'
+      ? (window.PolarisUpdateUI ? window.PolarisUpdateUI.render() : '')
+      : renderMailBody();
     container.innerHTML = `
-      <section class="page-intro">
-        <div>
-          <h1 class="page-title">Настройки</h1>
-        </div>
-      </section>
       ${renderTabs()}
       <div id="st-msg" class="st-msg" hidden></div>
-      ${body}
-      ${modalOpen ? renderModal() : ''}`;
+      ${body}`;
+    hydrateIcons(container);
     renderLists();
-    if (modalOpen) {
-      // focus first input
-      const firstInput = container.querySelector('.st-modal-input');
-      if (firstInput) firstInput.focus();
-    }
   }
 
-  function renderModal() {
+  /* ─── Маленькие модалки (общий вид с задачами) ─── */
+  let overlayEl = null;
+
+  function closeModal() {
+    if (!overlayEl) return;
+    overlayEl.remove();
+    overlayEl = null;
+    window.PolarisBack?.pop('settings-modal');
+  }
+
+  function openModal(html, onClick) {
+    closeModal();
+    overlayEl = document.createElement('div');
+    overlayEl.className = 'tk-overlay';
+    overlayEl.innerHTML = `<div class="tk-modal" role="dialog" aria-modal="true">${html}</div>`;
+    const openedAt = Date.now();
+    overlayEl.addEventListener('click', (e) => {
+      if (e.target === overlayEl && Date.now() - openedAt > 350) { closeModal(); return; }
+      const btn = e.target.closest('[data-sm]');
+      if (btn) { e.preventDefault(); onClick(btn.dataset.sm, btn); }
+    });
+    document.body.appendChild(overlayEl);
+    window.PolarisBack?.push('settings-modal', closeModal);
+    return overlayEl;
+  }
+
+  const modalVal = (id) => overlayEl?.querySelector(`#${id}`)?.value ?? '';
+  const modalError = (text) => {
+    const box = overlayEl?.querySelector('#sm-error');
+    if (box) { box.textContent = text; box.hidden = !text; }
+  };
+
+  function openAccountModal() {
     const providers = data.providers.length ? data.providers : [{ id: 'mailru', label: 'Mail.ru' }, { id: 'gmail', label: 'Google' }];
-    return `
-      <div class="st-modal-overlay" data-st="acc-modal-close">
-        <div class="st-modal" role="dialog" aria-modal="true" aria-labelledby="st-modal-title">
-          <h3 id="st-modal-title" class="st-modal-title">Добавить ящик</h3>
-          ${modalError ? `<p class="st-modal-error">${escapeHTML(modalError)}</p>` : ''}
-          <div class="st-modal-body">
-            <div class="st-modal-field">
-              <label class="st-modal-label" for="st-modal-provider">Провайдер</label>
-              <select class="st-modal-input" id="st-modal-provider" data-st="modal-provider">
-                ${providers.map((p) => `<option value="${escapeHTML(p.id)}" ${modalForm.provider === p.id ? 'selected' : ''}>${escapeHTML(p.label)}</option>`).join('')}
-              </select>
-            </div>
-            <div class="st-modal-field">
-              <label class="st-modal-label" for="st-modal-email">Email</label>
-              <input class="st-modal-input" id="st-modal-email" type="email" autocomplete="off" placeholder="адрес@почты" value="${escapeHTML(modalForm.email)}" data-st="modal-email" />
-            </div>
-            <div class="st-modal-field">
-              <label class="st-modal-label" for="st-modal-password">Пароль приложения</label>
-              <input class="st-modal-input" id="st-modal-password" type="password" autocomplete="new-password" placeholder="Пароль приложения" value="${escapeHTML(modalForm.password)}" data-st="modal-password" />
-            </div>
-            <div class="st-modal-field">
-              <label class="st-modal-label" for="st-modal-label">Название (необязательно)</label>
-              <input class="st-modal-input" id="st-modal-label" type="text" maxlength="80" placeholder="Название ящика" value="${escapeHTML(modalForm.label)}" data-st="modal-label" />
-            </div>
-            <p class="st-modal-hint">${escapeHTML(HINTS[modalForm.provider] || '')}</p>
-          </div>
-          <div class="st-modal-actions">
-            <button type="button" class="small-button ghost" data-st="acc-modal-close">Отмена</button>
-            <button type="button" class="small-button primary" data-st="acc-add-submit" ${modalSaving ? 'disabled' : ''}>${modalSaving ? 'Проверяю…' : 'Добавить и проверить'}</button>
-          </div>
-        </div>
-      </div>`;
+    const el = openModal(`
+      <div class="tk-head"><h3>Добавить ящик</h3></div>
+      <p id="sm-error" class="st-modal-error" hidden></p>
+      <div class="tk-field"><label>Провайдер</label>
+        <select id="sm-provider">${providers.map((p) => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.label)}</option>`).join('')}</select>
+      </div>
+      <div class="tk-field"><label>Email</label><input id="sm-email" type="email" autocomplete="off" placeholder="адрес@почты" /></div>
+      <div class="tk-field"><label>Пароль приложения</label><input id="sm-password" type="password" autocomplete="new-password" placeholder="Пароль приложения" /></div>
+      <div class="tk-field"><label>Название (необязательно)</label><input id="sm-label" type="text" maxlength="80" placeholder="Например, Рабочая" /></div>
+      <p id="sm-hint" class="st-modal-hint">${escapeHTML(HINTS[providers[0].id] || '')}</p>
+      <div class="tk-actions"><div class="tk-actions-row">
+        <button type="button" class="tk-btn primary" data-sm="acc-submit">Добавить</button>
+        <button type="button" class="tk-btn" data-sm="close">Отмена</button>
+      </div></div>`, async (action, btn) => {
+      if (action === 'close') { closeModal(); return; }
+      if (action !== 'acc-submit') return;
+      const body = { provider: modalVal('sm-provider'), email: modalVal('sm-email').trim(), password: modalVal('sm-password'), label: modalVal('sm-label').trim() };
+      if (!body.email || !body.password) { modalError('Заполните email и пароль'); return; }
+      btn.disabled = true;
+      btn.textContent = 'Проверяю вход…';
+      modalError('');
+      try {
+        await api('/api/mail/accounts', 'POST', body);
+        closeModal();
+        notify('Ящик добавлен. Письма появятся в разделе Email.', 'ok');
+        await load();
+      } catch (err) {
+        modalError(err.message || 'Не удалось добавить ящик');
+        btn.disabled = false;
+        btn.textContent = 'Добавить';
+      }
+    });
+    el.querySelector('#sm-provider').addEventListener('change', (e) => {
+      el.querySelector('#sm-hint').textContent = HINTS[e.target.value] || '';
+    });
+    el.querySelector('#sm-email').focus();
+  }
+
+  function openDestinationModal() {
+    const el = openModal(`
+      <div class="tk-head"><h3>Добавить получателя</h3></div>
+      <p id="sm-error" class="st-modal-error" hidden></p>
+      <div class="tk-field"><label>Куда отправлять</label>
+        <input id="sm-target" type="text" autocomplete="off" placeholder="ID, -100…, 3281520729/1279 или ссылка t.me/c/…" />
+        <span id="sm-preview" class="st-modal-hint">&nbsp;</span>
+      </div>
+      <div class="tk-field"><label>Название (необязательно)</label><input id="sm-dlabel" type="text" maxlength="80" placeholder="Например, Группа проекта" /></div>
+      <ul class="st-formats">
+        <li><code>123456789</code> — личные сообщения (сначала нажмите /start у бота)</li>
+        <li><code>-1003281520729</code> — группа</li>
+        <li><code>-1003281520729/1279</code> или ссылка <code>t.me/c/…</code> — тема группы</li>
+      </ul>
+      <div class="tk-actions"><div class="tk-actions-row">
+        <button type="button" class="tk-btn primary" data-sm="dest-submit">Добавить</button>
+        <button type="button" class="tk-btn" data-sm="close">Отмена</button>
+      </div></div>`, async (action, btn) => {
+      if (action === 'close') { closeModal(); return; }
+      if (action !== 'dest-submit') return;
+      const body = { target: modalVal('sm-target').trim(), label: modalVal('sm-dlabel').trim() };
+      if (!body.target) { modalError('Укажите, куда отправлять'); return; }
+      btn.disabled = true;
+      modalError('');
+      try {
+        await api('/api/mail/destinations', 'POST', body);
+        closeModal();
+        notify('Получатель добавлен. Нажмите «Тест», чтобы проверить доставку.', 'ok');
+        await load();
+      } catch (err) {
+        modalError(err.message || 'Не удалось добавить получателя');
+        btn.disabled = false;
+      }
+    });
+    el.querySelector('#sm-target').addEventListener('input', (e) => {
+      el.querySelector('#sm-preview').textContent = previewTarget(e.target.value) || '\u00a0';
+    });
+    el.querySelector('#sm-target').focus();
+  }
+
+  function askConfirm(text) {
+    return new Promise((resolve) => {
+      const tg = window.Telegram?.WebApp;
+      if (tg?.initData && typeof tg.showConfirm === 'function') {
+        try { tg.showConfirm(text, (ok) => resolve(Boolean(ok))); return; } catch (e) { /* fallback */ }
+      }
+      resolve(window.confirm(text));
+    });
   }
 
   /* ─── Events ─── */
@@ -313,62 +367,9 @@ window.SettingsModule = (() => {
         mailTab = btn.dataset.tab === 'dests' ? 'dests' : 'accounts';
         renderShell();
         break;
-      case 'acc-menu': {
-        const menu = $(`st-menu-${id}`);
-        if (menu) {
-          document.querySelectorAll('.st-menu-dropdown').forEach(m => { if (m !== menu) m.hidden = true; });
-          menu.hidden = !menu.hidden;
-        }
+      case 'open-add':
+        if (mailTab === 'dests') openDestinationModal(); else openAccountModal();
         break;
-      }
-      // MODAL CASES
-      case 'acc-add-modal':
-        modalOpen = true;
-        modalError = '';
-        modalForm = { provider: data.providers.length ? data.providers[0].id : 'mailru', email: '', password: '', label: '' };
-        renderShell();
-        break;
-      case 'acc-modal-close':
-        modalOpen = false;
-        renderShell();
-        break;
-      case 'modal-provider':
-        modalForm.provider = btn.value;
-        renderShell();
-        break;
-      case 'acc-add-submit': {
-        const provider = container.querySelector('[data-st="modal-provider"]').value;
-        const email = container.querySelector('[data-st="modal-email"]').value.trim();
-        const password = container.querySelector('[data-st="modal-password"]').value;
-        const label = container.querySelector('[data-st="modal-label"]').value.trim();
-        if (!email || !password) {
-          modalError = 'Заполните email и пароль';
-          renderShell();
-          break;
-        }
-        modalSaving = true;
-        modalError = '';
-        renderShell();
-        const ok = await act(() => api('/api/mail/accounts', 'POST', { provider, email, password, label }), 'Ящик добавлен. Письма появятся в разделе Email.');
-        modalSaving = false;
-        if (ok) modalOpen = false;
-        renderShell();
-        break;
-      }
-      case 'acc-add': {
-        const body = {
-          provider: $('st-provider').value,
-          email: $('st-email').value.trim(),
-          password: $('st-password').value,
-          label: $('st-label').value.trim(),
-        };
-        btn.disabled = true;
-        notify('Проверяю вход в ящик…', 'info');
-        const ok = await act(() => api('/api/mail/accounts', 'POST', body), 'Ящик добавлен. Письма появятся в разделе Email.');
-        btn.disabled = false;
-        if (ok) { $('st-email').value = ''; $('st-password').value = ''; $('st-label').value = ''; }
-        break;
-      }
       case 'acc-toggle':
         await act(() => api(`/api/mail/accounts/${id}`, 'PATCH', { enabled: btn.dataset.enabled === '1' }));
         break;
@@ -387,18 +388,10 @@ window.SettingsModule = (() => {
         break;
       }
       case 'acc-del':
-        if (window.confirm('Удалить ящик вместе с сохранёнными письмами?')) {
+        if (await askConfirm('Удалить ящик вместе с сохранёнными письмами?')) {
           await act(() => api(`/api/mail/accounts/${id}`, 'DELETE'), 'Ящик удалён.');
         }
         break;
-      case 'dest-add': {
-        const body = { target: $('st-target').value.trim(), label: $('st-dlabel').value.trim() };
-        btn.disabled = true;
-        const ok = await act(() => api('/api/mail/destinations', 'POST', body), 'Получатель добавлен. Нажмите «Тест», чтобы проверить доставку.');
-        btn.disabled = false;
-        if (ok) { $('st-target').value = ''; $('st-dlabel').value = ''; $('st-target-preview').textContent = '\u00a0'; }
-        break;
-      }
       case 'dest-toggle':
         await act(() => api(`/api/mail/destinations/${id}`, 'PATCH', { enabled: btn.dataset.enabled === '1' }));
         break;
@@ -409,31 +402,12 @@ window.SettingsModule = (() => {
         btn.disabled = false;
         break;
       case 'dest-del':
-        if (window.confirm('Удалить получателя?')) {
+        if (await askConfirm('Удалить получателя?')) {
           await act(() => api(`/api/mail/destinations/${id}`, 'DELETE'), 'Получатель удалён.');
         }
         break;
       default: break;
     }
-  }
-
-  function onInput(event) {
-    if (event.target.id === 'st-target') {
-      $('st-target-preview').textContent = previewTarget(event.target.value) || '\u00a0';
-    }
-  }
-
-  function onChange(event) {
-    if (event.target.id === 'st-provider') {
-      $('st-provider-hint').textContent = HINTS[event.target.value] || '';
-    }
-  }
-
-  function onKey(event) {
-    if (event.key !== 'Enter') return;
-    const map = { 'st-email': 'st-acc-add', 'st-password': 'st-acc-add', 'st-label': 'st-acc-add', 'st-target': 'st-dest-add', 'st-dlabel': 'st-dest-add' };
-    const target = map[event.target.id];
-    if (target) { event.preventDefault(); $(target).click(); }
   }
 
   function init(containerId) {
@@ -443,22 +417,15 @@ window.SettingsModule = (() => {
     container = el;
     renderShell();
     container.addEventListener('click', onClick);
-    container.addEventListener('input', onInput);
-    container.addEventListener('change', onChange);
-    container.addEventListener('keydown', onKey);
-    document.addEventListener('click', onDocumentClick);
     load();
     timer = setInterval(() => {
       if (!isLive()) { clearInterval(timer); timer = null; return; }
-      if (!document.hidden && passwordEditId === null) load();
+      if (!document.hidden && passwordEditId === null && !overlayEl) load();
     }, REFRESH_MS);
   }
 
-  function onDocumentClick(event) {
-    if (!event.target.closest('.st-menu-dropdown') && !event.target.closest('.st-menu-btn')) {
-      document.querySelectorAll('.st-menu-dropdown').forEach(m => { m.hidden = true; });
-    }
-  }
+  // Уход со страницы: закрываем модалку и снимаем «Назад»
+  function leave() { closeModal(); }
 
-  return { init };
+  return { init, leave };
 })();

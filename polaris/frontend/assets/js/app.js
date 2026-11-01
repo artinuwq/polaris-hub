@@ -654,6 +654,7 @@
     if (state.currentView !== 'servers') window.PolarisBack?.pop('servers-sub');
     if (state.currentView !== 'tasks') window.TasksModule?.leave?.();
     if (state.currentView !== 'email') window.EmailModule?.leave?.();
+    if (state.currentView !== 'settings') window.SettingsModule?.leave?.();
 
     const mounts = {
       attention: ['HomeModule', 'home-container'],
