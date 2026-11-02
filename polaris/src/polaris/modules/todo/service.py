@@ -23,16 +23,21 @@ def get_full_task_list() -> TaskListResponse:
     return TaskListResponse(tasks=tasks, projects=projects, tags=tags)
 
 
+def _checklist_dicts(items: list[Any]) -> list[dict[str, Any]]:
+    """model_dump() уже превращает пункты чеклиста в словари — принимаем и словари, и модели."""
+    result = []
+    for item in items or []:
+        if isinstance(item, dict):
+            result.append({"text": item.get("text", ""), "done": bool(item.get("done", False))})
+        else:
+            result.append({"text": item.text, "done": item.done})
+    return result
+
+
 def create_task(data: TaskCreate) -> TaskResponse:
     """Create a new task."""
     payload = data.model_dump()
-    # Serialize checklist items
-    if "checklist" in payload and payload["checklist"]:
-        payload["checklist"] = [
-            {"text": item.text, "done": item.done} for item in payload["checklist"]
-        ]
-    else:
-        payload["checklist"] = []
+    payload["checklist"] = _checklist_dicts(payload.get("checklist"))
 
     row = repo.create_task(payload)
     return TaskResponse.from_db_row(row)
@@ -50,11 +55,8 @@ def update_task(task_id: str, data: TaskUpdate) -> TaskResponse | None:
     """Update a task. Only include non-None fields."""
     payload = data.model_dump(exclude_none=True)
 
-    # Serialize checklist
     if "checklist" in payload:
-        payload["checklist"] = [
-            {"text": item.text, "done": item.done} for item in payload["checklist"]
-        ]
+        payload["checklist"] = _checklist_dicts(payload["checklist"])
 
     row = repo.update_task(task_id, payload)
     if not row:

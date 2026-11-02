@@ -196,9 +196,11 @@ app.include_router(attention_router)
 app.include_router(mail_router)
 try:
     # Athena API не должна ронять весь сервис, если с ней что-то не так
+    from polaris.modules.athena.api import admin_router as agent_router
     from polaris.modules.athena.api import router as athena_router
 
     app.include_router(athena_router)
+    app.include_router(agent_router)
 except Exception:  # noqa: BLE001
     logging.getLogger(__name__).exception("Athena API отключена: ошибка импорта")
 

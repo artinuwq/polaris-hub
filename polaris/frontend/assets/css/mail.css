@@ -269,3 +269,20 @@
 .st-modal-error { margin: 0; padding: 8px 10px; border: 1px solid rgba(255, 93, 115, 0.4); border-radius: var(--radius-sm); color: #ff5d73; font-size: 0.82rem; }
 .st-modal-hint { margin: 0; color: var(--text-muted); font-size: 0.78rem; min-height: 1.1em; overflow-wrap: anywhere; }
 
+/* Агент: токен и адрес */
+.st-code {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+  -webkit-user-select: all;
+}
+.st-code.is-token { font-size: 0.85rem; }
+
+
+#st-agent { display: flex; flex-direction: column; gap: 8px; }

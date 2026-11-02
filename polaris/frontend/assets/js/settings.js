@@ -16,7 +16,9 @@ window.SettingsModule = (() => {
   let loaded = false;
   let error = '';
   let passwordEditId = null;
-  let tab = 'mail';       // 'mail' | 'system'
+  let agent = null;        // статус токена агента (сам токен сервер не отдаёт)
+  let agentError = '';
+  let tab = 'mail';       // 'mail' | 'agent' | 'system'
   let mailTab = 'accounts'; // 'accounts' | 'dests'
 
   const ICONS = {
@@ -96,6 +98,16 @@ window.SettingsModule = (() => {
       error = err.message || 'Не удалось загрузить настройки';
     }
     if (isLive()) renderLists();
+  }
+
+  async function loadAgent() {
+    try {
+      agent = await api('/api/agent');
+      agentError = '';
+    } catch (err) {
+      agentError = err.message || 'Не удалось загрузить настройки агента';
+    }
+    if (isLive() && tab === 'agent') renderAgent();
   }
 
   async function act(fn, okText) {
@@ -198,7 +210,7 @@ window.SettingsModule = (() => {
 
   function renderTabs() {
     const t = (id, label) => `<button type="button" class="st-tab${tab === id ? ' is-active' : ''}" data-st="tab" data-tab="${id}">${label}</button>`;
-    return `<div class="st-tabs">${t('mail', 'Почта')}${t('system', 'Система')}</div>`;
+    return `<div class="st-tabs">${t('mail', 'Почта')}${t('agent', 'Агент')}${t('system', 'Система')}</div>`;
   }
 
   function renderMailSubTabs() {
@@ -218,15 +230,123 @@ window.SettingsModule = (() => {
   }
 
   function renderShell() {
-    const body = tab === 'system'
-      ? (window.PolarisUpdateUI ? window.PolarisUpdateUI.render() : '')
-      : renderMailBody();
+    let body;
+    if (tab === 'system') body = window.PolarisUpdateUI ? window.PolarisUpdateUI.render() : '';
+    else if (tab === 'agent') body = '<div id="st-agent"></div>';
+    else body = renderMailBody();
     container.innerHTML = `
       ${renderTabs()}
       <div id="st-msg" class="st-msg" hidden></div>
       ${body}`;
     hydrateIcons(container);
     renderLists();
+    if (tab === 'agent') {
+      renderAgent();
+      loadAgent();
+    }
+  }
+
+  /* ─── Агент: токен и подключение ─── */
+  const agentUrl = () => `${window.location.origin}/api/athena`;
+
+  const AGENT_GUIDE = () => [
+    'Polaris API для агента',
+    `Адрес: ${agentUrl()}`,
+    'Авторизация: заголовок  Authorization: Bearer <ТОКЕН>  (или  X-API-Token: <ТОКЕН>)',
+    '',
+    'Задачи:',
+    'GET  /tasks/important — важные (срочные и важные, не выполненные), по срочности',
+    'GET  /tasks — все активные; параметры: status=all|todo|in-progress|waiting|done, priority, project, tag, date_from, date_to (YYYY-MM-DD), limit, offset',
+    'GET  /tasks/{id} — одна задача',
+    'POST /tasks — создать. Обязателен только title. Пример тела:',
+    '  {"title": "Сдать отчёт", "date": "2026-11-01", "time": "18:30", "priority": "fire", "energy": "quick",',
+    '   "tags": ["work"], "project": "Polaris", "description": "", "checklist": ["черновик", "правки"]}',
+    '  priority: fire | important | normal | someday;  energy: quick | medium | large',
+    '',
+    'Проверка: GET /health (без токена), GET /auth/verify (с токеном)',
+  ].join('\n');
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(area);
+      area.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (err) { /* нет доступа к буферу */ }
+      area.remove();
+      return ok;
+    }
+  }
+
+  function formatCreated(iso) {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderAgent() {
+    const box = $('st-agent');
+    if (!box) return;
+    if (!agent) {
+      box.innerHTML = agentError ? `<p class="st-error">${escapeHTML(agentError)}</p>` : skeleton;
+      return;
+    }
+    const sourceText = agent.source === 'env'
+      ? 'Токен задан переменной API_TOKEN на сервере. Созданный здесь токен заменит его.'
+      : agent.created_at ? `Создан ${escapeHTML(formatCreated(agent.created_at))}` : '';
+    box.innerHTML = `
+      <article class="card st-item">
+        <div class="st-item-head">
+          <span class="st-item-title">Токен агента</span>
+          ${agent.configured ? badge('ok', 'Задан') : badge('off', 'Не задан')}
+        </div>
+        ${agent.configured ? `<div class="st-item-sub">Токен <code>plr_…${escapeHTML(agent.hint)}</code></div>` : '<div class="st-item-sub">Сгенерируйте токен и вставьте его в агента.</div>'}
+        ${sourceText ? `<div class="st-item-sub">${sourceText}</div>` : ''}
+        <div class="st-item-actions">
+          <button type="button" class="st-btn primary" data-st="agent-generate">${agent.configured ? 'Перевыпустить' : 'Сгенерировать токен'}</button>
+          ${agent.configured ? '<button type="button" class="st-btn danger" data-st="agent-revoke">Отозвать</button>' : ''}
+        </div>
+      </article>
+      <article class="card st-item">
+        <div class="st-item-head"><span class="st-item-title">Подключение</span></div>
+        <div class="st-item-sub">Адрес API</div>
+        <code class="st-code">${escapeHTML(agentUrl())}</code>
+        <div class="st-item-sub">Заголовок: <code>Authorization: Bearer &lt;токен&gt;</code></div>
+        <div class="st-item-actions">
+          <button type="button" class="st-btn" data-st="agent-copy-url">Копировать адрес</button>
+          <button type="button" class="st-btn" data-st="agent-copy-guide">Копировать инструкцию</button>
+        </div>
+      </article>
+      <article class="card st-item">
+        <div class="st-item-head"><span class="st-item-title">Что умеет агент</span></div>
+        <ul class="st-formats">
+          <li>Смотреть важные задачи</li>
+          <li>Смотреть все задачи (с фильтрами)</li>
+          <li>Создавать задачи: название, описание, дата, время, приоритет, энергия, теги, проект, чеклист</li>
+        </ul>
+      </article>`;
+  }
+
+  function openTokenModal(token) {
+    openModal(`
+      <div class="tk-head"><h3>Новый токен</h3></div>
+      <p class="st-modal-hint">Скопируйте токен сейчас — потом он больше не покажется. Прежний токен перестал работать.</p>
+      <code class="st-code is-token" id="sm-token">${escapeHTML(token)}</code>
+      <div class="tk-actions"><div class="tk-actions-row">
+        <button type="button" class="tk-btn primary" data-sm="token-copy">Копировать</button>
+        <button type="button" class="tk-btn" data-sm="close">Готово</button>
+      </div></div>`, async (action, btn) => {
+      if (action === 'close') { closeModal(); return; }
+      if (action === 'token-copy') {
+        const ok = await copyText(token);
+        btn.textContent = ok ? 'Скопировано ✓' : 'Выделите и скопируйте вручную';
+        if (!ok) overlayEl?.querySelector('#sm-token')?.focus();
+      }
+    });
   }
 
   /* ─── Маленькие модалки (общий вид с задачами) ─── */
@@ -360,7 +480,7 @@ window.SettingsModule = (() => {
 
     switch (btn.dataset.st) {
       case 'tab':
-        tab = btn.dataset.tab === 'system' ? 'system' : 'mail';
+        tab = ['system', 'agent'].includes(btn.dataset.tab) ? btn.dataset.tab : 'mail';
         renderShell();
         break;
       case 'mail-tab':
@@ -369,6 +489,30 @@ window.SettingsModule = (() => {
         break;
       case 'open-add':
         if (mailTab === 'dests') openDestinationModal(); else openAccountModal();
+        break;
+      case 'agent-generate':
+        if (agent?.configured && !(await askConfirm('Прежний токен перестанет работать. Перевыпустить?'))) break;
+        try {
+          const created = await api('/api/agent/token', 'POST');
+          agent = { configured: true, source: 'db', hint: created.hint, created_at: created.created_at };
+          renderAgent();
+          openTokenModal(created.token);
+        } catch (err) { notify(err.message || 'Не удалось создать токен', 'error'); }
+        break;
+      case 'agent-revoke':
+        if (await askConfirm('Отозвать токен? Агент потеряет доступ.')) {
+          try {
+            agent = await api('/api/agent/token', 'DELETE');
+            renderAgent();
+            notify('Токен отозван.', 'ok');
+          } catch (err) { notify(err.message || 'Не удалось отозвать токен', 'error'); }
+        }
+        break;
+      case 'agent-copy-url':
+        notify((await copyText(agentUrl())) ? 'Адрес скопирован.' : 'Не удалось скопировать — выделите адрес вручную.', 'info');
+        break;
+      case 'agent-copy-guide':
+        notify((await copyText(AGENT_GUIDE())) ? 'Инструкция скопирована.' : 'Не удалось скопировать.', 'info');
         break;
       case 'acc-toggle':
         await act(() => api(`/api/mail/accounts/${id}`, 'PATCH', { enabled: btn.dataset.enabled === '1' }));
