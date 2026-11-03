@@ -22,6 +22,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from polaris.bot.notify import build_attention_message, build_open_link
 from polaris.infra.config_store import write_env_value
 from polaris.infra.settings import Settings
 from polaris.shared.exceptions import ConfigurationError, PolarisError
@@ -43,6 +44,7 @@ CONFIG_SPECS: dict[str, dict] = {
     "WEB_HOST": {"attr": "web_host", "kind": "text", "desc": "Хост веб-сервера"},
     "WEB_PORT": {"attr": "web_port", "kind": "int", "desc": "Порт веб-сервера"},
     "WEBAPP_URL": {"attr": "webapp_url", "kind": "url", "desc": "URL Mini App", "allow_empty": True},
+    "MINIAPP_NAME": {"attr": "miniapp_name", "kind": "text", "desc": "Короткое имя Mini App (t.me/<бот>/<имя>)"},
     "UPDATE_BRANCH": {"attr": "update_branch", "kind": "text", "desc": "Ветка обновления"},
     "UPDATE_REMOTE": {"attr": "update_remote", "kind": "text", "desc": "Имя remote"},
     "UPDATE_REPO_DIR": {"attr": "update_repo_dir", "kind": "text", "desc": "Каталог репозитория"},
@@ -412,6 +414,19 @@ class PolarisBot:
         except Exception as exc:
             logger.exception("Attention notifier error: %s", exc)
 
+    async def _bot_username(self) -> str | None:
+        """Имя бота для ссылок t.me/<бот>/<приложение>; запоминаем после первого запроса."""
+        cached = getattr(self, "_cached_bot_username", None)
+        if cached:
+            return cached
+        try:
+            me = await self.bot.me()
+            self._cached_bot_username = me.username
+            return me.username
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Не удалось узнать имя бота: %s", exc)
+            return None
+
     async def _check_and_notify_attention(self) -> None:
         admin_ids = self.settings.telegram_admin_ids
         if not admin_ids:
@@ -429,15 +444,19 @@ class PolarisBot:
                     if time.time() - last_notified < 3600:
                         continue
                     # build message
-                    lines = [f"🔔 <b>{item.title}</b> [{item.urgency.value.upper()}]"]
-                    if item.due_date:
-                        lines.append(f"📅 {item.due_date}" + (f" {item.due_time}" if item.due_time else ""))
-                    if item.description:
-                        lines.append(item.description)
-                    if item.url:
-                        lines.append(f"🔗 <a href='{item.url}'>Открыть</a>")
-                    text = "\n".join(lines)
-                    await self.bot.send_message(admin_id, text, parse_mode=ParseMode.HTML)
+                    text = build_attention_message(item)
+                    link = build_open_link(
+                        await self._bot_username(), self.settings.miniapp_name, item.url, self.settings.webapp_url
+                    )
+                    markup = None
+                    if link:
+                        builder = InlineKeyboardBuilder()
+                        builder.row(types.InlineKeyboardButton(text="Открыть", url=link))
+                        markup = builder.as_markup()
+                    await self.bot.send_message(
+                        admin_id, text, parse_mode=ParseMode.HTML, reply_markup=markup,
+                        disable_web_page_preview=True,
+                    )
                     self._attention_notified[key] = time.time()
             except Exception as exc:
                 logger.exception("Failed to notify admin %s: %s", admin_id, exc)

@@ -125,6 +125,8 @@ window.FinanceModule = (() => {
     return data;
   }
 
+  let pendingOpenId = null; // платёж, который нужно открыть после загрузки (ссылка из уведомления)
+
   /* ─── Data loading ─── */
   async function loadAll() {
     loading = true;
@@ -155,6 +157,11 @@ window.FinanceModule = (() => {
 
     loading = false;
     render();
+    if (pendingOpenId) {
+      const id = pendingOpenId;
+      pendingOpenId = null;
+      openEditModal(id);
+    }
   }
 
   async function reloadList() {
@@ -649,8 +656,19 @@ window.FinanceModule = (() => {
   }
 
   /* ─── Public API ─── */
+  // Открыть платёж по id (после загрузки данных, если они ещё не готовы)
+  function openPayment(paymentId) {
+    if (!paymentId) return;
+    if (loading || (!payments.length && !upcoming.length)) {
+      pendingOpenId = paymentId;
+      return;
+    }
+    openEditModal(paymentId);
+  }
+
   return {
     init,
     reload: loadAll,
+    openPayment,
   };
 })();

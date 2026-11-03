@@ -986,6 +986,38 @@
     item.run();
   }
 
+  // Ссылка из уведомления: t.me/<бот>/<приложение>?startapp=<путь> (или ?go=<путь> в браузере)
+  function readDeepLink() {
+    const raw = tg?.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get('go') || '';
+    if (!raw) return '';
+    if (raw.startsWith('/')) return raw;
+    try {
+      const b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+      const bytes = Uint8Array.from(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)), (c) => c.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // Открывает нужный раздел и конкретную запись: /finance#payment-<id>, /servers/<id>, /tasks#<id>, /events#<id>
+  function openDeepLink() {
+    const path = readDeepLink();
+    if (!path) return;
+    const [route, fragment = ''] = path.split('#');
+    const [section, ...rest] = route.split('/').filter(Boolean);
+    const view = section === 'events' ? 'calendar' : section;
+    if (!NAV_ITEMS.some((item) => item.id === view)) return;
+
+    setView(view);
+    // модуль раздела создаётся при отрисовке — открываем запись следующим тактом
+    setTimeout(() => {
+      if (view === 'tasks' && fragment) window.TasksModule?.openDetail?.(fragment);
+      else if (view === 'finance' && fragment) window.FinanceModule?.openPayment?.(fragment.replace(/^(payment|subscription)-/, ''));
+      else if (view === 'servers' && rest[0]) window.ServersModule?.openServer?.(rest[0]);
+    }, 0);
+  }
+
   async function bootstrap() {
     hydrateIcons(document);
     renderShell();
@@ -1004,6 +1036,7 @@
       );
       renderShell();
       await loadUpdateStatus();
+      openDeepLink();
     } catch (error) {
       state.authenticated = false;
       state.authMessage = error.message;

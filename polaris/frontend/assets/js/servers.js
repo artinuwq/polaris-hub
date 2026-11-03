@@ -702,5 +702,5 @@ window.ServersModule = (() => {
     startListPolling();
   }
 
-  return { init, reload: () => loadServers() };
+  return { init, reload: () => loadServers(), openServer };
 })();
