@@ -13,3 +13,5 @@ curl -fsSL https://raw.githubusercontent.com/artinuwq/polaris-hub/main/uninstall
 ```
 
 Подробности: [polaris/README.md](polaris/README.md)
+
+API для подключения агента (Athena): [docs/athena-api.md](docs/athena-api.md)

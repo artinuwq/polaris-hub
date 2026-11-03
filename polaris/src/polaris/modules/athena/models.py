@@ -49,3 +49,50 @@ class AthenaTaskList(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class AthenaCalendarEvent(BaseModel):
+    """Одна запись календаря: событие, задача на день, напоминание, платёж или подписка."""
+
+    id: str
+    type: str = Field(description="event | task | reminder | payment | subscription")
+    type_label: str
+    title: str
+    description: str
+    date: str
+    time: str
+    end_time: str
+    all_day: bool = Field(description="true, если время не указано")
+    priority: str
+    important: bool = Field(description="Срочная или важная и не выполнена (встречи — всегда важные)")
+    status: str
+    project: str
+    tags: list[str]
+    source: str = Field(description="Откуда запись: events | tasks | finance | subscriptions")
+    source_id: str = Field(description="id в своём разделе; для задачи — для GET /tasks/{id}")
+    amount: float | None = Field(default=None, description="Только для платежей и подписок")
+    currency: str = ""
+
+
+class AthenaCalendarDay(BaseModel):
+    date: str
+    events: list[AthenaCalendarEvent]
+
+
+class AthenaCalendarDayResponse(BaseModel):
+    date: str
+    total: int
+    events: list[AthenaCalendarEvent]
+
+
+class AthenaCalendarPeriod(BaseModel):
+    start: str
+    end: str
+    total: int
+    days: list[AthenaCalendarDay] = Field(description="Только дни, в которых что-то есть")
+
+
+class AthenaCalendarNext(BaseModel):
+    total: int
+    events: list[AthenaCalendarEvent]
+

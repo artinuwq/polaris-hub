@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,10 @@ MIGRATIONS = Path(__file__).resolve().parents[1] / "database" / "migrations"
 
 
 @contextlib.contextmanager
-def temp_db(tmp_path, monkeypatch, migrations=("001_create_tasks.sql", "008_create_task_reminders.sql", "009_create_agent_token.sql")):
+def temp_db(tmp_path, monkeypatch, migrations=(
+        "001_create_tasks.sql", "002_create_events.sql", "003_create_recurring_payments.sql",
+        "008_create_task_reminders.sql", "009_create_agent_token.sql",
+    )):
     """Пустая SQLite-база с нужными миграциями, подставленная вместо рабочей."""
     from polaris.infra import database
 
@@ -127,6 +131,86 @@ def test_sorted_by_urgency_dated_first_then_time_then_priority():
 def test_paginate():
     assert logic.paginate(list(range(10)), 3, 4) == [4, 5, 6]
     assert logic.paginate(list(range(3)), 5, 10) == []
+
+
+# ───────────── календарь: логика ─────────────
+
+
+def ev(**kw):
+    base = {
+        "id": "1", "type": "task", "type_label": "Задача", "title": "t", "description": "", "date": "2026-11-01",
+        "time": "", "end_time": "", "all_day": True, "priority": "normal", "status": "todo", "project": "",
+        "tags": [], "source": "tasks", "source_id": "1", "amount": None, "currency": "", "important": False,
+    }
+    return {**base, **kw}
+
+
+def test_parse_types():
+    assert logic.parse_types(None) is None and logic.parse_types("  ") is None
+    assert logic.parse_types("event, Payment") == {"event", "payment"}
+    with pytest.raises(logic.ValidationFailed):
+        logic.parse_types("event,meeting")
+
+
+def test_event_out_payment_uses_finance_data_or_cleans_title():
+    raw = {"id": "payment-p1", "type": "payment", "title": "💰 Yandex плюс — 449.0 Rub", "date": "2026-11-08",
+           "source": "finance", "source_id": "p1", "status": "active", "priority": "normal"}
+    with_data = logic.event_out(raw, {"p1": {"name": "Yandex плюс", "amount": 449.0, "currency": "RUB"}})
+    assert (with_data["title"], with_data["amount"], with_data["currency"]) == ("Yandex плюс", 449.0, "RUB")
+    assert with_data["type_label"] == "Платёж" and with_data["all_day"] is True and with_data["important"] is False
+    assert logic.event_out(raw, {})["title"] == "Yandex плюс"  # без данных платежа убираем эмодзи и сумму
+
+
+def test_event_important_rules():
+    assert logic.event_out({"type": "event", "priority": "important", "status": "todo"})["important"] is True
+    assert logic.event_out({"type": "task", "priority": "fire", "status": "done"})["important"] is False
+    assert logic.event_out({"type": "payment", "priority": "normal"})["important"] is False
+
+
+def test_filter_events():
+    events = [
+        ev(id="a", type="event", important=True),
+        ev(id="b", type="task", status="done", important=False),
+        ev(id="c", type="payment"),
+        ev(id="d", type="task", important=True),
+    ]
+    ids = lambda items: [e["id"] for e in items]  # noqa: E731
+    assert ids(logic.filter_events(events)) == ["a", "c", "d"]  # выполненные скрыты
+    assert ids(logic.filter_events(events, include_done=True)) == ["a", "b", "c", "d"]
+    assert ids(logic.filter_events(events, types={"event", "payment"})) == ["a", "c"]
+    assert ids(logic.filter_events(events, important_only=True)) == ["a", "d"]
+
+
+def test_sort_group_and_dedupe_events():
+    events = [
+        ev(id="no-time", date="2026-11-02"),
+        ev(id="late", date="2026-11-01", time="18:00", title="b"),
+        ev(id="early", date="2026-11-01", time="09:00", title="a"),
+        ev(id="early", date="2026-11-01", time="09:00", title="a"),  # дубль
+    ]
+    ordered = logic.sort_events(logic.dedupe_events(events))
+    assert [e["id"] for e in ordered] == ["early", "late", "no-time"]
+    days = logic.group_by_day(ordered)
+    assert [d["date"] for d in days] == ["2026-11-01", "2026-11-02"] and len(days[0]["events"]) == 2
+
+
+def test_drop_past_today_keeps_all_day_and_future():
+    events = [
+        ev(id="past", date="2026-11-01", time="08:00"), ev(id="future", date="2026-11-01", time="20:00"),
+        ev(id="allday", date="2026-11-01"), ev(id="tomorrow", date="2026-11-02", time="01:00"),
+    ]
+    kept = [e["id"] for e in logic.drop_past_today(events, "2026-11-01", "12:00")]
+    assert kept == ["future", "allday", "tomorrow"]
+
+
+def test_months_between_and_upcoming_window():
+    assert logic.months_between(date(2026, 12, 20), date(2027, 1, 18)) == [(2026, 12), (2027, 1)]
+    assert logic.months_between(date(2026, 11, 3), date(2026, 11, 30)) == [(2026, 11)]
+    start, end = logic.upcoming_window(date(2026, 11, 3), 30)
+    assert (start, end) == (date(2026, 11, 3), date(2026, 12, 2))
+    for bad in (0, 91):
+        with pytest.raises(logic.ValidationFailed):
+            logic.upcoming_window(date(2026, 11, 3), bad)
 
 
 # ───────────── токен ─────────────
@@ -250,3 +334,46 @@ def test_create_rejects_bad_input(client):
     assert client.post("/api/athena/tasks", json={"title": "a", "priority": "urgent"}).status_code == 422
     assert client.post("/api/athena/tasks", json={"title": ""}).status_code == 422
     assert client.get("/api/athena/tasks?status=open").status_code == 422
+
+
+def _insert_event(title, day, time):
+    from polaris.infra import database
+
+    conn = sqlite3.connect(database.DB_PATH)
+    conn.execute(
+        "INSERT INTO events (id, title, date, time, created_at, updated_at) VALUES (?, ?, ?, ?, 'x', 'x')",
+        (f"e-{title}", title, day, time),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_calendar_endpoints(client):
+    today, tomorrow = date.today(), date.today() + timedelta(days=1)
+    _insert_event("Созвон", tomorrow.isoformat(), "10:00")
+    client.post("/api/athena/tasks", json={"title": "Срочная", "priority": "fire", "date": today.isoformat()})
+    client.post("/api/athena/tasks", json={"title": "Обычная", "date": tomorrow.isoformat()})
+
+    day = client.get(f"/api/athena/calendar/day?date={tomorrow.isoformat()}").json()
+    assert day["total"] == 2 and day["events"][0]["title"] == "Созвон" and day["events"][0]["type"] == "event"
+
+    only_events = client.get(f"/api/athena/calendar/day?date={tomorrow.isoformat()}&types=event").json()
+    assert [e["title"] for e in only_events["events"]] == ["Созвон"]
+
+    important = client.get("/api/athena/calendar/upcoming?days=30&important=true").json()
+    titles = [e["title"] for d in important["days"] for e in d["events"]]
+    assert titles == ["Срочная", "Созвон"] and important["total"] == 2
+
+    nxt = client.get("/api/athena/calendar/next?limit=1&types=event").json()
+    assert nxt["total"] >= 1 and nxt["events"][0]["title"] == "Созвон"
+
+    month = client.get(f"/api/athena/calendar/month?year={today.year}&month={today.month}").json()
+    assert month["start"].endswith("-01") and month["total"] >= 1
+
+
+def test_calendar_requires_token_and_validates(client):
+    assert client.get("/api/athena/calendar/next", headers={"Authorization": "Bearer nope"}).status_code == 401
+    assert client.get("/api/athena/calendar/day").status_code == 422  # нет date
+    assert client.get("/api/athena/calendar/day?date=31.10.2026").status_code == 422
+    assert client.get("/api/athena/calendar/day?date=2026-11-01&types=meeting").status_code == 422
+    assert client.get("/api/athena/calendar/upcoming?days=91").status_code == 422

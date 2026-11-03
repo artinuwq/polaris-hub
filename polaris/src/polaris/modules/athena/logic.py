@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 PRIORITIES = ("fire", "important", "normal", "someday")
@@ -179,3 +179,152 @@ def filter_tasks(
 
 def paginate(items: list[Any], limit: int, offset: int) -> list[Any]:
     return items[offset : offset + limit]
+
+
+# ───────────────────────── Календарь ─────────────────────────
+
+EVENT_TYPES = ("event", "task", "reminder", "payment", "subscription")
+EVENT_TYPE_LABELS = {
+    "event": "Событие",
+    "task": "Задача",
+    "reminder": "Напоминание",
+    "payment": "Платёж",
+    "subscription": "Подписка",
+}
+MAX_UPCOMING_DAYS = 90
+
+
+def parse_types(value: str | None) -> set[str] | None:
+    """«event,payment» -> {'event','payment'}; пусто — все типы (None)."""
+    if not value or not value.strip():
+        return None
+    result: set[str] = set()
+    for part in value.split(","):
+        part = part.strip().lower()
+        if not part:
+            continue
+        if part not in EVENT_TYPES:
+            raise ValidationFailed(f"types: допустимо {', '.join(EVENT_TYPES)}; получено «{part}»")
+        result.add(part)
+    return result or None
+
+
+def event_important(ev: dict[str, Any]) -> bool:
+    """Важное событие: приоритет «срочно»/«важно» и не выполнено.
+    Обычные события календаря (встречи) всегда имеют приоритет «важно»."""
+    return ev.get("priority") in IMPORTANT_PRIORITIES and ev.get("status") != "done"
+
+
+def event_out(raw: dict[str, Any], payments: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Запись календаря в виде, удобном агенту. Для платежей подставляем название и сумму."""
+    etype = str(raw.get("type", "task"))
+    title = str(raw.get("title", ""))
+    amount = None
+    currency = ""
+    if etype in ("payment", "subscription"):
+        payment = (payments or {}).get(str(raw.get("source_id", "")))
+        if payment:
+            title = str(payment.get("name") or title)
+            amount = payment.get("amount")
+            currency = str(payment.get("currency") or "")
+        else:  # платёж не нашли — хотя бы убираем эмодзи и хвост «— сумма»
+            title = title.lstrip("💰 ").split(" — ")[0].strip() or title
+    time = str(raw.get("time", ""))
+    out = {
+        "id": str(raw.get("id", "")),
+        "type": etype,
+        "type_label": EVENT_TYPE_LABELS.get(etype, etype),
+        "title": title,
+        "description": str(raw.get("description", "")),
+        "date": str(raw.get("date", "")),
+        "time": time,
+        "end_time": str(raw.get("end_time", "")),
+        "all_day": not time,
+        "priority": str(raw.get("priority", "normal")),
+        "status": str(raw.get("status", "")),
+        "project": str(raw.get("project", "")),
+        "tags": list(raw.get("tags", [])),
+        "source": str(raw.get("source", "")),
+        "source_id": str(raw.get("source_id", "")),
+        "amount": amount,
+        "currency": currency,
+    }
+    out["important"] = event_important(out)
+    return out
+
+
+def filter_events(
+    events: list[dict[str, Any]],
+    *,
+    types: set[str] | None = None,
+    important_only: bool = False,
+    include_done: bool = False,
+) -> list[dict[str, Any]]:
+    result = []
+    for ev in events:
+        if types and ev["type"] not in types:
+            continue
+        if not include_done and ev["status"] == "done":
+            continue
+        if important_only and not ev["important"]:
+            continue
+        result.append(ev)
+    return result
+
+
+def sort_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """По дате, затем по времени (без времени — после событий с временем), затем по приоритету."""
+    def key(ev: dict[str, Any]) -> tuple:
+        priority = PRIORITIES.index(ev["priority"]) if ev["priority"] in PRIORITIES else len(PRIORITIES)
+        return (ev["date"], ev["time"] or "99:99", priority, ev["title"])
+    return sorted(events, key=key)
+
+
+def dedupe_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str, str]] = set()
+    result = []
+    for ev in events:
+        marker = (ev["id"], ev["date"], ev["time"])
+        if marker not in seen:
+            seen.add(marker)
+            result.append(ev)
+    return result
+
+
+def group_by_day(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """[{date, events}] только для дней, где что-то есть. events уже отсортированы."""
+    days: list[dict[str, Any]] = []
+    for ev in events:
+        if days and days[-1]["date"] == ev["date"]:
+            days[-1]["events"].append(ev)
+        else:
+            days.append({"date": ev["date"], "events": [ev]})
+    return days
+
+
+def in_range(events: list[dict[str, Any]], start: date, end: date) -> list[dict[str, Any]]:
+    start_s, end_s = start.isoformat(), end.isoformat()
+    return [ev for ev in events if start_s <= ev["date"] <= end_s]
+
+
+def months_between(start: date, end: date) -> list[tuple[int, int]]:
+    result = []
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        result.append((year, month))
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+    return result
+
+
+def drop_past_today(events: list[dict[str, Any]], today: str, now_hm: str) -> list[dict[str, Any]]:
+    """«Ближайшее»: сегодняшние события с уже прошедшим временем не показываем.
+    События на весь день (без времени) остаются."""
+    return [ev for ev in events if not (ev["date"] == today and ev["time"] and ev["time"] < now_hm)]
+
+
+def upcoming_window(today: date, days: int) -> tuple[date, date]:
+    if days < 1 or days > MAX_UPCOMING_DAYS:
+        raise ValidationFailed(f"days: от 1 до {MAX_UPCOMING_DAYS}")
+    return today, today + timedelta(days=days - 1)

@@ -253,17 +253,28 @@ window.SettingsModule = (() => {
     'Polaris API для агента',
     `Адрес: ${agentUrl()}`,
     'Авторизация: заголовок  Authorization: Bearer <ТОКЕН>  (или  X-API-Token: <ТОКЕН>)',
+    'Даты: YYYY-MM-DD, время: HH:MM. Ошибки: 401 — токен, 404 — не найдено, 422 — неверные параметры (в detail причина).',
     '',
-    'Задачи:',
+    'ЗАДАЧИ',
     'GET  /tasks/important — важные (срочные и важные, не выполненные), по срочности',
-    'GET  /tasks — все активные; параметры: status=all|todo|in-progress|waiting|done, priority, project, tag, date_from, date_to (YYYY-MM-DD), limit, offset',
+    'GET  /tasks — все активные; параметры: status=all|todo|in-progress|waiting|done, priority, project, tag, date_from, date_to, limit, offset',
     'GET  /tasks/{id} — одна задача',
     'POST /tasks — создать. Обязателен только title. Пример тела:',
     '  {"title": "Сдать отчёт", "date": "2026-11-01", "time": "18:30", "priority": "fire", "energy": "quick",',
     '   "tags": ["work"], "project": "Polaris", "description": "", "checklist": ["черновик", "правки"]}',
     '  priority: fire | important | normal | someday;  energy: quick | medium | large',
     '',
+    'КАЛЕНДАРЬ (только чтение)',
+    'Типы записей: event (события), task (задачи с датой), reminder, payment, subscription.',
+    'Общие параметры: types=event,payment (пусто — все), important=true (только важные), include_done=true (с выполненными).',
+    'GET  /calendar/day?date=YYYY-MM-DD — всё на день: события, задачи, напоминания, платежи',
+    'GET  /calendar/month?year=2026&month=11 — месяц по дням',
+    'GET  /calendar/upcoming?days=30 — следующие N дней (до 90) по дням',
+    'GET  /calendar/next?limit=5 — ближайшее одним списком, например types=event',
+    'У платежей в записи есть amount и currency. У задач source_id — id для GET /tasks/{id}.',
+    '',
     'Проверка: GET /health (без токена), GET /auth/verify (с токеном)',
+    'Полная документация: docs/athena-api.md в репозитории polaris-hub',
   ].join('\n');
 
   async function copyText(text) {
@@ -324,9 +335,9 @@ window.SettingsModule = (() => {
       <article class="card st-item">
         <div class="st-item-head"><span class="st-item-title">Что умеет агент</span></div>
         <ul class="st-formats">
-          <li>Смотреть важные задачи</li>
-          <li>Смотреть все задачи (с фильтрами)</li>
+          <li>Смотреть важные и все задачи (с фильтрами)</li>
           <li>Создавать задачи: название, описание, дата, время, приоритет, энергия, теги, проект, чеклист</li>
+          <li>Смотреть календарь: день, месяц, ближайшие 30 дней, только события или только важное, включая платежи</li>
         </ul>
       </article>`;
   }

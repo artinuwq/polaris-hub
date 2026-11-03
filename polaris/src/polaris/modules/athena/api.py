@@ -8,7 +8,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from polaris.modules.athena import logic, service, tokens
-from polaris.modules.athena.models import AthenaTask, AthenaTaskCreate, AthenaTaskList
+from polaris.modules.athena.models import (
+    AthenaCalendarDayResponse,
+    AthenaCalendarNext,
+    AthenaCalendarPeriod,
+    AthenaTask,
+    AthenaTaskCreate,
+    AthenaTaskList,
+)
 from polaris.shared.auth import require_admin
 
 router = APIRouter(prefix="/api/athena", tags=["athena"])
@@ -91,6 +98,68 @@ def create_task(body: AthenaTaskCreate, _: None = Depends(require_agent)):
         return service.create_task(body.model_dump())
     except logic.ValidationFailed as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ─── календарь (только чтение) ───
+
+
+def _calendar(call, *args, types: str | None, important: bool, include_done: bool, **kw):
+    try:
+        return call(*args, types=logic.parse_types(types), important_only=important, include_done=include_done, **kw)
+    except logic.ValidationFailed as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+_TYPES_DOC = "Типы через запятую: event, task, reminder, payment, subscription. Пусто — все"
+
+
+@router.get("/calendar/day", response_model=AthenaCalendarDayResponse)
+def calendar_day(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    types: str | None = Query(default=None, description=_TYPES_DOC),
+    important: bool = Query(default=False, description="Только важные"),
+    include_done: bool = Query(default=False, description="Включить выполненные задачи"),
+    _: None = Depends(require_agent),
+):
+    """Всё на конкретный день: события, задачи с этой датой, напоминания, платежи, подписки."""
+    return _calendar(service.calendar_day, date, types=types, important=important, include_done=include_done)
+
+
+@router.get("/calendar/month", response_model=AthenaCalendarPeriod)
+def calendar_month(
+    year: int = Query(..., ge=2000, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    types: str | None = Query(default=None, description=_TYPES_DOC),
+    important: bool = Query(default=False, description="Только важные"),
+    include_done: bool = Query(default=False, description="Включить выполненные задачи"),
+    _: None = Depends(require_agent),
+):
+    """Весь месяц, сгруппированный по дням (только дни, где что-то есть)."""
+    return _calendar(service.calendar_month, year, month, types=types, important=important, include_done=include_done)
+
+
+@router.get("/calendar/upcoming", response_model=AthenaCalendarPeriod)
+def calendar_upcoming(
+    days: int = Query(default=30, ge=1, le=90, description="Сколько дней вперёд, считая сегодня"),
+    types: str | None = Query(default=None, description=_TYPES_DOC),
+    important: bool = Query(default=False, description="Только важные"),
+    include_done: bool = Query(default=False, description="Включить выполненные задачи"),
+    _: None = Depends(require_agent),
+):
+    """Следующие N дней (по умолчанию 30), сгруппировано по дням."""
+    return _calendar(service.calendar_upcoming, days, types=types, important=important, include_done=include_done)
+
+
+@router.get("/calendar/next", response_model=AthenaCalendarNext)
+def calendar_next(
+    limit: int = Query(default=5, ge=1, le=50, description="Сколько ближайших записей вернуть"),
+    types: str | None = Query(default=None, description=_TYPES_DOC),
+    important: bool = Query(default=False, description="Только важные"),
+    include_done: bool = Query(default=False, description="Включить выполненные задачи"),
+    _: None = Depends(require_agent),
+):
+    """Что ближайшее: одним списком по времени (например, types=event — ближайшие события)."""
+    return _calendar(service.calendar_next, limit, types=types, important=important, include_done=include_done)
 
 
 # ─── для владельца (экран настроек «Агент») ───
