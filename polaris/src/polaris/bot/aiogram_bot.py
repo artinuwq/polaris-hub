@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from aiogram import Bot, Dispatcher, Router, types
@@ -26,6 +28,8 @@ from polaris.bot.notify import build_attention_message, build_open_link
 from polaris.infra.config_store import write_env_value
 from polaris.infra.settings import Settings
 from polaris.shared.exceptions import ConfigurationError, PolarisError
+from polaris.modules.finance import reminders as payment_reminders
+from polaris.modules.finance import repository as finance_repo
 from polaris.update.manager import UpdateManager
 from polaris.modules.attention import service as attention_service
 from polaris.modules.attention.models import UserAction, UserActionRequest
@@ -45,6 +49,7 @@ CONFIG_SPECS: dict[str, dict] = {
     "WEB_PORT": {"attr": "web_port", "kind": "int", "desc": "Порт веб-сервера"},
     "WEBAPP_URL": {"attr": "webapp_url", "kind": "url", "desc": "URL Mini App", "allow_empty": True},
     "MINIAPP_NAME": {"attr": "miniapp_name", "kind": "text", "desc": "Короткое имя Mini App (t.me/<бот>/<имя>)"},
+    "NOTIFY_TIMEZONE": {"attr": "notify_timezone", "kind": "text", "desc": "Часовой пояс напоминаний об оплате (например Europe/Helsinki)"},
     "UPDATE_BRANCH": {"attr": "update_branch", "kind": "text", "desc": "Ветка обновления"},
     "UPDATE_REMOTE": {"attr": "update_remote", "kind": "text", "desc": "Имя remote"},
     "UPDATE_REPO_DIR": {"attr": "update_repo_dir", "kind": "text", "desc": "Каталог репозитория"},
@@ -121,6 +126,9 @@ def is_admin(user_id: int | None, settings: Settings) -> bool:
     if not admins:
         return True
     return user_id in admins
+
+
+PAYMENT_TYPES = {"payment", "subscription", "payment_due", "payment_overdue"}
 
 
 class PolarisBot:
@@ -404,15 +412,77 @@ class PolarisBot:
         await self.bot.session.close()
 
     async def _attention_notifier(self) -> None:
-        """Periodically check attention feed and send push notifications for critical/high items."""
+        """Фоновый цикл уведомлений. Раз в минуту проверяем напоминания об оплате (они привязаны к
+        времени), раз в 5 минут — общую ленту внимания."""
+        tick = 0
         try:
             while True:
-                await asyncio.sleep(300)  # 5 minutes
-                await self._check_and_notify_attention()
+                await asyncio.sleep(60)
+                tick += 1
+                try:
+                    await self._check_payment_reminders()
+                except Exception as exc:  # noqa: BLE001 — сбой напоминаний не должен убивать цикл
+                    logger.exception("Payment reminders error: %s", exc)
+                if tick % 5 == 0:
+                    await self._check_and_notify_attention()
         except asyncio.CancelledError:
             return
         except Exception as exc:
             logger.exception("Attention notifier error: %s", exc)
+
+    def _local_now(self) -> datetime:
+        """Текущее время в часовом поясе NOTIFY_TIMEZONE (по умолчанию Europe/Helsinki)."""
+        try:
+            from zoneinfo import ZoneInfo
+
+            return datetime.now(ZoneInfo(self.settings.notify_timezone))
+        except Exception:  # noqa: BLE001 — неизвестный пояс или нет tzdata
+            logger.warning("Часовой пояс %r недоступен, использую UTC", self.settings.notify_timezone)
+            return datetime.now(timezone.utc)
+
+    async def _send_open_message(self, chat_id: int, text: str, path: str) -> None:
+        link = build_open_link(await self._bot_username(), self.settings.miniapp_name, path, self.settings.webapp_url)
+        markup = None
+        if link:
+            builder = InlineKeyboardBuilder()
+            builder.row(types.InlineKeyboardButton(text="Открыть", url=link))
+            markup = builder.as_markup()
+        await self.bot.send_message(
+            chat_id, text, parse_mode=ParseMode.HTML, reply_markup=markup, disable_web_page_preview=True
+        )
+
+    async def _check_payment_reminders(self) -> None:
+        """Платежи: за 3 дня в 15:00, за день в 15:00 и в день оплаты в 10:00 (NOTIFY_TIMEZONE).
+        Каждое напоминание уходит один раз: факт отправки хранится в базе."""
+        admin_ids = self.settings.telegram_admin_ids
+        if not admin_ids:
+            return
+        now = self._local_now()
+        payments = await asyncio.to_thread(finance_repo.get_all_payments)
+        due = payment_reminders.due_reminders(payments, now)
+        if not due:
+            return
+        sent = await asyncio.to_thread(payment_reminders.sent_keys)
+        for reminder in due:
+            payment = reminder["payment"]
+            item = SimpleNamespace(
+                type="payment_due", title=payment["name"], description="", urgency="high",
+                due_date=reminder["due_date"], due_time=None,
+                payload={"amount": payment.get("amount"), "currency": payment.get("currency", "")},
+                url=f"/finance#payment-{payment['id']}",
+            )
+            text = build_attention_message(item, now.date())
+            for admin_id in admin_ids:
+                key = f"{reminder['key']}:{admin_id}"
+                if key in sent:
+                    continue
+                try:
+                    await self._send_open_message(admin_id, text, item.url)
+                except Exception as exc:  # noqa: BLE001 — не отметили → попробуем на следующей минуте
+                    logger.warning("Не удалось отправить напоминание %s: %s", key, exc)
+                    continue
+                await asyncio.to_thread(payment_reminders.mark_sent, key)
+        await asyncio.to_thread(payment_reminders.prune)
 
     async def _bot_username(self) -> str | None:
         """Имя бота для ссылок t.me/<бот>/<приложение>; запоминаем после первого запроса."""
@@ -437,26 +507,15 @@ class PolarisBot:
                 for item in feed.items:
                     if item.urgency.value not in ("critical", "high"):
                         continue
+                    if item.type.value in PAYMENT_TYPES:
+                        continue  # платежи приходят только по расписанию (_check_payment_reminders)
                     key = (admin_id, item.id)
                     last_notified = self._attention_notified.get(key, 0)
                     # notify at most once per hour per item
                     import time
                     if time.time() - last_notified < 3600:
                         continue
-                    # build message
-                    text = build_attention_message(item)
-                    link = build_open_link(
-                        await self._bot_username(), self.settings.miniapp_name, item.url, self.settings.webapp_url
-                    )
-                    markup = None
-                    if link:
-                        builder = InlineKeyboardBuilder()
-                        builder.row(types.InlineKeyboardButton(text="Открыть", url=link))
-                        markup = builder.as_markup()
-                    await self.bot.send_message(
-                        admin_id, text, parse_mode=ParseMode.HTML, reply_markup=markup,
-                        disable_web_page_preview=True,
-                    )
+                    await self._send_open_message(admin_id, build_attention_message(item), item.url)
                     self._attention_notified[key] = time.time()
             except Exception as exc:
                 logger.exception("Failed to notify admin %s: %s", admin_id, exc)

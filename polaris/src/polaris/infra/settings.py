@@ -33,6 +33,7 @@ class Settings:
     telegram_init_data_max_age: int = 86400
     webapp_url: str = ""
     miniapp_name: str = "app"
+    notify_timezone: str = "Europe/Helsinki"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -55,4 +56,5 @@ class Settings:
             telegram_init_data_max_age=int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", "86400")),
             webapp_url=os.getenv("WEBAPP_URL", "").strip(),
             miniapp_name=os.getenv("MINIAPP_NAME", "app").strip() or "app",
+            notify_timezone=os.getenv("NOTIFY_TIMEZONE", "Europe/Helsinki").strip() or "Europe/Helsinki",
         )
