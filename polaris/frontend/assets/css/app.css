@@ -1021,3 +1021,23 @@ body.drawer-ready .swipe-hint {
     padding-top: 99px;
   }
 }
+
+/* Нет доступа: только короткое сообщение, без шапки, меню и поиска */
+.is-unauthorized .topbar,
+.is-unauthorized .drawer,
+.is-unauthorized .backdrop,
+.is-unauthorized .swipe-hint { display: none !important; }
+.is-unauthorized .app-shell { padding-top: 0; }
+.access-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 70vh;
+  padding: 24px;
+  text-align: center;
+}
+.access-denied h1 { margin: 0; font-size: 1.4rem; }
+.access-denied p { margin: 0; color: var(--text-secondary); }
+

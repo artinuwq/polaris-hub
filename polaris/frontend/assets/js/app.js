@@ -115,6 +115,8 @@
 
   const state = {
     authenticated: false,
+    authChecked: false, // проверка доступа завершена
+    authDenied: false, // true — доступа нет (а не просто сбой связи)
     authMode: '',
     authMessage: 'Проверяю доступ…',
     user: null,
@@ -230,6 +232,7 @@
   }
 
   function openDrawer() {
+    if (!state.authenticated) return;
     state.drawerOpen = true;
     state.searchOpen = false;
     syncOverlays();
@@ -241,6 +244,7 @@
   }
 
   function toggleDrawer() {
+    if (!state.authenticated) return;
     state.drawerOpen = !state.drawerOpen;
     if (state.drawerOpen) {
       state.searchOpen = false;
@@ -249,6 +253,7 @@
   }
 
   function openSearch() {
+    if (!state.authenticated) return;
     state.searchOpen = true;
     state.drawerOpen = false;
     syncOverlays();
@@ -260,6 +265,7 @@
   }
 
   function toggleSearch() {
+    if (!state.authenticated) return;
     if (state.searchOpen) {
       state.searchOpen = false;
       state.searchQuery = '';
@@ -350,7 +356,9 @@
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const detail = data.detail || data.message || data.error || `HTTP ${response.status}`;
-      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      const failure = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      failure.status = response.status;
+      throw failure;
     }
     return data;
   }
@@ -587,45 +595,24 @@
     `;
   }
 
+  // Без доступа показываем только короткое сообщение: ни подсказок, ни причин, ни меню
   function renderAccessGate() {
+    if (!state.authChecked) {
+      return '';
+    }
+    if (state.authDenied) {
+      return `
+        <section class="access-denied">
+          <h1>Несанкционированный доступ</h1>
+          <p>У вас нет разрешения здесь находиться.</p>
+        </section>
+      `;
+    }
     return `
-      <section class="card hero-card span-12">
-        <div class="hero-copy">
-          <p class="eyebrow">Access</p>
-          <h1>Нет доступа</h1>
-          <p class="access-message" data-auth-message></p>
-          <div class="badge-row">
-            <span class="badge warning">Telegram initData или token</span>
-            <span class="badge">Mini App</span>
-            <span class="badge">Browser</span>
-          </div>
-        </div>
-
-        <div class="hero-actions">
-          <button class="small-button primary" type="button" data-action="browser-help">Как открыть на ПК</button>
-          <button class="small-button ghost" type="button" data-action="open-search">Поиск</button>
-        </div>
+      <section class="access-denied">
+        <h1>Не удалось подключиться</h1>
+        <p>Обновите страницу через минуту.</p>
       </section>
-
-      <article class="card list-card span-12">
-        <h3>Что делать</h3>
-        <div class="calm-steps">
-          <div class="calm-step">
-            <div>
-              <strong>Откройте /browser в Telegram-боте</strong>
-              <span>Так на компьютере появится доступ через token, без Telegram initData.</span>
-            </div>
-            <span class="list-item-meta">desktop</span>
-          </div>
-          <div class="calm-step">
-            <div>
-              <strong>Внутри Telegram Mini App все работает напрямую</strong>
-              <span>Это основной путь на телефоне и на устройствах с доступом к Telegram.</span>
-            </div>
-            <span class="list-item-meta">mini app</span>
-          </div>
-        </div>
-      </article>
     `;
   }
 
@@ -641,12 +628,7 @@
         : renderModuleView(view)
       : renderAccessGate();
 
-    if (!state.authenticated) {
-      const message = elements.mainContent.querySelector('[data-auth-message]');
-      if (message) {
-        message.textContent = state.authMessage || 'Откройте Polaris из Telegram Mini App или через /browser.';
-      }
-    }
+    document.body.classList.toggle('is-unauthorized', state.authChecked && !state.authenticated);
 
     hydrateIcons(elements.mainContent);
 
@@ -1025,6 +1007,7 @@
     try {
       const payload = await validateUser();
       state.authenticated = true;
+      state.authChecked = true;
       state.authMode = normalizeAuthMode(payload.data?.auth || state.authMode);
       state.user = payload.user || payload.data || null;
       state.authMessage = payload.message || 'Доступ разрешен.';
@@ -1039,8 +1022,11 @@
       openDeepLink();
     } catch (error) {
       state.authenticated = false;
-      state.authMessage = error.message;
-      setAuthBanner(`Нет доступа: ${error.message}`, 'err');
+      state.authChecked = true;
+      // нет учётных данных или сервер ответил 401/403 — доступа нет; всё остальное — просто сбой связи
+      state.authDenied = !error.status || error.status === 401 || error.status === 403;
+      state.authMessage = '';
+      setAuthBanner('', '');
       renderShell();
     }
   }
