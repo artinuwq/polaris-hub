@@ -142,6 +142,8 @@ def idle_wait(conn: imaplib.IMAP4, timeout: float, stop_event=None) -> bool:
     conn.send(b"DONE\r\n")
     while True:  # дочитываем всё до завершения IDLE
         line = conn.readline()
+        if not line:
+            raise MailConnectionError("IDLE: сервер закрыл соединение (EOF)")
         if line.startswith(tag):
             if b" OK" not in line[: len(tag) + 4]:
                 raise MailConnectionError("IDLE: сервер завершил команду с ошибкой: " + line[:80].decode("utf-8", "replace"))
