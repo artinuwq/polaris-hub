@@ -199,7 +199,7 @@ def test_full_flow(env):
     sent = {(b["chat_id"], b.get("message_thread_id")): b for m, b in tg.requests if m == "sendRichMessage"}
     assert set(sent) == {(123456789, None), (-1003281520729, 1279)}
     md = sent[(123456789, None)]["rich_message"]["markdown"]
-    assert "<details><summary>Текст письма</summary>" in md and "номер 4" in md and "**Ящик:** Рабочая" in md
+    assert "📩 **Письмо**" in md and "номер 4" in md and "<details>" not in md and "**Ящик:**" not in md
     msgs = repository.list_messages()
     assert msgs[0]["uid"] == 4 and msgs[0]["subject"] == "Привет" and wait_for(lambda: repository.list_messages()[0]["sent_count"] == 2)
     assert repository.get_state(acc["id"])[1] == 4
@@ -251,7 +251,8 @@ def test_fallback_when_rich_unsupported(env):
     assert wait_for(lambda: repository.get_destination(dm["id"])["sent_count"] == 1)
     methods = [m for m, _ in tg.requests]
     assert methods == ["sendRichMessage", "sendMessage"]
-    assert "<blockquote expandable>" in tg.requests[1][1]["text"]
+    text = tg.requests[1][1]["text"]
+    assert "<blockquote" not in text and "📩 <b>Письмо</b>" in text and "номер 4" in text
 
 
 def test_wrong_password_and_account_management(env):
