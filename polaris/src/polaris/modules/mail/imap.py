@@ -13,6 +13,7 @@ import email.utils
 import imaplib
 import re
 import select
+import socket
 import time
 from email.parser import BytesParser
 from html.parser import HTMLParser
@@ -49,6 +50,7 @@ def connect(provider: str, address: str, password: str, timeout: int = CONNECT_T
     except (OSError, imaplib.IMAP4.error) as exc:
         raise MailConnectionError(f"Не удалось подключиться к {cfg['host']}: {exc}") from None
 
+    _enable_keepalive(conn)
     try:
         conn.login(address, password)
         status, _ = conn.select("INBOX", readonly=True)
@@ -64,6 +66,20 @@ def connect(provider: str, address: str, password: str, timeout: int = CONNECT_T
     except (OSError, EOFError) as exc:
         _safe_logout(conn)
         raise MailConnectionError(f"Ошибка соединения: {exc}") from None
+
+
+def _enable_keepalive(conn: imaplib.IMAP4) -> None:
+    """TCP keepalive: без него «мёртвое» соединение (NAT или провайдер тихо его оборвали) может
+    молчать минутами, и новые письма не приходят. С keepalive обрыв замечается за ~минуту."""
+    try:
+        sock = conn.sock
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        for name, value in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 10), ("TCP_KEEPCNT", 3)):
+            option = getattr(socket, name, None)  # на Windows и macOS этих настроек может не быть
+            if option is not None:
+                sock.setsockopt(socket.IPPROTO_TCP, option, value)
+    except OSError:
+        pass
 
 
 def _login_message(exc: Exception, provider: str) -> str:
@@ -308,10 +324,12 @@ def parse_message(raw: bytes, truncated: bool = False) -> dict[str, Any]:
     message = BytesParser(policy=email.policy.default).parsebytes(raw)
     raw_date = message.get("Date", "")
     date_text = str(raw_date)
+    sent_ts: float | None = None
     if raw_date:
         try:
             parsed = email.utils.parsedate_to_datetime(str(raw_date))
             date_text = parsed.astimezone().strftime("%d.%m.%Y %H:%M:%S %Z")
+            sent_ts = parsed.timestamp()
         except (TypeError, ValueError, OverflowError):
             pass
 
@@ -323,6 +341,7 @@ def parse_message(raw: bytes, truncated: bool = False) -> dict[str, Any]:
         "sender": decode_header_value(message.get("From", "")),
         "recipient": decode_header_value(message.get("To", "")),
         "date_text": date_text,
+        "sent_ts": sent_ts,  # не сохраняется в БД: нужно только для диагностики задержки в логе
         "body": body[:BODY_STORE_LIMIT],
         "attachments": [] if truncated else get_attachments(message),
     }

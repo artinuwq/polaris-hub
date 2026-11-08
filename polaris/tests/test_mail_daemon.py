@@ -327,3 +327,61 @@ def test_idle_stops_quickly_on_shutdown(env, monkeypatch):
     d.stop()
     assert time.time() - started < 5, "остановка не должна ждать конца IDLE-цикла"
     assert not any(w.is_alive() for w in d.workers.values())
+
+
+def test_idle_recovers_when_push_is_lost(env, monkeypatch):
+    """Уведомление IDLE потерялось (сеть, NAT): письмо всё равно подхватывается по короткому циклу."""
+    imap_state, tg, d = env
+    imap_state.idle = True
+    monkeypatch.setattr(daemon, "POLL_INTERVAL", 1000)
+    monkeypatch.setattr(daemon, "IDLE_CYCLE", 1)          # короткий цикл, как «раз в минуту» в бою
+    service.add_account("gmail", "me@example.com", "secret", verify=False)
+    service.add_destination("123456789")
+    d.start()
+    assert wait_for(lambda: len(repository.list_messages()) == 3)
+    time.sleep(0.4)
+    imap_state.mailbox[4] = make_raw(4)                    # push_counter НЕ трогаем: сервер ничего не прислал
+    assert wait_for(lambda: len(tg.requests) == 1, timeout=6), "письмо не подхвачено без push"
+
+
+def test_sender_wakes_up_immediately_on_new_mail(env, monkeypatch):
+    """Отправщик не ждёт своего опроса: письмо уходит в Telegram сразу после сохранения."""
+    imap_state, tg, d = env
+    imap_state.idle = True
+    monkeypatch.setattr(daemon, "POLL_INTERVAL", 1000)
+    monkeypatch.setattr(daemon, "IDLE_CYCLE", 60)
+    monkeypatch.setattr(daemon, "SENDER_INTERVAL", 30)     # без пробуждения доставка ждала бы до 30 секунд
+    service.add_account("gmail", "me@example.com", "secret", verify=False)
+    service.add_destination("123456789")
+    d.start()
+    assert wait_for(lambda: len(repository.list_messages()) == 3)
+    time.sleep(0.5)
+    started = time.time()
+    imap_state.mailbox[4] = make_raw(4)
+    imap_state.push_counter += 1
+    assert wait_for(lambda: len(tg.requests) == 1, timeout=6)
+    assert time.time() - started < 4
+
+
+def test_connection_has_tcp_keepalive(env):
+    import socket
+
+    conn = imap.connect("gmail", "me@example.com", "secret")
+    try:
+        assert conn.sock.getsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE) != 0
+    finally:
+        imap.logout(conn)
+
+
+def test_parse_message_reports_send_time():
+    parsed = imap.parse_message(make_raw(1))
+    assert parsed["sent_ts"] == 1792929600.0   # 2026-10-25 12:00:00 UTC
+    assert imap.parse_message(b"Subject: x\r\n\r\ntext")["sent_ts"] is None
+
+
+def test_default_idle_cycle_is_short_enough():
+    # раньше было 240 секунд: потерянное уведомление означало задержку до 4 минут
+    import os
+
+    if "MAIL_IDLE_CYCLE" not in os.environ:
+        assert daemon.IDLE_CYCLE == 60

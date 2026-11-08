@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from typing import Any
 
 from polaris.modules.mail import imap, repository, telegram, tgformat
@@ -18,9 +19,12 @@ logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = max(15, int(os.getenv("MAIL_POLL_INTERVAL", "30")))   # опрос, если IDLE недоступен
 USE_IDLE = os.getenv("MAIL_USE_IDLE", "1").strip().lower() not in ("0", "false", "no", "off")
-IDLE_CYCLE = 240                 # IDLE перезапускается раз в 4 минуты: держит соединение живым через NAT
+# IDLE перезапускается раз в минуту: сервер присылает новое письмо мгновенно, а если такое уведомление
+# вдруг потерялось (сеть, NAT, особенности провайдера), ящик всё равно проверяется не реже раза в минуту.
+IDLE_CYCLE = min(600, max(15, int(os.getenv("MAIL_IDLE_CYCLE", "60"))))
 RECONCILE_INTERVAL = 10          # как часто сверять список ящиков с БД
-SENDER_INTERVAL = 3              # как часто смотреть очередь доставки
+SENDER_INTERVAL = 3              # как часто смотреть очередь доставки (если никто не разбудил раньше)
+SENDER_WAKE = threading.Event()  # новое письмо сохранено — отправщик просыпается сразу, не ждёт опроса
 SEND_GAP = 1.1                   # пауза между сообщениями (лимит Telegram ≈ 1/с на чат)
 RECONNECT_START, RECONNECT_MAX = 5, 300
 INITIAL_IMPORT = 20              # сколько последних писем показать в Mini App при первом подключении
@@ -131,8 +135,15 @@ class AccountWorker(threading.Thread):
         destinations = repository.enabled_destination_ids() if notify else []
         # импорт «для просмотра» позицию не двигает: её ставит _sync после всей пачки
         repository.ingest_message(self.account_id, validity, uid, parsed, destinations, advance=notify)
-        logger.info("Mail: %s — письмо UID %s сохранено%s", self.account["email"], uid,
-                    f", в очереди: {len(destinations)}" if notify else "")
+        delay_text = ""
+        sent_ts = parsed.get("sent_ts")
+        if notify and sent_ts:
+            # сколько прошло от отправки письма до того, как мы его забрали (разные часы — оценка грубая)
+            delay_text = f", пришло через {max(0, int(time.time() - sent_ts))} с после отправки"
+        logger.info("Mail: %s — письмо UID %s сохранено%s%s", self.account["email"], uid,
+                    f", в очереди: {len(destinations)}" if notify else "", delay_text)
+        if notify and destinations:
+            SENDER_WAKE.set()
 
 
 def fingerprint(account: dict[str, Any]) -> tuple:
@@ -195,7 +206,11 @@ class MailDaemon:
             except Exception:  # noqa: BLE001
                 logger.exception("Mail: ошибка отправки очереди")
                 sent_any = False
-            self.stop_event.wait(SEND_GAP if sent_any else SENDER_INTERVAL)
+            if sent_any:
+                self.stop_event.wait(SEND_GAP)
+            else:
+                SENDER_WAKE.wait(SENDER_INTERVAL)  # просыпаемся сразу, когда сохранено новое письмо
+                SENDER_WAKE.clear()
 
     def deliver_due(self) -> bool:
         if not self.bot_token:

@@ -4,7 +4,7 @@
 window.EmailModule = (() => {
   'use strict';
 
-  const REFRESH_MS = 60000;
+  const REFRESH_MS = 15000; // как часто страница сама подтягивает новые письма
   const PAGE = 30;
 
   let container = null;
@@ -318,6 +318,11 @@ window.EmailModule = (() => {
       if (!document.hidden) load({ silent: true });
     }, REFRESH_MS);
   }
+
+  // Вернулись в приложение (развернули Telegram, переключили вкладку) — сразу проверяем новые письма
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && isLive() && Date.now() - lastLoad > 5000) load({ silent: true });
+  });
 
   // Уход со страницы: закрываем модалку и снимаем «Назад»
   function leave() { closeFilter(false); }
