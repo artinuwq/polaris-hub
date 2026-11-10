@@ -199,7 +199,7 @@ def test_full_flow(env):
     sent = {(b["chat_id"], b.get("message_thread_id")): b for m, b in tg.requests if m == "sendRichMessage"}
     assert set(sent) == {(123456789, None), (-1003281520729, 1279)}
     md = sent[(123456789, None)]["rich_message"]["markdown"]
-    assert "📩 **Письмо**" in md and "номер 4" in md and "<details>" not in md and "**Ящик:**" not in md
+    assert "📩 **Письмо**" in md and "номер 4" in md and "<details><summary>Текст письма</summary>" in md and "**Ящик:**" not in md
     msgs = repository.list_messages()
     assert msgs[0]["uid"] == 4 and msgs[0]["subject"] == "Привет" and wait_for(lambda: repository.list_messages()[0]["sent_count"] == 2)
     assert repository.get_state(acc["id"])[1] == 4
@@ -252,7 +252,7 @@ def test_fallback_when_rich_unsupported(env):
     methods = [m for m, _ in tg.requests]
     assert methods == ["sendRichMessage", "sendMessage"]
     text = tg.requests[1][1]["text"]
-    assert "<blockquote" not in text and "📩 <b>Письмо</b>" in text and "номер 4" in text
+    assert "<blockquote expandable>" in text and "📩 <b>Письмо</b>" in text and "номер 4" in text
 
 
 def test_wrong_password_and_account_management(env):
@@ -386,3 +386,18 @@ def test_default_idle_cycle_is_short_enough():
 
     if "MAIL_IDLE_CYCLE" not in os.environ:
         assert daemon.IDLE_CYCLE == 60
+
+
+def test_quote_style_sends_a_regular_message_with_expandable_quote(env, monkeypatch):
+    """MAIL_BODY_STYLE=quote: обычное сообщение Telegram с раскрывающейся цитатой, без Rich Message."""
+    imap_state, tg, d = env
+    monkeypatch.setenv("MAIL_BODY_STYLE", "quote")
+    service.add_account("gmail", "me@example.com", "secret", verify=False)
+    service.add_destination("123456789")
+    d.start()
+    assert wait_for(lambda: len(repository.list_messages()) == 3)   # старые письма — без уведомлений
+    imap_state.mailbox[4] = make_raw(4)
+    assert wait_for(lambda: len(tg.requests) == 1, timeout=8)
+    method, payload = tg.requests[0]
+    assert method == "sendMessage"
+    assert "<blockquote expandable>" in payload["text"]

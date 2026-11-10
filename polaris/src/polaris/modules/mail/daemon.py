@@ -228,12 +228,16 @@ class MailDaemon:
         account_name = row["account_label"] or row["account_email"]
         args = (account_name, row["subject"], row["sender"], row["recipient"], row["date_text"],
                 row["body"], row["attachments"])
+        style = tgformat.normalize_style(os.getenv("MAIL_BODY_STYLE"))
         try:
-            telegram.send_rich(
-                self.bot_token, dest,
-                tgformat.build_rich_markdown(*args),
-                fallback_html=tgformat.build_fallback_html(*args),
-            )
+            if style == "quote":  # обычное сообщение с раскрывающейся цитатой — без Rich Message
+                telegram.send_html(self.bot_token, dest, tgformat.build_fallback_html(*args, style=style))
+            else:
+                telegram.send_rich(
+                    self.bot_token, dest,
+                    tgformat.build_rich_markdown(*args, style=style),
+                    fallback_html=tgformat.build_fallback_html(*args, style=style),
+                )
         except telegram.TelegramError as exc:
             self._on_failure(row, exc)
             return

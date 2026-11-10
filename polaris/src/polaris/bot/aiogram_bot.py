@@ -50,6 +50,7 @@ CONFIG_SPECS: dict[str, dict] = {
     "WEBAPP_URL": {"attr": "webapp_url", "kind": "url", "desc": "URL Mini App", "allow_empty": True},
     "MINIAPP_NAME": {"attr": "miniapp_name", "kind": "text", "desc": "Короткое имя Mini App (t.me/<бот>/<имя>)"},
     "NOTIFY_TIMEZONE": {"attr": "notify_timezone", "kind": "text", "desc": "Часовой пояс напоминаний об оплате (например Europe/Helsinki)"},
+    "MAIL_BODY_STYLE": {"attr": "mail_body_style", "kind": "text", "choices": ["details", "quote", "plain"], "desc": "Вид текста письма в Telegram: details (раскрывающийся блок), quote (раскрывающаяся цитата), plain (просто текст)"},
     "UPDATE_BRANCH": {"attr": "update_branch", "kind": "text", "desc": "Ветка обновления"},
     "UPDATE_REMOTE": {"attr": "update_remote", "kind": "text", "desc": "Имя remote"},
     "UPDATE_REPO_DIR": {"attr": "update_repo_dir", "kind": "text", "desc": "Каталог репозитория"},
@@ -70,6 +71,11 @@ def _normalize_config_value(spec: dict, raw_value: str) -> str:
         raise ValueError(f"{spec.get('env_key', '')} не может быть пустым")
 
     kind = spec.get("kind", "text")
+    if spec.get("choices"):
+        lowered = value.lower()
+        if lowered not in spec["choices"]:
+            raise ValueError(f"{spec.get('env_key', '')}: допустимо {', '.join(spec['choices'])}")
+        return lowered
     if kind == "text":
         return value
     if kind == "bool":

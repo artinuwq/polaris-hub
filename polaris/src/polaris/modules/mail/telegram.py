@@ -112,6 +112,20 @@ def send_rich(token: str, dest: Destination, markdown: str, fallback_html: str |
     call(token, "sendMessage", fallback)
 
 
+def send_html(token: str, dest: Destination, html_text: str) -> None:
+    """Обычное сообщение (sendMessage) с HTML-разметкой."""
+    payload = _with_thread(
+        {
+            "chat_id": _chat_id(dest),
+            "text": html_text,
+            "parse_mode": "HTML",
+            "link_preview_options": {"is_disabled": True},
+        },
+        dest,
+    )
+    call(token, "sendMessage", payload)
+
+
 def send_test(token: str, dest: Destination) -> None:
     text = "✅ **Polaris:** тестовое сообщение\n\nПочта будет приходить сюда."
     html_text = "✅ <b>Polaris:</b> тестовое сообщение\n\nПочта будет приходить сюда."

@@ -34,6 +34,7 @@ class Settings:
     webapp_url: str = ""
     miniapp_name: str = "app"
     notify_timezone: str = "Europe/Helsinki"
+    mail_body_style: str = "details"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -57,4 +58,5 @@ class Settings:
             webapp_url=os.getenv("WEBAPP_URL", "").strip(),
             miniapp_name=os.getenv("MINIAPP_NAME", "app").strip() or "app",
             notify_timezone=os.getenv("NOTIFY_TIMEZONE", "Europe/Helsinki").strip() or "Europe/Helsinki",
+            mail_body_style=os.getenv("MAIL_BODY_STYLE", "details").strip().lower() or "details",
         )

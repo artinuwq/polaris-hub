@@ -9,7 +9,12 @@
     Дата: …
     Тема: …
 
-    текст письма обычным текстом, ссылки кликабельные
+    ▸ Текст письма        <- раскрывающийся блок (по нажатию), внутри обычный текст, ссылки кликабельные
+
+Вид текста письма задаёт MAIL_BODY_STYLE:
+    details — раскрывающийся блок «Текст письма» (по умолчанию);
+    quote   — обычное сообщение Telegram с раскрывающейся цитатой (<blockquote expandable>);
+    plain   — просто текст без блока.
 """
 
 from __future__ import annotations
@@ -23,6 +28,13 @@ MAX_MESSAGE_LENGTH = 30000          # лимит Rich Message — 32768
 FALLBACK_MAX_LENGTH = 4000          # обычное сообщение — 4096
 ATTACHMENTS_SHOWN = 20
 TITLE = "Письмо"
+BODY_TITLE = "Текст письма"
+STYLES = ("details", "quote", "plain")
+
+
+def normalize_style(value) -> str:
+    value = str(value or "").strip().lower()
+    return value if value in STYLES else "details"
 
 # Спецсимволы Rich Markdown (GFM): экранируются обратным слэшем.
 # $ — формулы, = — ==выделение==, ^ — степень, | — ||спойлер|| и таблицы.
@@ -168,7 +180,9 @@ def _md_url(url: str) -> str:
             .replace("<", "%3C").replace(">", "%3E").replace('"', "%22"))
 
 
-def render_markdown(paragraphs) -> str:
+def render_markdown(paragraphs, block: bool = False) -> str:
+    """block=True — для содержимого <details>: абзацы разделяем не пустой строкой, а строкой с
+    неразрывным пробелом, чтобы разметка не считала блок законченным."""
     def render_tokens(tokens) -> str:
         out = []
         for token in tokens:
@@ -181,7 +195,7 @@ def render_markdown(paragraphs) -> str:
     blocks = []
     for lines in paragraphs:
         blocks.append("  \n".join(render_tokens(tokens) for tokens in lines))  # два пробела = перенос строки
-    return "\n\n".join(blocks)
+    return ("  \n\u00a0  \n" if block else "\n\n").join(blocks)
 
 
 def render_html(paragraphs) -> str:
@@ -219,11 +233,19 @@ def _cut(text: str, size: int) -> str:
     return part.rstrip()
 
 
-def build_rich_markdown(account_name, subject, sender, message_to, date_text, body, attachments) -> str:
+def build_rich_markdown(account_name, subject, sender, message_to, date_text, body, attachments, style="details") -> str:
     """account_name оставлен в сигнатуре для совместимости: ящик в сообщении не показываем,
     достаточно строки «Кому»."""
     body = (body or "").strip() or "(Пустое письмо.)"
     attachment_line = _attachment_line(attachments)
+    plain = normalize_style(style) == "plain"
+
+    def body_block(message_body: str) -> str:
+        if plain:
+            return render_markdown(parse_body(message_body))
+        # раскрывающийся блок: заголовок виден всегда, текст — по нажатию; внутри обычный текст, не цитата
+        return (f"<details><summary>{BODY_TITLE}</summary>\n\n"
+                f"{render_markdown(parse_body(message_body), block=True)}\n\n</details>")
 
     def assemble(message_body: str) -> str:
         return (
@@ -232,7 +254,7 @@ def build_rich_markdown(account_name, subject, sender, message_to, date_text, bo
             f"**Кому:** {_header(message_to, '(не указан)')}  \n"
             f"**Дата:** {_header(date_text, '(не указана)', 150)}  \n"
             f"**Тема:** {_header(subject, '(без темы)', 500)}\n\n"
-            f"{render_markdown(parse_body(message_body))}"
+            f"{body_block(message_body)}"
             f"{attachment_line}"
         )
 
@@ -258,8 +280,9 @@ def build_rich_markdown(account_name, subject, sender, message_to, date_text, bo
     return result
 
 
-def build_fallback_html(account_name, subject, sender, message_to, date_text, body, attachments) -> str:
-    """Запасной вариант для обычного sendMessage: тот же вид, ссылки кликабельные."""
+def build_fallback_html(account_name, subject, sender, message_to, date_text, body, attachments, style="details") -> str:
+    """Обычное сообщение Telegram (HTML): раскрывающаяся цитата <blockquote expandable> или просто текст;
+    ссылки кликабельные. Используется как запасной вариант и как вид «quote»."""
 
     def esc(value, fallback="", limit=300):
         return html.escape(" ".join(str(value or fallback).split())[:limit])
@@ -276,7 +299,8 @@ def build_fallback_html(account_name, subject, sender, message_to, date_text, bo
         tail = "\n\n<b>Вложения:</b> " + html.escape(", ".join(str(n)[:100] for n in attachments[:ATTACHMENTS_SHOWN]))[:600]
 
     text = (body or "").strip() or "(Пустое письмо.)"
-    room = FALLBACK_MAX_LENGTH - len(head) - len(tail) - 40
+    wrap = normalize_style(style) != "plain"
+    room = FALLBACK_MAX_LENGTH - len(head) - len(tail) - 80
 
     def render(message_body: str) -> str:
         return render_html(parse_body(message_body))
@@ -292,4 +316,6 @@ def build_fallback_html(account_name, subject, sender, message_to, date_text, bo
             else:
                 high = mid - 1
         rendered = render(_cut(text, low) + marker)
+    if wrap:
+        rendered = f"<blockquote expandable>{rendered}</blockquote>"
     return f"{head}{rendered}{tail}"

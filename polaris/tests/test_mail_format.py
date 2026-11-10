@@ -5,6 +5,7 @@ from polaris.modules.mail.tgformat import (
     MAX_MESSAGE_LENGTH,
     build_fallback_html,
     build_rich_markdown,
+    normalize_style,
     parse_body,
     render_markdown,
 )
@@ -18,13 +19,33 @@ Notion Consultant ( https://notion.so?utm_campaign=1 )
 Don't want this kind of email? Unsubscribe from Product Education and How-To's ( https://track.customer.io/unsubscribe/abc ). Manage preferences ( https://track.customer.io/manage/abc )."""
 
 
-def test_header_title_and_no_mailbox_line_and_no_collapsed_quote():
+def test_header_title_and_no_mailbox_line():
     md = build_rich_markdown("Gmail", "Тема", "Иван <i@x.ru>", "me@x.ru", "25.10.2026", "Привет", ["a.pdf"])
     assert md.startswith("📩 **Письмо**")
     assert "**Кому:** me@x\\.ru" in md and "**Тема:** Тема" in md
     assert "**Ящик:**" not in md and "Gmail" not in md
-    assert "<details>" not in md and "\n> " not in md        # текст письма — обычный, без цитаты
     assert md.index("Привет") < md.index("**Вложения:**")
+
+
+def test_body_is_a_collapsible_block_with_plain_text_inside_not_a_quote():
+    md = build_rich_markdown("A", "S", "F", "T", "D", "Первая строка\n\nВторой абзац\nтретья", [])
+    assert "<details><summary>Текст письма</summary>" in md and md.rstrip().endswith("</details>")
+    inner = md[md.index("</summary>") + len("</summary>"): md.index("</details>")]
+    assert "\n> " not in inner and not inner.lstrip("\n").startswith(">")      # без цитаты
+    assert "Второй абзац" in inner and "третья" in inner
+    # внутри блока нет пустых строк (кроме обязательной после summary и перед </details>):
+    # иначе разметка сочла бы блок законченным
+    assert "\n\n" not in inner.strip("\n")
+
+
+def test_plain_style_has_no_block():
+    md = build_rich_markdown("A", "S", "F", "T", "D", "Привет", [], style="plain")
+    assert "<details>" not in md and "Привет" in md
+
+
+def test_style_names():
+    assert normalize_style("QUOTE") == "quote" and normalize_style(" plain ") == "plain"
+    assert normalize_style("") == "details" and normalize_style(None) == "details" and normalize_style("что-то") == "details"
 
 
 def test_markup_in_mail_cannot_break_message():
@@ -69,7 +90,7 @@ def test_only_http_links_become_clickable():
 
 def test_limits():
     big = build_rich_markdown("A", "S", "F", "T", "D", "x" * 100000, [f"f{i}" for i in range(50)])
-    assert len(big) <= MAX_MESSAGE_LENGTH and "<details>" not in big
+    assert len(big) <= MAX_MESSAGE_LENGTH and "</details>" in big      # блок остаётся закрытым
     heads = build_rich_markdown("A", "S" * 99999, "F" * 99999, "T" * 99999, "D", "body", [])
     assert len(heads) <= MAX_MESSAGE_LENGTH
 
@@ -77,15 +98,18 @@ def test_limits():
 def test_long_body_is_cut_on_a_line_boundary_and_keeps_links_whole():
     body = "\n".join(f"Ссылка {i} ( https://example.com/page/{i} )" for i in range(2000))
     md = build_rich_markdown("A", "S", "F", "T", "D", body, [])
-    assert len(md) <= MAX_MESSAGE_LENGTH and md.rstrip().endswith("… \\(текст сокращён\\)")
+    assert len(md) <= MAX_MESSAGE_LENGTH and "… \\(текст сокращён\\)" in md and md.rstrip().endswith("</details>")
     for dest in re.findall(r"\]\(([^)]*)\)", md):
         assert re.fullmatch(r"https://example\.com/page/\d+", dest), dest   # ни одной оборванной ссылки
 
 
 def test_fallback_html():
     fb = build_fallback_html("Gmail", "<b>", "a&b", "t", "d", "тест <x> & " + "я" * 9000, ["a"])
-    assert len(fb) <= 4096 and "<blockquote" not in fb and "&lt;x&gt;" in fb
+    assert len(fb) <= 4096 and "&lt;x&gt;" in fb
     assert fb.startswith("📩 <b>Письмо</b>") and "Ящик" not in fb
+    assert "<blockquote expandable>" in fb and fb.count("<blockquote") == fb.count("</blockquote>")
+    plain = build_fallback_html("Gmail", "S", "F", "T", "D", "текст", [], style="plain")
+    assert "<blockquote" not in plain and "текст" in plain
 
 
 def test_fallback_html_links_are_clickable_and_never_cut_in_half():
