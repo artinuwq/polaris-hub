@@ -82,12 +82,40 @@ def _with_thread(payload: dict[str, Any], dest: Destination) -> dict[str, Any]:
     return payload
 
 
-def _rich_unsupported(exc: TelegramError) -> bool:
-    """sendRichMessage недоступен / не разобрал разметку — можно упасть на обычный sendMessage."""
+_RECIPIENT_PROBLEMS = (
+    "chat not found", "thread not found", "message thread", "not enough rights", "have no rights",
+    "bot was blocked", "bot was kicked", "user is deactivated", "forbidden", "peer_id",
+    "chat_write_forbidden", "group chat was upgraded",
+)
+
+
+def _recipient_problem(exc: TelegramError) -> bool:
+    """Ошибка не в письме, а в получателе (чат, тема, права) — повтор другим способом не поможет."""
     text = exc.description.lower()
-    if exc.status == 404:
-        return True
-    return exc.status == 400 and any(k in text for k in ("can't parse", "parse", "unknown method", "rich", "entities"))
+    return any(marker in text for marker in _RECIPIENT_PROBLEMS)
+
+
+def _rich_unsupported(exc: TelegramError) -> bool:
+    """sendRichMessage недоступен или не принял сообщение — пробуем обычный sendMessage.
+
+    Раньше на обычное сообщение переходили только при «понятных» ошибках разметки; любой другой ответ 400
+    (например, на нестандартное письмо) означал, что письмо терялось. Теперь запасной вариант включается при любом
+    400/404, кроме ошибок получателя (чат не найден, нет прав и т. п.): там он только удвоил бы запросы."""
+    return exc.status in (400, 404) and not _recipient_problem(exc)
+
+
+def _parse_error(exc: TelegramError) -> bool:
+    text = exc.description.lower()
+    return exc.status == 400 and any(k in text for k in ("parse", "entit", "tag"))
+
+
+def html_to_plain(text: str) -> str:
+    """Запасной текст без разметки: убираем теги, ссылки оставляем в виде «название (адрес)»."""
+    import html as _html
+    import re as _re
+
+    text = _re.sub(r'<a href="([^"]*)">(.*?)</a>', lambda m: f"{m.group(2)} ({_html.unescape(m.group(1))})", text, flags=_re.S)
+    return _html.unescape(_re.sub(r"</?(?:b|i|u|s|code|pre|blockquote)[^>]*>", "", text))[:4000]
 
 
 def send_rich(token: str, dest: Destination, markdown: str, fallback_html: str | None = None) -> None:
@@ -109,7 +137,19 @@ def send_rich(token: str, dest: Destination, markdown: str, fallback_html: str |
         },
         dest,
     )
-    call(token, "sendMessage", fallback)
+    try:
+        call(token, "sendMessage", fallback)
+    except TelegramError as exc:
+        if not _parse_error(exc):
+            raise
+        # последняя страховка: Telegram не принял и HTML — отправляем обычным текстом без разметки
+        logger.warning("sendMessage с HTML не прошёл (%s) — отправляю обычным текстом", exc.description)
+        plain = _with_thread(
+            {"chat_id": _chat_id(dest), "text": html_to_plain(fallback_html),
+             "link_preview_options": {"is_disabled": True}},
+            dest,
+        )
+        call(token, "sendMessage", plain)
 
 
 def send_html(token: str, dest: Destination, html_text: str) -> None:

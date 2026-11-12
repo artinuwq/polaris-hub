@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import imaplib
 import logging
 import os
 import threading
@@ -31,6 +32,7 @@ INITIAL_IMPORT = 20              # сколько последних писем 
 KEEP_MESSAGES = 200              # сколько писем хранить на ящик
 RETRY_DELAYS = (30, 120, 600, 3600, 21600)   # паузы между попытками доставки
 MAX_ATTEMPTS = len(RETRY_DELAYS) + 1
+MAX_INGEST_FAILURES = 3          # столько раз пробуем забрать одно и то же письмо, потом оставляем заглушку
 MAX_ATTEMPTS_CONFIG_ERROR = 3    # 400/403 — скорее всего неверная настройка, долго не мучаем
 
 
@@ -51,6 +53,7 @@ class AccountWorker(threading.Thread):
         self.account_id = int(account["id"])
         self.fingerprint = fingerprint(account)
         self.stop_event = threading.Event()
+        self._ingest_failures: dict[int, int] = {}   # uid -> сколько раз письмо не удалось обработать
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -125,9 +128,45 @@ class AccountWorker(threading.Thread):
         for uid in fresh:
             if self.stop_event.is_set():
                 return
-            self._ingest(conn, validity, uid, notify=True)
+            self._ingest_resilient(conn, validity, uid)
         if fresh:
             repository.prune_messages(self.account_id, KEEP_MESSAGES)
+
+    def _ingest_resilient(self, conn, validity: str, uid: int) -> None:
+        """Одно «битое» письмо не должно останавливать весь ящик.
+
+        Сетевые сбои — как и раньше: переподключаемся и пробуем снова. Но если письмо не удаётся
+        разобрать (или сервер упорно не отдаёт его) — сохраняем заглушку с темой и отправителем и идём дальше.
+        Раньше такое письмо вечно блокировало ящик, и все следующие письма (например, чеки) не приходили."""
+        try:
+            self._ingest(conn, validity, uid, notify=True)
+            self._ingest_failures.pop(uid, None)
+            return
+        except Exception as exc:  # noqa: BLE001
+            failures = self._ingest_failures.get(uid, 0) + 1
+            self._ingest_failures[uid] = failures
+            transient = isinstance(exc, (imap.MailConnectionError, imaplib.IMAP4.abort, OSError))
+            if self.stop_event.is_set() or (transient and failures < MAX_INGEST_FAILURES):
+                raise
+            logger.warning("Mail: %s — письмо UID %s не удалось обработать (%s), сохраняю заглушку",
+                           self.account["email"], uid, _safe_text(exc, (self.account["password"],)))
+        self._ingest_placeholder(conn, validity, uid)
+        self._ingest_failures.pop(uid, None)
+
+    def _ingest_placeholder(self, conn, validity: str, uid: int) -> None:
+        headers = imap.fetch_headers_only(conn, uid)
+        parsed = {
+            "subject": headers.get("subject") or "(письмо не удалось прочитать)",
+            "sender": headers.get("sender", ""),
+            "recipient": headers.get("recipient", ""),
+            "date_text": headers.get("date_text", ""),
+            "body": "Не удалось разобрать это письмо автоматически. Откройте его в почтовом ящике.",
+            "attachments": [],
+        }
+        destinations = repository.enabled_destination_ids()
+        repository.ingest_message(self.account_id, validity, uid, parsed, destinations, advance=True)
+        if destinations:
+            SENDER_WAKE.set()
 
     def _ingest(self, conn, validity: str, uid: int, notify: bool) -> None:
         raw, truncated = imap.fetch_message_bytes(conn, uid)

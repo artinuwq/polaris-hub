@@ -115,6 +115,8 @@ class FakeTelegram:
         self.requests = []
         self.fail = {}   # chat_id -> (status, description[, retry_after])
         self.rich_unsupported = False
+        self.rich_error = ""       # любой другой 400 на sendRichMessage
+        self.html_error = False     # sendMessage с HTML не принимается
 
 
 def make_tg_server(state: FakeTelegram):
@@ -128,8 +130,11 @@ def make_tg_server(state: FakeTelegram):
             state.requests.append((method, body))
             code, out = 200, {"ok": True, "result": {"message_id": 1}}
             failure = state.fail.get(str(body.get("chat_id")))
-            if method == "sendRichMessage" and state.rich_unsupported:
-                code, out = 400, {"ok": False, "error_code": 400, "description": "Bad Request: can't parse rich message"}
+            if method == "sendRichMessage" and (state.rich_unsupported or state.rich_error):
+                code, out = 400, {"ok": False, "error_code": 400,
+                                  "description": state.rich_error or "Bad Request: can't parse rich message"}
+            elif method == "sendMessage" and body.get("parse_mode") == "HTML" and state.html_error:
+                code, out = 400, {"ok": False, "error_code": 400, "description": "Bad Request: can't parse entities"}
             elif failure:
                 code = failure[0]
                 out = {"ok": False, "error_code": failure[0], "description": failure[1]}
@@ -401,3 +406,63 @@ def test_quote_style_sends_a_regular_message_with_expandable_quote(env, monkeypa
     method, payload = tg.requests[0]
     assert method == "sendMessage"
     assert "<blockquote expandable>" in payload["text"]
+
+
+def test_broken_message_does_not_block_the_mailbox(env, monkeypatch):
+    """Письмо, которое не удаётся разобрать, не должно останавливать ящик: следующие письма (чеки) приходят."""
+    imap_state, tg, d = env
+    real_parse = imap.parse_message
+
+    def parse(raw, truncated=False):
+        if "номер 4".encode() in raw:
+            raise ValueError("битое письмо")
+        return real_parse(raw, truncated)
+
+    monkeypatch.setattr(imap, "parse_message", parse)
+    service.add_account("gmail", "me@example.com", "secret", verify=False)
+    service.add_destination("123456789")
+    d.start()
+    assert wait_for(lambda: len(repository.list_messages()) == 3)
+    imap_state.mailbox[4] = make_raw(4)   # «ядовитое»
+    imap_state.mailbox[5] = make_raw(5)   # обычное — раньше оно не приходило никогда
+    assert wait_for(lambda: len(tg.requests) == 2, timeout=10), [m for m, _ in tg.requests]
+    texts = " ".join(str(p) for _, p in tg.requests)
+    assert "Не удалось разобрать" in texts and "номер 5" in texts
+    acc = repository.list_accounts()[0]
+    assert acc["last_status"] == "ok"
+    assert repository.get_state(acc["id"])[1] == 5
+
+
+def test_any_400_from_rich_message_falls_back_to_regular_message(env):
+    imap_state, tg, d = env
+    tg.rich_error = "Bad Request: something unexpected"
+    service.add_account("gmail", "me@example.com", "secret", verify=False)
+    dest = service.add_destination("123456789")
+    d.start()
+    assert wait_for(lambda: len(repository.list_messages()) == 3)
+    imap_state.mailbox[4] = make_raw(4)
+    assert wait_for(lambda: repository.get_destination(dest["id"])["sent_count"] == 1)
+    assert [m for m, _ in tg.requests] == ["sendRichMessage", "sendMessage"]
+
+
+def test_html_parse_error_falls_back_to_plain_text(env):
+    """Если Telegram не принял и HTML — письмо всё равно уходит обычным текстом, а не пропадает."""
+    imap_state, tg, d = env
+    tg.rich_unsupported = True
+    tg.html_error = True
+    service.add_account("gmail", "me@example.com", "secret", verify=False)
+    dest = service.add_destination("123456789")
+    d.start()
+    assert wait_for(lambda: len(repository.list_messages()) == 3)
+    imap_state.mailbox[4] = make_raw(4)
+    assert wait_for(lambda: repository.get_destination(dest["id"])["sent_count"] == 1)
+    assert [m for m, _ in tg.requests] == ["sendRichMessage", "sendMessage", "sendMessage"]
+    last = tg.requests[-1][1]
+    assert "parse_mode" not in last and "номер 4" in last["text"] and "<b>" not in last["text"]
+
+
+def test_html_to_plain_keeps_links_readable():
+    from polaris.modules.mail.telegram import html_to_plain
+
+    text = html_to_plain('📩 <b>Письмо</b>\n<blockquote expandable>Смотри <a href="https://a.example/x?a=1&amp;b=2">тут</a> &amp; всё</blockquote>')
+    assert text == "📩 Письмо\nСмотри тут (https://a.example/x?a=1&b=2) & всё"

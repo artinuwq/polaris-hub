@@ -230,6 +230,22 @@ def fetch_message_bytes(conn: imaplib.IMAP4, uid: int) -> tuple[bytes, bool]:
     return raw, False
 
 
+def fetch_headers_only(conn: imaplib.IMAP4, uid: int) -> dict[str, str]:
+    """Тема / отправитель / адресат без тела письма — для заглушки, если письмо целиком разобрать не вышло.
+    Любая ошибка даёт пустой результат: это запасной путь, он не должен падать сам."""
+    try:
+        raw = _literal(_fetch(conn, uid, "(BODY.PEEK[HEADER])")) or b""
+        message = BytesParser(policy=email.policy.default).parsebytes(raw, headersonly=True)
+        return {
+            "subject": decode_header_value(message.get("Subject", "")),
+            "sender": decode_header_value(message.get("From", "")),
+            "recipient": decode_header_value(message.get("To", "")),
+            "date_text": str(message.get("Date", "")),
+        }
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 # ───────────────────────────── parsing ─────────────────────────────
 
 class _HTMLTextParser(HTMLParser):
