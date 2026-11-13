@@ -60,7 +60,22 @@ def _render_index() -> str:
 async def lifespan(app: FastAPI):
     """Application lifespan: run migrations on startup."""
     _run_migrations()
-    yield
+    try:
+        # Storage не должен ронять весь сервис: при любых проблемах он остаётся unavailable
+        from polaris.storage import init_storage
+
+        init_storage(settings)
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).exception("Storage отключён: ошибка запуска")
+    try:
+        yield
+    finally:
+        try:
+            from polaris.storage import shutdown_storage
+
+            shutdown_storage()
+        except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).exception("Storage: ошибка остановки")
 
 
 app = FastAPI(title="Polaris API", lifespan=lifespan)

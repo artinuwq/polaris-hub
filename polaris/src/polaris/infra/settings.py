@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 def _split_ids(raw: str) -> list[int]:
@@ -12,6 +15,18 @@ def _split_ids(raw: str) -> list[int]:
             continue
         result.append(int(part))
     return result
+
+
+def _env_number(name: str, default, cast):
+    """Число из окружения; мусор не должен ронять весь Polaris — берётся значение по умолчанию."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return cast(raw)
+    except ValueError:
+        logger.warning("%s=%r не число, используется %s", name, raw, default)
+        return default
 
 
 @dataclass
@@ -35,6 +50,21 @@ class Settings:
     miniapp_name: str = "app"
     notify_timezone: str = "Europe/Helsinki"
     mail_body_style: str = "details"
+    telegram_proxy_url: str = ""
+    telegram_api_base: str = "https://api.telegram.org"
+    # Storage (см. docs/storage.md)
+    storage_enabled: bool = False
+    storage_db_path: str = ""
+    cloud_storage_chat_id: str = ""
+    storage_chunk_size_mib: int = 15
+    storage_connect_timeout: float = 10.0
+    storage_read_timeout: float = 120.0
+    storage_max_retries: int = 3
+    storage_retry_delay: float = 2.0
+    storage_max_concurrent_uploads: int = 2
+    storage_max_concurrent_downloads: int = 4
+    storage_stale_upload_seconds: int = 1800
+    storage_maintenance_interval: int = 600
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -59,4 +89,18 @@ class Settings:
             miniapp_name=os.getenv("MINIAPP_NAME", "app").strip() or "app",
             notify_timezone=os.getenv("NOTIFY_TIMEZONE", "Europe/Helsinki").strip() or "Europe/Helsinki",
             mail_body_style=os.getenv("MAIL_BODY_STYLE", "details").strip().lower() or "details",
+            telegram_proxy_url=os.getenv("TELEGRAM_PROXY_URL", "").strip(),
+            telegram_api_base=os.getenv("TELEGRAM_API_BASE", "").strip() or cls.telegram_api_base,
+            storage_enabled=os.getenv("STORAGE_ENABLED", "false").strip().lower() in {"1", "true", "yes"},
+            storage_db_path=os.getenv("STORAGE_DB_PATH", "").strip(),
+            cloud_storage_chat_id=os.getenv("CLOUD_STORAGE_CHAT_ID", "").strip(),
+            storage_chunk_size_mib=_env_number("STORAGE_CHUNK_SIZE_MIB", 15, int),
+            storage_connect_timeout=_env_number("STORAGE_CONNECT_TIMEOUT", 10.0, float),
+            storage_read_timeout=_env_number("STORAGE_READ_TIMEOUT", 120.0, float),
+            storage_max_retries=_env_number("STORAGE_MAX_RETRIES", 3, int),
+            storage_retry_delay=_env_number("STORAGE_RETRY_DELAY", 2.0, float),
+            storage_max_concurrent_uploads=_env_number("STORAGE_MAX_CONCURRENT_UPLOADS", 2, int),
+            storage_max_concurrent_downloads=_env_number("STORAGE_MAX_CONCURRENT_DOWNLOADS", 4, int),
+            storage_stale_upload_seconds=_env_number("STORAGE_STALE_UPLOAD_SECONDS", 1800, int),
+            storage_maintenance_interval=_env_number("STORAGE_MAINTENANCE_INTERVAL", 600, int),
         )
