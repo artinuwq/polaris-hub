@@ -60,6 +60,7 @@ class StorageService:
                 delete_max_attempts=cfg.delete_max_attempts,
                 stale_upload_seconds=cfg.stale_upload_seconds,
             )
+            self._core.multipart.min_part_size = cfg.multipart_min_part_size
         except Exception as exc:  # noqa: BLE001
             logger.exception("Storage: запуск не удался")
             if self._db:
@@ -107,7 +108,12 @@ class StorageService:
             self._stop.wait(self.config.maintenance_interval)
 
     def reconcile(self, **kwargs) -> ReconcileReport:
-        return Reconciler(self.get_core()).run(**kwargs)
+        core = self.get_core()
+        if self.config.multipart_expiry_seconds > 0:
+            expired = core.multipart.abort_expired(self.config.multipart_expiry_seconds)
+            if expired:
+                logger.info("Storage: отменено просроченных multipart-загрузок: %d", expired)
+        return Reconciler(core).run(**kwargs)
 
     def get_core(self) -> StorageCore:
         if self.state != READY or self._core is None:

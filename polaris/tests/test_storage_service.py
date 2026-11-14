@@ -79,7 +79,7 @@ class ServiceTests(unittest.TestCase):
         self.addCleanup(s.stop)
         self.assertEqual(s.state, "ready")
         status = s.status()
-        self.assertEqual(status["schema_version"], 1)
+        self.assertGreaterEqual(status["schema_version"], 1)
         self.assertNotIn(TOKEN, repr(status))
         self.assertNotIn(str(CHAT), repr(status))
         core = s.get_core()

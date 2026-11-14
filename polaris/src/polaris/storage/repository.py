@@ -8,6 +8,7 @@ import uuid
 
 from polaris.storage.database import utcnow_iso
 from polaris.storage.models import (
+    MultipartUpload,
     StorageBlob,
     StorageBucket,
     StorageChunk,
@@ -33,6 +34,7 @@ def _blob(r: sqlite3.Row) -> StorageBlob:
     return StorageBlob(
         r["id"], r["dedup_scope"], r["backend"], r["status"], r["size_bytes"], r["chunk_count"],
         r["checksum_sha256"], r["md5_hex"], r["created_at"], r["updated_at"], r["completed_at"],
+        r["checksum_kind"],
     )
 
 
@@ -127,12 +129,12 @@ def fail_object(conn, object_id: str) -> None:
     )
 
 
-def mark_object_ready(conn, object_id: str, blob: StorageBlob) -> None:
+def mark_object_ready(conn, object_id: str, blob: StorageBlob, etag: str | None = None) -> None:
     now = utcnow_iso()
     conn.execute(
         "UPDATE storage_objects SET status='ready', blob_id=?, size_bytes=?, checksum_sha256=?, etag=?, "
         "backend=?, completed_at=?, updated_at=? WHERE id=?",
-        (blob.id, blob.size_bytes, blob.checksum_sha256, blob.md5_hex, blob.backend, now, now, object_id),
+        (blob.id, blob.size_bytes, blob.checksum_sha256, etag or blob.md5_hex, blob.backend, now, now, object_id),
     )
 
 
@@ -164,6 +166,16 @@ def list_objects_of_blob(conn, blob_id: str) -> list[StorageObject]:
 
 
 # ─── blobs ───
+
+def insert_composite_blob(conn, dedup_scope: str, backend: str, size: int, chunk_count: int, sha256: str) -> str:
+    bid, now = new_id(), utcnow_iso()
+    conn.execute(
+        "INSERT INTO storage_blobs (id, dedup_scope, backend, status, size_bytes, chunk_count, checksum_sha256, "
+        "checksum_kind, created_at, updated_at, completed_at) VALUES (?,?,?, 'ready', ?,?,?, 'composite', ?,?,?)",
+        (bid, dedup_scope, backend, size, chunk_count, sha256, now, now, now),
+    )
+    return bid
+
 
 def insert_blob(conn, dedup_scope: str, backend: str) -> str:
     bid, now = new_id(), utcnow_iso()
@@ -332,3 +344,122 @@ def count_exhausted_failed_chunks(conn, max_attempts: int) -> int:
 def count_orphans(conn, *, with_reference: bool) -> int:
     cond = "IS NOT NULL" if with_reference else "IS NULL"
     return conn.execute(f"SELECT COUNT(*) FROM storage_orphans WHERE backend_reference {cond}").fetchone()[0]
+
+
+# ─── Phase 2: списки, buckets, multipart ───
+
+def key_successor(prefix: str) -> str | None:
+    """Наименьшая строка, большая всех строк с данным префиксом (None — верхней границы нет)."""
+    chars = list(prefix)
+    while chars and ord(chars[-1]) >= 0x10FFFF:
+        chars.pop()
+    if not chars:
+        return None
+    code = ord(chars[-1]) + 1
+    if code == 0xD800:  # суррогаты в UTF-8 недопустимы
+        code = 0xE000
+    chars[-1] = chr(code)
+    return "".join(chars)
+
+
+def list_ready_objects(conn, bucket_id: str, prefix: str, from_key: str, limit: int) -> list[StorageObject]:
+    sql = _OBJECT_SELECT + " WHERE o.bucket_id=? AND o.status='ready' AND o.object_key >= ?"
+    args: list = [bucket_id, max(from_key, prefix)]
+    upper = key_successor(prefix) if prefix else None
+    if upper is not None:
+        sql += " AND o.object_key < ?"
+        args.append(upper)
+    rows = conn.execute(sql + " ORDER BY o.object_key LIMIT ?", (*args, limit)).fetchall()
+    return [_object(r) for r in rows]
+
+
+def list_buckets(conn) -> list[StorageBucket]:
+    return [_bucket(r) for r in conn.execute("SELECT * FROM storage_buckets ORDER BY name").fetchall()]
+
+
+def count_bucket_objects(conn, bucket_id: str, statuses: tuple[str, ...]) -> int:
+    marks = ",".join("?" * len(statuses))
+    return conn.execute(
+        f"SELECT COUNT(*) FROM storage_objects WHERE bucket_id=? AND status IN ({marks})", (bucket_id, *statuses)
+    ).fetchone()[0]
+
+
+def delete_bucket_dead_objects(conn, bucket_id: str) -> None:
+    conn.execute("DELETE FROM storage_objects WHERE bucket_id=? AND status IN ('pending','failed')", (bucket_id,))
+
+
+def delete_bucket(conn, bucket_id: str) -> None:
+    conn.execute("DELETE FROM storage_buckets WHERE id=?", (bucket_id,))
+
+
+def move_chunks(conn, from_blob_id: str, to_blob_id: str, index_offset: int) -> None:
+    conn.execute(
+        "UPDATE storage_chunks SET blob_id=?, chunk_index = chunk_index + ? WHERE blob_id=?",
+        (to_blob_id, index_offset, from_blob_id),
+    )
+
+
+_UPLOAD_SELECT = (
+    "SELECT u.*, b.name AS bucket_name FROM storage_multipart_uploads u "
+    "JOIN storage_buckets b ON b.id = u.bucket_id"
+)
+
+
+def _upload(r: sqlite3.Row) -> MultipartUpload:
+    return MultipartUpload(r["id"], r["bucket_name"], r["bucket_id"], r["object_key"], r["filename"],
+                           r["mime_type"], json.loads(r["metadata"]), r["status"], r["created_at"])
+
+
+def insert_upload(conn, upload_id: str, bucket_id: str, key: str, filename: str, mime_type: str, metadata: dict) -> None:
+    now = utcnow_iso()
+    conn.execute(
+        "INSERT INTO storage_multipart_uploads (id, bucket_id, object_key, filename, mime_type, metadata, status, "
+        "created_at, updated_at) VALUES (?,?,?,?,?,?, 'open', ?,?)",
+        (upload_id, bucket_id, key, filename, mime_type, json.dumps(metadata), now, now),
+    )
+
+
+def get_upload(conn, upload_id: str) -> MultipartUpload | None:
+    r = conn.execute(_UPLOAD_SELECT + " WHERE u.id=?", (upload_id,)).fetchone()
+    return _upload(r) if r else None
+
+
+def set_upload_status(conn, upload_id: str, status: str) -> None:
+    conn.execute("UPDATE storage_multipart_uploads SET status=?, updated_at=? WHERE id=?",
+                 (status, utcnow_iso(), upload_id))
+
+
+def delete_upload(conn, upload_id: str) -> None:
+    conn.execute("DELETE FROM storage_multipart_uploads WHERE id=?", (upload_id,))
+
+
+def count_bucket_uploads(conn, bucket_id: str) -> int:
+    return conn.execute("SELECT COUNT(*) FROM storage_multipart_uploads WHERE bucket_id=?", (bucket_id,)).fetchone()[0]
+
+
+def list_uploads(conn, bucket_id: str, prefix: str, after: tuple[str, str] | None, limit: int) -> list[MultipartUpload]:
+    sql = _UPLOAD_SELECT + " WHERE u.bucket_id=? AND u.status='open' AND u.object_key >= ?"
+    args: list = [bucket_id, prefix]
+    upper = key_successor(prefix) if prefix else None
+    if upper is not None:
+        sql += " AND u.object_key < ?"
+        args.append(upper)
+    if after is not None:
+        sql += " AND (u.object_key, u.id) > (?, ?)"
+        args.extend(after)
+    rows = conn.execute(sql + " ORDER BY u.object_key, u.id LIMIT ?", (*args, limit)).fetchall()
+    return [_upload(r) for r in rows]
+
+
+def list_uploads_with_status(conn, status: str, limit: int = 500) -> list[MultipartUpload]:
+    rows = conn.execute(_UPLOAD_SELECT + " WHERE u.status=? LIMIT ?", (status, limit)).fetchall()
+    return [_upload(r) for r in rows]
+
+
+def list_uploads_older_than(conn, cutoff: str, limit: int = 500) -> list[MultipartUpload]:
+    rows = conn.execute(_UPLOAD_SELECT + " WHERE u.status='open' AND u.created_at < ? LIMIT ?", (cutoff, limit)).fetchall()
+    return [_upload(r) for r in rows]
+
+
+def all_upload_ids(conn) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT id FROM storage_multipart_uploads")}

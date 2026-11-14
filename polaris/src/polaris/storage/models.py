@@ -50,6 +50,7 @@ class StorageBlob:
     created_at: str
     updated_at: str
     completed_at: str | None
+    checksum_kind: str = "content"
 
 
 @dataclass(frozen=True)
@@ -108,3 +109,25 @@ class IntegrityReport:
     ok: bool
     problems: list[str]
     checked_chunks: int = 0
+
+
+@dataclass(frozen=True)
+class MultipartUpload:
+    id: str
+    bucket: str
+    bucket_id: str
+    object_key: str
+    filename: str
+    mime_type: str
+    metadata: dict[str, Any]
+    status: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class MultipartPart:
+    part_number: int
+    size_bytes: int
+    etag: str
+    last_modified: str
+    object_id: str

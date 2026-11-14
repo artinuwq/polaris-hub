@@ -65,6 +65,19 @@ class Settings:
     storage_max_concurrent_downloads: int = 4
     storage_stale_upload_seconds: int = 1800
     storage_maintenance_interval: int = 600
+    # S3-совместимый API (см. docs/s3-api.md)
+    s3_enabled: bool = False
+    s3_path_prefix: str = "/s3"
+    s3_region: str = "us-east-1"
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = field(default="", repr=False)
+    s3_credentials: str = field(default="", repr=False)  # "id1:secret1,id2:secret2"
+    s3_disabled_keys: str = ""  # "id1,id2" — отключённые ключи
+    s3_max_request_size_mib: int = 5120
+    s3_clock_skew_seconds: int = 900
+    s3_min_part_size_mib: int = 5
+    s3_multipart_expiry_hours: int = 0
+    s3_body_timeout: float = 60.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -103,4 +116,16 @@ class Settings:
             storage_max_concurrent_downloads=_env_number("STORAGE_MAX_CONCURRENT_DOWNLOADS", 4, int),
             storage_stale_upload_seconds=_env_number("STORAGE_STALE_UPLOAD_SECONDS", 1800, int),
             storage_maintenance_interval=_env_number("STORAGE_MAINTENANCE_INTERVAL", 600, int),
+            s3_enabled=os.getenv("S3_ENABLED", "false").strip().lower() in {"1", "true", "yes"},
+            s3_path_prefix=os.getenv("S3_PATH_PREFIX", "/s3").strip() or "/s3",
+            s3_region=os.getenv("S3_REGION", "us-east-1").strip() or "us-east-1",
+            s3_access_key_id=os.getenv("S3_ACCESS_KEY_ID", "").strip(),
+            s3_secret_access_key=os.getenv("S3_SECRET_ACCESS_KEY", "").strip(),
+            s3_credentials=os.getenv("S3_CREDENTIALS", "").strip(),
+            s3_disabled_keys=os.getenv("S3_DISABLED_KEYS", "").strip(),
+            s3_max_request_size_mib=_env_number("S3_MAX_REQUEST_SIZE_MIB", 5120, int),
+            s3_clock_skew_seconds=_env_number("S3_CLOCK_SKEW_SECONDS", 900, int),
+            s3_min_part_size_mib=_env_number("S3_MIN_PART_SIZE_MIB", 5, int),
+            s3_multipart_expiry_hours=_env_number("S3_MULTIPART_EXPIRY_HOURS", 0, int),
+            s3_body_timeout=_env_number("S3_BODY_TIMEOUT", 60.0, float),
         )

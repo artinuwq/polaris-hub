@@ -47,3 +47,23 @@ class ChecksumMismatch(IntegrityError):
 
 class MigrationError(StorageError):
     pass
+
+
+class BucketExists(StorageError):
+    pass
+
+
+class BucketNotEmpty(StorageError):
+    pass
+
+
+class InvalidRange(StorageError):
+    pass
+
+
+class MultipartError(StorageError):
+    """Ошибка multipart-загрузки; code — стабильный идентификатор для верхнего уровня."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code

@@ -32,16 +32,16 @@ class DatabaseTests(StorageTestCase):
         self.assertEqual(len(self.q("SELECT * FROM schema_migrations")), len(load_migrations()))
 
     def test_incremental_migration_applies_only_new(self):
-        extra = Migration(2, "0002_extra", "CREATE TABLE extra_t (id INTEGER PRIMARY KEY);\n-- коммент\n")
-        self.assertEqual(self.db.migrate(load_migrations() + [extra]), 2)
+        extra = Migration(90, "0090_extra", "CREATE TABLE extra_t (id INTEGER PRIMARY KEY);\n-- коммент\n")
+        self.assertEqual(self.db.migrate(load_migrations() + [extra]), 90)
         self.assertTrue(self.q("SELECT name FROM sqlite_master WHERE name='extra_t'"))
 
     def test_failed_migration_rolls_back(self):
-        bad = Migration(2, "0002_bad", "CREATE TABLE ok_t (id INTEGER);\nCREATE TABLE ok_t (id INTEGER);")
+        bad = Migration(91, "0091_bad", "CREATE TABLE ok_t (id INTEGER);\nCREATE TABLE ok_t (id INTEGER);")
         with self.assertRaises(sqlite3.OperationalError):
             self.db.migrate(load_migrations() + [bad])
         self.assertFalse(self.q("SELECT name FROM sqlite_master WHERE name='ok_t'"))
-        self.assertEqual(self.db.schema_version(), 1)
+        self.assertEqual(self.db.schema_version(), load_migrations()[-1].version)
 
     def test_changed_applied_migration_is_rejected(self):
         changed = Migration(1, "0001_initial", "SELECT 1;")
@@ -49,7 +49,7 @@ class DatabaseTests(StorageTestCase):
             self.db.migrate([changed])
 
     def test_database_from_newer_version_is_rejected(self):
-        self.db.migrate(load_migrations() + [Migration(2, "0002_x", "SELECT 1;")])
+        self.db.migrate(load_migrations() + [Migration(99, "0099_x", "SELECT 1;")])
         with self.assertRaises(MigrationError):
             self.db.migrate()  # «откат кода» на базу со схемой 2
 

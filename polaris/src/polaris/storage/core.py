@@ -26,10 +26,13 @@ from polaris.storage.backends.base import (
 )
 from polaris.storage.database import StorageDatabase
 from polaris.storage.errors import (
+    BucketExists,
+    BucketNotEmpty,
     BucketNotFound,
     ChecksumMismatch,
     IntegrityError,
     InvalidName,
+    InvalidRange,
     ObjectConflict,
     ObjectNotFound,
     ObjectNotReady,
@@ -48,6 +51,10 @@ from polaris.storage.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Служебные bucket-ы не видны в list_buckets и не создаются через create_bucket.
+INTERNAL_BUCKET_PREFIX = "polaris-internal."
+MULTIPART_BUCKET = INTERNAL_BUCKET_PREFIX + "multipart"
 
 _BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _READ_PIECE = 1024 * 1024
@@ -126,11 +133,12 @@ class UploadSession:
             self.abort()
             raise
 
-    def complete(self) -> StorageObject:
+    def complete(self, *, etag: str | None = None) -> StorageObject:
+        """Завершить загрузку. etag — переопределить ETag объекта (по умолчанию MD5 содержимого)."""
         if self._finished:
             raise ObjectConflict("загрузка уже завершена или отменена")
         try:
-            return self._core._complete(self)
+            return self._core._complete(self, etag)
         except BaseException:
             self.abort()
             raise
@@ -176,6 +184,9 @@ class StorageCore:
         self._active_lock = threading.Lock()
         self._active_objects: set[str] = set()
         self._active_blobs: set[str] = set()
+        from polaris.storage.multipart import MultipartManager  # локально: модуль зависит от ядра
+
+        self.multipart = MultipartManager(self)
 
     # ─── buckets ───
 
@@ -196,6 +207,40 @@ class StorageCore:
             raise BucketNotFound(name)
         return bucket
 
+    def list_buckets(self, *, include_internal: bool = False) -> list[StorageBucket]:
+        buckets = repo.list_buckets(self.db.connection())
+        if include_internal:
+            return buckets
+        return [b for b in buckets if not b.name.startswith(INTERNAL_BUCKET_PREFIX)]
+
+    def create_bucket(self, name: str, *, dedup_scope: str | None = None, settings: dict | None = None) -> StorageBucket:
+        """Строгое создание: BucketExists, если bucket уже есть (в отличие от идемпотентного ensure_bucket)."""
+        _validate_bucket_name(name)
+        if name.startswith(INTERNAL_BUCKET_PREFIX):
+            raise InvalidName("имя зарезервировано для служебных нужд")
+        with self.db.transaction() as conn:
+            if repo.get_bucket(conn, name) is not None:
+                raise BucketExists(name)
+            return repo.insert_bucket(conn, name, dedup_scope or name, settings or {})
+
+    def delete_bucket(self, name: str) -> None:
+        """Удалить пустой bucket. Готовые, загружаемые и удаляемые объекты и multipart-загрузки блокируют удаление."""
+        with self.db.transaction() as conn:
+            bucket = repo.get_bucket(conn, name)
+            if bucket is None:
+                raise BucketNotFound(name)
+            if (repo.count_bucket_objects(conn, bucket.id, (ObjectStatus.READY, ObjectStatus.UPLOADING, ObjectStatus.DELETING))
+                    or repo.count_bucket_uploads(conn, bucket.id)):
+                raise BucketNotEmpty(name)
+            repo.delete_bucket_dead_objects(conn, bucket.id)  # pending/failed — записи без данных
+            repo.delete_bucket(conn, bucket.id)
+
+    def list_objects(self, bucket: str, *, prefix: str = "", from_key: str = "", limit: int = 1000) -> list[StorageObject]:
+        """Готовые объекты bucket в порядке ключей (UTF-8 binary), ключ >= from_key, с префиксом prefix.
+        Ключ, следующий строго за K, — это K + '\0' (NUL в ключах запрещён)."""
+        b = self.get_bucket(bucket)
+        return repo.list_ready_objects(self.db.connection(), b.id, prefix, from_key, max(1, min(limit, 10_000)))
+
     # ─── создание и загрузка ───
 
     def create_object(self, bucket: str, key: str, *, filename: str | None = None,
@@ -211,10 +256,12 @@ class StorageCore:
             return repo.get_object(conn, oid)  # type: ignore[return-value]
 
     def begin_upload(self, object_id: str, *, expected_sha256: str | None = None,
-                     expected_size: int | None = None) -> UploadSession:
+                     expected_size: int | None = None, dedup: bool = True) -> UploadSession:
         """Начать загрузку. Если задан expected_sha256 и такое содержимое уже есть в scope bucket-а,
         в backend ничего не отправляется: поток целиком читается и сверяется (владение содержимым
-        доказывается, а не заявляется), после чего объект привязывается к существующему blob."""
+        доказывается, а не заявляется), после чего объект привязывается к существующему blob.
+        dedup=False: содержимое никогда не делится с другими объектами (blob в собственном scope) —
+        нужно для частей multipart-загрузки, чьи чанки затем переносятся в итоговый blob."""
         if expected_sha256 is not None:
             expected_sha256 = expected_sha256.lower()
             if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
@@ -228,13 +275,15 @@ class StorageCore:
                     raise ObjectNotFound(object_id)
                 if obj.status not in (ObjectStatus.PENDING, ObjectStatus.FAILED):
                     raise ObjectConflict(f"загрузка невозможна для объекта в статусе {obj.status}")
-                existing = repo.find_ready_blob(conn, obj.dedup_scope, expected_sha256) if expected_sha256 else None
+                existing = (repo.find_ready_blob(conn, obj.dedup_scope, expected_sha256)
+                            if (expected_sha256 and dedup) else None)
+                scope = obj.dedup_scope if dedup else f"nodedup:{repo.new_id()}"
                 if existing:
                     blob_id, verify_only = existing.id, True
                 else:
-                    blob_id, verify_only = repo.insert_blob(conn, obj.dedup_scope, self.driver.name), False
+                    blob_id, verify_only = repo.insert_blob(conn, scope, self.driver.name), False
                 repo.begin_object_upload(conn, object_id, blob_id)
-            session = UploadSession(self, object_id, blob_id, obj.dedup_scope, verify_only, expected_sha256, expected_size)
+            session = UploadSession(self, object_id, blob_id, scope, verify_only, expected_sha256, expected_size)
         except BaseException:
             self._upload_slots.release()
             raise
@@ -348,7 +397,7 @@ class StorageCore:
                 pass
         raise StorageError("не удалось сохранить метаданные чанка") from last
 
-    def _complete(self, session: UploadSession) -> StorageObject:
+    def _complete(self, session: UploadSession, etag: str | None = None) -> StorageObject:
         if not session.verify_only and session._buf:
             chunk = bytes(session._buf)
             session._buf.clear()
@@ -394,7 +443,7 @@ class StorageCore:
             if old is not None and old.id != obj.id:
                 repo.set_object_status(conn, old.id, ObjectStatus.DELETING)
                 replaced = old.id
-            repo.mark_object_ready(conn, obj.id, target)  # заодно переключает blob_id на target
+            repo.mark_object_ready(conn, obj.id, target, etag)  # заодно переключает blob_id на target
             ready = repo.get_object(conn, obj.id)
         self._finish_session(session)
         if discard_blob:
@@ -435,6 +484,58 @@ class StorageCore:
     def is_active(self, *, object_id: str | None = None, blob_id: str | None = None) -> bool:
         with self._active_lock:
             return (object_id in self._active_objects) or (blob_id in self._active_blobs)
+
+    def compose_object(self, bucket: str, key: str, part_object_ids: list[str], *, filename: str | None = None,
+                       mime_type: str | None = None, metadata: dict | None = None,
+                       etag: str | None = None) -> StorageObject:
+        """Собрать объект из готовых «частей» (объектов, загруженных с dedup=False) БЕЗ обращения к backend:
+        чанки частей переносятся в новый составной blob одной транзакцией, строки частей удаляются.
+        Либо всё выполнено, либо ничего. Прежний объект с этим ключом заменяется атомарно."""
+        _validate_key(key)
+        if not part_object_ids:
+            raise StorageError("нужна хотя бы одна часть")
+        replaced: str | None = None
+        with self.db.transaction() as conn:
+            b = repo.get_bucket(conn, bucket)
+            if b is None:
+                raise BucketNotFound(bucket)
+            parts, chunk_lists = [], []
+            for oid in part_object_ids:
+                part = repo.get_object(conn, oid)
+                if part is None or part.status != ObjectStatus.READY or part.blob_id is None:
+                    raise ObjectConflict(f"часть {oid} недоступна")
+                blob = repo.get_blob(conn, part.blob_id)
+                chunks = repo.list_chunks(conn, part.blob_id)
+                if (blob is None or blob.status != BlobStatus.READY or not blob.dedup_scope.startswith("nodedup:")
+                        or repo.count_blob_refs(conn, blob.id) != 1 or blob.backend != self.driver.name
+                        or _check_chunks(blob, chunks)):
+                    raise ObjectConflict(f"содержимое части {oid} нельзя перенести")
+                parts.append((part, blob))
+                chunk_lists.append(chunks)
+            all_chunks = [c for chunks in chunk_lists for c in chunks]
+            digest = hashlib.sha256(b"polaris-composite-v1\n")
+            for c in all_chunks:
+                digest.update(bytes.fromhex(c.checksum_sha256))
+            size = sum(blob.size_bytes for _, blob in parts)
+            new_blob_id = repo.insert_composite_blob(conn, f"composite:{repo.new_id()}", self.driver.name, size,
+                                                     len(all_chunks), digest.hexdigest())
+            offset = 0
+            for (part, blob), chunks in zip(parts, chunk_lists):
+                repo.move_chunks(conn, blob.id, new_blob_id, offset)
+                offset += len(chunks)
+                repo.delete_object(conn, part.id)
+                repo.delete_blob(conn, blob.id)
+            filename = filename if filename is not None else key.rsplit("/", 1)[-1]
+            oid = repo.insert_object(conn, b.id, key, filename, mime_type or "application/octet-stream", metadata or {})
+            old = repo.get_ready_object_by_key(conn, b.id, key)
+            if old is not None:
+                repo.set_object_status(conn, old.id, ObjectStatus.DELETING)
+                replaced = old.id
+            repo.mark_object_ready(conn, oid, repo.get_blob(conn, new_blob_id), etag)  # type: ignore[arg-type]
+            ready = repo.get_object(conn, oid)
+        if replaced:
+            self._finish_object_deletion(replaced)
+        return ready  # type: ignore[return-value]
 
     # ─── чтение ───
 
@@ -482,28 +583,48 @@ class StorageCore:
             raise IntegrityError("; ".join(problems))
         return blob, chunks
 
-    def stream(self, object_id: str) -> Iterator[bytes]:
-        """Поток содержимого готового объекта.
+    def stream(self, object_id: str, start: int | None = None, end: int | None = None) -> Iterator[bytes]:
+        """Поток содержимого готового объекта (или диапазона байт start..end включительно).
 
-        Каждый чанк целиком скачивается и проверяется (размер, SHA-256) ДО выдачи потребителю;
-        итоговый SHA-256 проверяется в конце. Если поток оборвался исключением (в т.ч. IntegrityError),
+        Каждый чанк целиком скачивается и проверяется (размер, SHA-256) ДО выдачи потребителю.
+        Для всего объекта итоговый SHA-256 проверяется в конце; для диапазона проверяются только
+        затронутые чанки (целиком). Если поток оборвался исключением (в т.ч. IntegrityError),
         результат нельзя считать успешным — даже если часть байт уже получена.
+        Читаются только чанки, пересекающиеся с диапазоном: произвольное чтение внутри backend не нужно.
         """
         obj = self.get_metadata(object_id)
+        if start is not None or end is not None:
+            if start is None or end is None or not 0 <= start <= end < obj.size_bytes:
+                raise InvalidRange(f"диапазон {start}-{end} вне объекта размером {obj.size_bytes}")
         blob, chunks = self._ready_chunks(obj)
-        return self._iter_stream(obj, blob, chunks)
+        return self._iter_stream(obj, blob, chunks, start, end)
 
-    def _iter_stream(self, obj: StorageObject, blob: StorageBlob, chunks: list[StorageChunk]) -> Iterator[bytes]:
+    def _iter_stream(self, obj: StorageObject, blob: StorageBlob, chunks: list[StorageChunk],
+                     start: int | None = None, end: int | None = None) -> Iterator[bytes]:
         if not self._download_slots.acquire(blocking=False):
             raise StorageBusy("достигнут лимит параллельных скачиваний")
         try:
-            total, size = hashlib.sha256(), 0
+            full = start is None
+            total = hashlib.sha256() if full and blob.checksum_kind == "content" else None
+            size, offset = 0, 0
             for chunk in chunks:
+                c_start, c_end = offset, offset + chunk.size_bytes  # c_end — исключительно
+                offset = c_end
+                if not full and c_start > end:  # type: ignore[operator]
+                    break
+                if not full and c_end <= start:  # type: ignore[operator]
+                    continue
                 data = self._fetch_chunk(chunk)
-                total.update(data)
-                size += len(data)
-                yield bytes(data)
-            if size != blob.size_bytes or total.hexdigest() != blob.checksum_sha256:
+                if total is not None:
+                    total.update(data)
+                if full:
+                    size += len(data)
+                    yield bytes(data)
+                else:
+                    lo = max(start, c_start) - c_start  # type: ignore[type-var]
+                    hi = min(end, c_end - 1) + 1 - c_start  # type: ignore[type-var]
+                    yield bytes(data[lo:hi])
+            if full and (size != blob.size_bytes or (total is not None and total.hexdigest() != blob.checksum_sha256)):
                 raise IntegrityError(f"итоговая проверка объекта {obj.id} не пройдена")
         finally:
             self._download_slots.release()
@@ -544,7 +665,7 @@ class StorageCore:
                 checked += 1
             except (IntegrityError, BackendError) as exc:
                 problems.append(f"чанк {chunk.chunk_index}: {exc}")
-        if deep and not problems and total.hexdigest() != blob.checksum_sha256:
+        if deep and not problems and blob.checksum_kind == "content" and total.hexdigest() != blob.checksum_sha256:
             problems.append("итоговый SHA-256 не совпал")
         return IntegrityReport(not problems, problems, checked)
 

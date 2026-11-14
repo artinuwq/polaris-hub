@@ -70,6 +70,8 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if s3_app is not None:
+            s3_app.close()
         try:
             from polaris.storage import shutdown_storage
 
@@ -218,6 +220,18 @@ try:
     app.include_router(agent_router)
 except Exception:  # noqa: BLE001
     logging.getLogger(__name__).exception("Athena API отключена: ошибка импорта")
+
+# S3-совместимый API поверх Storage (выключен по умолчанию, S3_ENABLED=true). Как и Athena, не должен ронять сервис.
+s3_app = None
+try:
+    from polaris.s3 import create_s3_app
+
+    s3_app = create_s3_app(settings)
+    if s3_app is not None:
+        app.mount(s3_app.config.path_prefix, s3_app, name="s3")
+except Exception:  # noqa: BLE001
+    s3_app = None
+    logging.getLogger(__name__).exception("S3 API отключён: ошибка запуска")
 
 
 # ─── Helpers ───

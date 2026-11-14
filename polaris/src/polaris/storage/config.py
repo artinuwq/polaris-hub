@@ -39,6 +39,8 @@ class StorageConfig:
     stale_upload_seconds: int = 1800
     delete_max_attempts: int = 10
     maintenance_interval: int = 600  # секунд; 0 — только разовая сверка при старте
+    multipart_min_part_size: int = 5 * MIB
+    multipart_expiry_seconds: int = 0  # 0 — незавершённые multipart-загрузки не истекают
 
     def validate(self) -> list[str]:
         """Ошибки, из-за которых Storage не должен стартовать. Пустой список — всё в порядке."""
@@ -60,6 +62,8 @@ class StorageConfig:
             errors.append("лимиты параллельных операций должны быть >= 1")
         if self.busy_timeout_ms < 0 or self.stale_upload_seconds < 60 or self.delete_max_attempts < 1:
             errors.append("busy_timeout/stale_upload_seconds(>=60)/delete_max_attempts(>=1) заданы неверно")
+        if self.multipart_min_part_size < 1 or self.multipart_expiry_seconds < 0:
+            errors.append("multipart: минимальный размер части >= 1, срок жизни >= 0")
         return errors
 
     def backend_problems(self) -> list[str]:
@@ -95,4 +99,6 @@ class StorageConfig:
             max_concurrent_downloads=settings.storage_max_concurrent_downloads,
             stale_upload_seconds=settings.storage_stale_upload_seconds,
             maintenance_interval=settings.storage_maintenance_interval,
+            multipart_min_part_size=int(settings.s3_min_part_size_mib * MIB),
+            multipart_expiry_seconds=int(settings.s3_multipart_expiry_hours * 3600),
         )

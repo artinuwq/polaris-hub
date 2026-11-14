@@ -32,6 +32,8 @@ class ReconcileReport:
     blobs_still_pending: int = 0
     orphans_deleted: int = 0
     suspected_orphans: int = 0  # без ссылки: принадлежность не подтверждена, вручную
+    multipart_aborts_finished: int = 0
+    orphan_parts_removed: int = 0
     orphans_pending: int = 0  # со ссылкой: удаление будет повторено
     chunks_delete_rejected: int = 0
     chunks_delete_exhausted: int = 0
@@ -121,6 +123,11 @@ class Reconciler:
                 with self.db.transaction() as conn:
                     repo.delete_orphan(conn, orphan.id)
                 report.orphans_deleted += 1
+
+        # 5b. multipart: довести прерванные Abort, убрать части без загрузки
+        mp = core.multipart.reconcile()
+        report.multipart_aborts_finished = mp["aborts_finished"]
+        report.orphan_parts_removed = mp["orphan_parts_removed"]
 
         # 6. диагностика: только отчёт, ничего не удаляется
         conn = self.db.connection()
