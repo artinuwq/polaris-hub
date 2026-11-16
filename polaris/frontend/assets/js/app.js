@@ -869,13 +869,7 @@
     } catch (error) {
       if (isConnectionDrop(error)) {
         // Обновление перезапускает сервис — соединение обрывается само. Это не ошибка.
-        setNotice('Сервис перезапускается после обновления…', 'warning');
-        renderShell();
-        const back = await waitForService();
-        setNotice(back ? 'Обновление выполнено, сервис снова доступен.' : 'Сервис пока не отвечает — проверьте через минуту.', back ? 'success' : 'warning');
-        if (back) {
-          await loadUpdateStatus();
-        }
+        window.PolarisRestart.show('Идёт обновление, сервис перезапускается…');
       } else {
         setNotice(`Ошибка обновления: ${error.message}`, 'error');
         tg?.HapticFeedback?.notificationOccurred?.('error');
@@ -912,13 +906,16 @@
 
     toggleActionBusy('restart');
     try {
-      const payload = await request('/api/restart', 'POST');
-      setNotice(payload.message || 'Перезапуск выполнен.', 'success');
-      tg?.HapticFeedback?.notificationOccurred?.('success');
-      await loadUpdateStatus();
+      await request('/api/restart', 'POST');
+      window.PolarisRestart.show('Идёт перезапуск Polaris…');
     } catch (error) {
-      setNotice(`Ошибка перезапуска: ${error.message}`, 'error');
-      tg?.HapticFeedback?.notificationOccurred?.('error');
+      if (isConnectionDrop(error)) {
+        // сервис успел упасть до ответа — это и есть перезапуск
+        window.PolarisRestart.show('Идёт перезапуск Polaris…');
+      } else {
+        setNotice(`Ошибка перезапуска: ${error.message}`, 'error');
+        tg?.HapticFeedback?.notificationOccurred?.('error');
+      }
     } finally {
       state.busy = '';
       renderShell();

@@ -526,7 +526,10 @@ window.StorageModule = (() => {
     confirmDialog({
       title: 'Перезапустить Polaris?', danger: true, confirmLabel: 'Перезапустить',
       text: 'Сервис будет перезапущен, интерфейс на несколько секунд станет недоступен. Применятся все сохранённые настройки.',
-      onConfirm: async () => { await api('/api/restart', 'POST'); setNotice('ok', 'Перезапуск запущен — страница оживёт через несколько секунд'); },
+      onConfirm: async () => {
+        try { await api('/api/restart', 'POST'); } catch (e) { if (!(e instanceof TypeError)) throw e; }  // обрыв связи = сервис уже перезапускается
+        window.PolarisRestart.show('Идёт перезапуск Polaris…');
+      },
     });
   }
 
