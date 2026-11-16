@@ -55,6 +55,13 @@ logger = logging.getLogger(__name__)
 # Служебные bucket-ы не видны в list_buckets и не создаются через create_bucket.
 INTERNAL_BUCKET_PREFIX = "polaris-internal."
 MULTIPART_BUCKET = INTERNAL_BUCKET_PREFIX + "multipart"
+SELFTEST_BUCKET_PREFIX = "polaris-selftest-"  # временные bucket-ы самотестов S3 (создаёт только Polaris)
+
+
+def is_hidden_bucket(name: str) -> bool:
+    """Служебные bucket-ы: не показываются в списках и не создаются пользователем."""
+    return name.startswith((INTERNAL_BUCKET_PREFIX, SELFTEST_BUCKET_PREFIX))
+
 
 _BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _READ_PIECE = 1024 * 1024
@@ -211,12 +218,12 @@ class StorageCore:
         buckets = repo.list_buckets(self.db.connection())
         if include_internal:
             return buckets
-        return [b for b in buckets if not b.name.startswith(INTERNAL_BUCKET_PREFIX)]
+        return [b for b in buckets if not is_hidden_bucket(b.name)]
 
     def create_bucket(self, name: str, *, dedup_scope: str | None = None, settings: dict | None = None) -> StorageBucket:
         """Строгое создание: BucketExists, если bucket уже есть (в отличие от идемпотентного ensure_bucket)."""
         _validate_bucket_name(name)
-        if name.startswith(INTERNAL_BUCKET_PREFIX):
+        if is_hidden_bucket(name):
             raise InvalidName("имя зарезервировано для служебных нужд")
         with self.db.transaction() as conn:
             if repo.get_bucket(conn, name) is not None:
@@ -234,6 +241,17 @@ class StorageCore:
                 raise BucketNotEmpty(name)
             repo.delete_bucket_dead_objects(conn, bucket.id)  # pending/failed — записи без данных
             repo.delete_bucket(conn, bucket.id)
+
+    def stats(self) -> dict:
+        """Точные суммы из БД (не оценки). logical — объекты пользователей, physical — уникальные blob-ы;
+        разница — экономия дедупликации. В physical входят и части незавершённых multipart-загрузок."""
+        return repo.stats(self.db.connection())
+
+    def bucket_summaries(self) -> list[dict]:
+        return repo.bucket_summaries(self.db.connection())
+
+    def recovery_overview(self, limit: int = 50) -> dict:
+        return repo.recovery_overview(self.db.connection(), limit)
 
     def list_objects(self, bucket: str, *, prefix: str = "", from_key: str = "", limit: int = 1000) -> list[StorageObject]:
         """Готовые объекты bucket в порядке ключей (UTF-8 binary), ключ >= from_key, с префиксом prefix.

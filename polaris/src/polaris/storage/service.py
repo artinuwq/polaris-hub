@@ -10,10 +10,12 @@ from __future__ import annotations
 import logging
 import threading
 
+from polaris.storage.access_keys import AccessKeyStore, MasterKey
 from polaris.storage.backends.base import BackendDriver
 from polaris.storage.backends.telegram import TelegramConfig, TelegramDriver
 from polaris.storage.config import StorageConfig
 from polaris.storage.core import StorageCore
+from polaris.storage.database import utcnow_iso
 from polaris.storage.database import StorageDatabase
 from polaris.storage.errors import StorageUnavailable
 from polaris.storage.recovery import Reconciler, ReconcileReport
@@ -33,6 +35,9 @@ class StorageService:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.last_report: ReconcileReport | None = None
+        self.last_report_at: str | None = None
+        self.access_keys: AccessKeyStore | None = None
+        self.access_keys_error: str = ""
 
     def start(self) -> None:
         cfg = self.config
@@ -61,6 +66,7 @@ class StorageService:
                 stale_upload_seconds=cfg.stale_upload_seconds,
             )
             self._core.multipart.min_part_size = cfg.multipart_min_part_size
+            self._init_access_keys()
         except Exception as exc:  # noqa: BLE001
             logger.exception("Storage: запуск не удался")
             if self._db:
@@ -73,6 +79,17 @@ class StorageService:
                     cfg.chunk_size // (1024 * 1024))
         self._thread = threading.Thread(target=self._maintenance, name="storage-reconcile", daemon=True)
         self._thread.start()
+
+    def _init_access_keys(self) -> None:
+        """Access Management необязателен для Storage: проблема с мастер-ключом не должна выключать хранилище."""
+        try:
+            master = MasterKey.load(self.config.master_key_path, self.config.master_key)
+            self.access_keys = AccessKeyStore(self._db, master)  # type: ignore[arg-type]
+            self.access_keys_error = ""
+        except Exception as exc:  # noqa: BLE001
+            self.access_keys = None
+            self.access_keys_error = f"{type(exc).__name__}: {exc}"
+            logger.error("Storage: Access Management недоступен: %s", self.access_keys_error)
 
     def _build_driver(self) -> BackendDriver:
         cfg = self.config
@@ -100,6 +117,7 @@ class StorageService:
         while not self._stop.is_set():
             try:
                 self.last_report = self.reconcile()
+                self.last_report_at = utcnow_iso()
                 logger.info("Storage reconcile: %s", self.last_report.summary())
             except Exception:  # noqa: BLE001
                 logger.exception("Storage reconcile: ошибка")
@@ -136,6 +154,7 @@ class StorageService:
         if self._db:
             self._db.close()
         self._db = self._core = None
+        self.access_keys = None
         self.state = DISABLED
 
 

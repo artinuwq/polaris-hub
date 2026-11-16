@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from polaris.infra.settings import Settings
 from polaris.s3 import create_s3_app, errors, util, xmlio
 from polaris.s3.config import S3Config
-from polaris.s3.credentials import StaticCredentialProvider
+from polaris.s3.credentials import Credential, StaticCredentialProvider
 from polaris.s3.service import (
     BodyIntegrity, decode_token, encode_token, map_exception, parse_object_headers,
 )
@@ -240,9 +240,9 @@ class ConfigTests(unittest.TestCase):
 
     def test_create_s3_app_gating(self):
         self.assertIsNone(create_s3_app(Settings()))  # выключено
-        self.assertIsNone(create_s3_app(Settings(s3_enabled=True)))  # нет ключей
+        self.assertIsNotNone(create_s3_app(Settings(s3_enabled=True), get_core=lambda: None, get_store=lambda: None))  # ключи можно завести в UI
         self.assertIsNone(create_s3_app(self.settings(s3_path_prefix="/")))  # неверный префикс
-        app = create_s3_app(self.settings(), get_core=lambda: None)
+        app = create_s3_app(self.settings(), get_core=lambda: None, get_store=lambda: None)
         self.assertEqual(app.config.path_prefix, "/s3")
         app.close()
 

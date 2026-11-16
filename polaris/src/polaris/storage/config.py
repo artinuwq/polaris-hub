@@ -12,6 +12,7 @@ MAX_CHUNK_SIZE = 19 * MIB  # getFile в стандартном Bot API отда�
 # корень проекта (polaris/): здесь же лежит database/data, переживающий /update
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DB_PATH = PROJECT_ROOT / "database" / "data" / "storage.db"
+DEFAULT_MASTER_KEY_PATH = PROJECT_ROOT / "database" / "data" / "storage_master.key"
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,8 @@ class StorageConfig:
     stale_upload_seconds: int = 1800
     delete_max_attempts: int = 10
     maintenance_interval: int = 600  # секунд; 0 — только разовая сверка при старте
+    master_key: str = field(default="", repr=False)
+    master_key_path: Path = DEFAULT_MASTER_KEY_PATH
     multipart_min_part_size: int = 5 * MIB
     multipart_expiry_seconds: int = 0  # 0 — незавершённые multipart-загрузки не истекают
 
@@ -82,10 +85,16 @@ class StorageConfig:
         db_path = Path(raw_path).expanduser() if raw_path else DEFAULT_DB_PATH
         if not db_path.is_absolute():
             db_path = PROJECT_ROOT / db_path
+        key_path = Path(settings.storage_master_key_path).expanduser() if settings.storage_master_key_path \
+            else DEFAULT_MASTER_KEY_PATH
+        if not key_path.is_absolute():
+            key_path = PROJECT_ROOT / key_path
         return cls(
             enabled=settings.storage_enabled,
+            master_key=settings.storage_master_key,
+            master_key_path=key_path,
             db_path=db_path,
-            telegram_bot_token=settings.telegram_bot_token,
+            telegram_bot_token=settings.storage_telegram_bot_token or settings.telegram_bot_token,
             telegram_chat_id=settings.cloud_storage_chat_id,
             telegram_api_base=settings.telegram_api_base,
             telegram_proxy_url=settings.telegram_proxy_url,

@@ -110,6 +110,18 @@ class MultipartManager:
         return MultipartPart(int(obj.object_key.rsplit("/", 1)[1]), obj.size_bytes, obj.etag or "",
                              obj.completed_at or obj.created_at, obj.id)
 
+    def list_all(self, limit: int = 500) -> list[dict]:
+        """Все multipart-загрузки (для диагностики): bucket, ключ, число и размер загруженных частей, состояние."""
+        conn = self._db.connection()
+        b = repo.get_bucket(conn, _bucket_for_parts())
+        stats = repo.part_stats(conn, b.id) if b is not None else {}
+        out = []
+        for u in repo.list_all_uploads(conn, limit):
+            count, size = stats.get(u.id, (0, 0))
+            out.append({"upload_id": u.id, "bucket": u.bucket, "key": u.object_key, "status": u.status,
+                        "created_at": u.created_at, "parts": count, "bytes": size})
+        return out
+
     def list_uploads(self, bucket: str, *, prefix: str = "", after: tuple[str, str] | None = None,
                      limit: int = 1000) -> tuple[list[MultipartUpload], bool]:
         b = self._core.get_bucket(bucket)

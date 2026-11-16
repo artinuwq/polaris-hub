@@ -243,7 +243,7 @@ class S3Service:
         self.core.delete_bucket(name)
 
     def _bucket(self, name: str):
-        if name.startswith(storage_core.INTERNAL_BUCKET_PREFIX):
+        if name.startswith(storage_core.INTERNAL_BUCKET_PREFIX):  # selftest-bucket-ы доступны по имени, но не в списках
             raise errors.NoSuchBucket()
         return self.core.get_bucket(name)
 

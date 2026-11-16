@@ -65,6 +65,9 @@ class Settings:
     storage_max_concurrent_downloads: int = 4
     storage_stale_upload_seconds: int = 1800
     storage_maintenance_interval: int = 600
+    storage_telegram_bot_token: str = field(default="", repr=False)  # свой бот для Storage; пусто — TELEGRAM_BOT_TOKEN
+    storage_master_key: str = field(default="", repr=False)
+    storage_master_key_path: str = ""
     # S3-совместимый API (см. docs/s3-api.md)
     s3_enabled: bool = False
     s3_path_prefix: str = "/s3"
@@ -116,6 +119,9 @@ class Settings:
             storage_max_concurrent_downloads=_env_number("STORAGE_MAX_CONCURRENT_DOWNLOADS", 4, int),
             storage_stale_upload_seconds=_env_number("STORAGE_STALE_UPLOAD_SECONDS", 1800, int),
             storage_maintenance_interval=_env_number("STORAGE_MAINTENANCE_INTERVAL", 600, int),
+            storage_telegram_bot_token=os.getenv("STORAGE_TELEGRAM_BOT_TOKEN", "").strip(),
+            storage_master_key=os.getenv("STORAGE_MASTER_KEY", "").strip(),
+            storage_master_key_path=os.getenv("STORAGE_MASTER_KEY_PATH", "").strip(),
             s3_enabled=os.getenv("S3_ENABLED", "false").strip().lower() in {"1", "true", "yes"},
             s3_path_prefix=os.getenv("S3_PATH_PREFIX", "/s3").strip() or "/s3",
             s3_region=os.getenv("S3_REGION", "us-east-1").strip() or "us-east-1",

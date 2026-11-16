@@ -463,3 +463,74 @@ def list_uploads_older_than(conn, cutoff: str, limit: int = 500) -> list[Multipa
 
 def all_upload_ids(conn) -> set[str]:
     return {r[0] for r in conn.execute("SELECT id FROM storage_multipart_uploads")}
+
+
+# ─── Phase 3: статистика, обзор восстановления, список multipart ───
+
+_HIDDEN_BUCKET_SQL = "name NOT LIKE 'polaris-internal.%' AND name NOT LIKE 'polaris-selftest-%'"
+
+
+def stats(conn) -> dict:
+    one = lambda sql, *a: conn.execute(sql, a).fetchone()  # noqa: E731
+    objects = one(
+        "SELECT COUNT(*), COALESCE(SUM(o.size_bytes), 0) FROM storage_objects o JOIN storage_buckets b ON b.id=o.bucket_id "
+        "WHERE o.status='ready' AND " + _HIDDEN_BUCKET_SQL.replace("name ", "b.name "))
+    blobs = one("SELECT COUNT(*), COALESCE(SUM(size_bytes), 0) FROM storage_blobs WHERE status='ready'")
+    parts = one(
+        "SELECT COUNT(*), COALESCE(SUM(o.size_bytes), 0) FROM storage_objects o JOIN storage_buckets b ON b.id=o.bucket_id "
+        "WHERE o.status='ready' AND b.name='polaris-internal.multipart'")
+    return {
+        "buckets": one("SELECT COUNT(*) FROM storage_buckets WHERE " + _HIDDEN_BUCKET_SQL)[0],
+        "objects": objects[0], "logical_bytes": objects[1],
+        "blobs": blobs[0], "physical_bytes": blobs[1],
+        "blobs_in_progress": one("SELECT COUNT(*) FROM storage_blobs WHERE status IN ('uploading','failed','deleting')")[0],
+        "multipart_uploads": one("SELECT COUNT(*) FROM storage_multipart_uploads WHERE status='open'")[0],
+        "multipart_parts": parts[0], "multipart_bytes": parts[1],
+        "chunks": one("SELECT COUNT(*) FROM storage_chunks WHERE backend_reference IS NOT NULL")[0],
+    }
+
+
+def bucket_summaries(conn) -> list[dict]:
+    rows = conn.execute(
+        "SELECT b.id, b.name, b.created_at, COUNT(o.id) AS objects, COALESCE(SUM(o.size_bytes), 0) AS bytes "
+        "FROM storage_buckets b LEFT JOIN storage_objects o ON o.bucket_id=b.id AND o.status='ready' "
+        "WHERE " + _HIDDEN_BUCKET_SQL.replace("name ", "b.name ") + " GROUP BY b.id ORDER BY b.name"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def part_stats(conn, bucket_id: str) -> dict[str, tuple[int, int]]:
+    rows = conn.execute(
+        "SELECT substr(object_key, 1, 32) AS upload_id, COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes "
+        "FROM storage_objects WHERE bucket_id=? AND status='ready' GROUP BY 1", (bucket_id,)).fetchall()
+    return {r["upload_id"]: (r["n"], r["bytes"]) for r in rows}
+
+
+def list_all_uploads(conn, limit: int) -> list[MultipartUpload]:
+    return [_upload(r) for r in conn.execute(_UPLOAD_SELECT + " ORDER BY u.created_at LIMIT ?", (limit,)).fetchall()]
+
+
+def recovery_overview(conn, limit: int = 50) -> dict:
+    one = lambda sql: conn.execute(sql).fetchone()[0]  # noqa: E731
+    return {
+        "orphans_suspected": count_orphans(conn, with_reference=False),
+        "orphans_pending_delete": count_orphans(conn, with_reference=True),
+        "chunks_delete_failed": count_chunks_by_status(conn, "delete_failed"),
+        "chunks_delete_rejected": count_chunks_by_status(conn, "delete_rejected"),
+        "chunks_pending": count_chunks_by_status(conn, "pending"),
+        "blobs_failed": one("SELECT COUNT(*) FROM storage_blobs WHERE status='failed'"),
+        "blobs_deleting": one("SELECT COUNT(*) FROM storage_blobs WHERE status='deleting'"),
+        "objects_failed": one("SELECT COUNT(*) FROM storage_objects WHERE status='failed'"),
+        "objects_pending": one("SELECT COUNT(*) FROM storage_objects WHERE status='pending'"),
+        "orphans": [
+            {"id": o.id, "kind": o.kind, "blob_id": o.blob_id, "chunk_index": o.chunk_index, "marker": o.marker,
+             "has_reference": o.backend_reference is not None, "delete_attempts": o.delete_attempts,
+             "last_error": o.last_error, "created_at": o.created_at}
+            for o in list_orphans(conn, limit=limit)],  # ссылки backend (file_id/message_id) наружу не отдаются
+        "failed_deletions": [
+            {"blob_id": r["blob_id"], "chunk_index": r["chunk_index"], "status": r["status"],
+             "attempts": r["delete_attempts"], "last_error": r["last_error"], "last_attempt_at": r["last_attempt_at"]}
+            for r in conn.execute(
+                "SELECT blob_id, chunk_index, status, delete_attempts, last_error, last_attempt_at FROM storage_chunks "
+                "WHERE status IN ('delete_failed','delete_rejected') ORDER BY last_attempt_at DESC LIMIT ?", (limit,))],
+    }

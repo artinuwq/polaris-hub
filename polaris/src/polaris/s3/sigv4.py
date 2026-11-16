@@ -53,6 +53,7 @@ class AuthResult:
     signed_headers: tuple[str, ...] = ()
     payload_hash: str = UNSIGNED_PAYLOAD
     presigned: bool = False
+    principal: object = field(default=None, repr=False)  # Credential, чей ключ подписал запрос
 
 
 # ─── примитивы ───
@@ -181,7 +182,7 @@ def _verify_header(req, provider, auth, region, now, skew) -> AuthResult:
                                         canonical_request(req, signed, payload_hash, presigned=False)))
     if not hmac.compare_digest(expected, m["sig"].lower()):
         raise errors.SignatureDoesNotMatch()
-    return AuthResult(key_id, region, amz_date, scope, key, expected, signed, payload_hash)
+    return AuthResult(key_id, region, amz_date, scope, key, expected, signed, payload_hash, principal=cred)
 
 
 def _verify_presigned(req, provider, query, region, now, skew) -> AuthResult:
@@ -220,7 +221,8 @@ def _verify_presigned(req, provider, query, region, now, skew) -> AuthResult:
                                         canonical_request(req, signed, payload_hash, presigned=True)))
     if not hmac.compare_digest(expected, query["X-Amz-Signature"].lower()):
         raise errors.SignatureDoesNotMatch()
-    return AuthResult(key_id, region, amz_date, scope, key, expected, signed, payload_hash, presigned=True)
+    return AuthResult(key_id, region, amz_date, scope, key, expected, signed, payload_hash, presigned=True,
+                      principal=cred)
 
 
 # ─── для клиентской стороны (тесты, скрипты): подпись запроса ───

@@ -221,6 +221,14 @@ try:
 except Exception:  # noqa: BLE001
     logging.getLogger(__name__).exception("Athena API отключена: ошибка импорта")
 
+# API управления Storage (раздел Storage в Mini App): только для админа, не должен ронять сервис
+try:
+    from polaris.modules.storage.api import router as storage_router
+
+    app.include_router(storage_router)
+except Exception:  # noqa: BLE001
+    logging.getLogger(__name__).exception("Storage management API отключён: ошибка импорта")
+
 # S3-совместимый API поверх Storage (выключен по умолчанию, S3_ENABLED=true). Как и Athena, не должен ронять сервис.
 s3_app = None
 try:

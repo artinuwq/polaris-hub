@@ -22,9 +22,16 @@ from polaris.s3 import errors, sigv4, util, xmlio
 from polaris.s3.chunked import STREAMING_MODES, AwsChunkedDecoder
 from polaris.s3.config import S3Config
 from polaris.s3.credentials import CredentialProvider
+from polaris.s3.credentials import Credential
 from polaris.s3.service import BodyIntegrity, S3Service, decode_token, encode_token, map_exception
 
 logger = logging.getLogger(__name__)
+
+
+def util_now() -> str:
+    from polaris.storage.database import utcnow_iso
+
+    return utcnow_iso()
 
 FLUSH_SIZE = 1024 * 1024
 SEND_SLICE = 256 * 1024
@@ -47,6 +54,17 @@ class _ClientGone(Exception):
 
 
 @dataclass
+class S3Stats:
+    """Счётчики для диагностики: что реально происходило с S3 API (а не «должно работать»)."""
+
+    requests: int = 0
+    errors_5xx: int = 0
+    last_request_at: str | None = None
+    last_ok_at: str | None = None
+    last_error: str | None = None
+
+
+@dataclass
 class _Req:
     method: str
     bucket: str
@@ -55,6 +73,7 @@ class _Req:
     pairs: list[tuple[str, str]]
     headers: dict[str, str]
     auth: sigv4.AuthResult
+    principal: Credential
     receive: Callable
     send: Callable
     request_id: str
@@ -101,6 +120,8 @@ class S3App:
         self.service = service
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="s3-worker")
+        self.stats = S3Stats()
+        self.static_key_ids: list[str] = []
 
     # ─── ASGI ───
 
@@ -109,9 +130,11 @@ class S3App:
             return
         request_id = uuid.uuid4().hex[:16].upper()
         req: _Req | None = None
+        status = 0
         try:
-            req = self._parse(scope, receive, send, request_id)
+            req = await self._parse(scope, receive, send, request_id)
             await self._dispatch(req)
+            status = req.status or 200
         except _ClientGone:
             return
         except Exception as exc:  # noqa: BLE001
@@ -119,10 +142,22 @@ class S3App:
             status = err.status
             if req is not None:
                 req.status = status
+            if status >= 500:
+                self.stats.last_error = f"{err.code} ({util_now()})"
             await self._send_error(send, scope, err, request_id, getattr(req, "resource", scope.get("path", "")))
         finally:
+            self._count(status)
             if req is not None:
                 self._log(req)
+
+    def _count(self, status: int) -> None:
+        stats, now = self.stats, util_now()
+        stats.requests += 1
+        stats.last_request_at = now
+        if status >= 500:
+            stats.errors_5xx += 1
+        elif 0 < status < 400:
+            stats.last_ok_at = now
 
     def _log(self, req: _Req) -> None:
         level = logging.WARNING if req.status >= 500 else logging.INFO if req.status >= 400 else logging.DEBUG
@@ -131,7 +166,7 @@ class S3App:
     async def run(self, fn, *args):
         return await asyncio.get_running_loop().run_in_executor(self._pool, fn, *args)
 
-    def _parse(self, scope, receive, send, request_id: str) -> _Req:
+    async def _parse(self, scope, receive, send, request_id: str) -> _Req:
         prefix = self.config.path_prefix
         raw = scope.get("raw_path")
         if not raw:  # сервер не передал raw_path: восстановить из path (с учётом root_path при монтировании)
@@ -149,13 +184,21 @@ class S3App:
         merged: dict[str, str] = {}
         for k, v in headers:
             merged[k] = f"{merged[k]},{v}" if k in merged else v
-        auth = sigv4.verify(sig_req, self.provider, region=self.config.region, now=self._now(),
-                            skew_seconds=self.config.clock_skew_seconds)
+        auth = await self.run(self._authenticate, sig_req)  # поиск ключа читает БД — не в цикле событий
+        principal = auth.principal
+        if not isinstance(principal, Credential):
+            raise errors.AccessDenied()
         path = util.decode_path(raw_path[len(prefix):])
         bucket, key = util.split_bucket_key(path)
         pairs = util.parse_query(raw_query)
-        return _Req(method, bucket, key, {k: v for k, v in reversed(pairs)}, pairs, merged, auth, receive, send,
-                    request_id, scope.get("scheme", "http"), merged.get("host", ""), path or "/")
+        return _Req(method, bucket, key, {k: v for k, v in reversed(pairs)}, pairs, merged, auth, principal, receive,
+                    send, request_id, scope.get("scheme", "http"), merged.get("host", ""), path or "/")
+
+    def _authenticate(self, sig_req: sigv4.SigRequest) -> sigv4.AuthResult:
+        auth = sigv4.verify(sig_req, self.provider, region=self.config.region, now=self._now(),
+                            skew_seconds=self.config.clock_skew_seconds)
+        self.provider.record_use(auth.principal)  # type: ignore[arg-type]
+        return auth
 
     # ─── ответы ───
 
@@ -194,7 +237,42 @@ class S3App:
 
     # ─── маршрутизация ───
 
+    def _authorize(self, r: _Req) -> None:
+        """Права ключа проверяются при КАЖДОМ запросе (в том числе по presigned URL) до чтения тела и до
+        обращения к bucket: недоступный bucket неотличим от несуществующего (всегда AccessDenied)."""
+        p, m, q = r.principal, r.method, r.query
+        if not r.bucket:
+            return  # ListBuckets: ответ фильтруется по доступным bucket-ам
+        if r.key is None:
+            if m in ("PUT", "DELETE"):
+                needed: tuple[str, ...] | None = None  # создание/удаление bucket и подресурсы — только ключи из конфигурации
+            elif m == "POST" and r.has("delete"):
+                needed = ("DeleteObject",)
+            elif m == "GET" and r.has("uploads"):
+                needed = ("MultipartUpload",)
+            else:
+                needed = ("ListBucket",)
+        else:
+            multipart = r.has("uploadId") or r.has("partNumber") or r.has("uploads")
+            if m in ("GET", "HEAD"):
+                needed = ("MultipartUpload",) if (m == "GET" and r.has("uploadId")) else ("ReadObject",)
+            elif m == "PUT":
+                needed = ("WriteObject", "MultipartUpload") if multipart else ("WriteObject",)
+            elif m == "DELETE":
+                needed = ("MultipartUpload",) if r.has("uploadId") else ("DeleteObject",)
+            elif m == "POST":
+                needed = ("WriteObject", "MultipartUpload") if multipart else ("WriteObject",)
+            else:
+                needed = ("ReadObject",)
+        if needed is None:
+            if not p.unrestricted:
+                raise errors.AccessDenied()
+            return
+        if not all(p.allows(perm, r.bucket) for perm in needed):
+            raise errors.AccessDenied()
+
     async def _dispatch(self, r: _Req) -> None:
+        self._authorize(r)
         m = r.method
         if not r.bucket:
             if m == "GET":
@@ -271,7 +349,8 @@ class S3App:
 
     async def _list_buckets(self, r: _Req) -> None:
         buckets = await self.run(self.service.list_buckets)
-        body = xmlio.list_buckets_xml("polaris", [(b.name, b.created_at) for b in buckets])
+        visible = [b for b in buckets if r.principal.can_see_bucket(b.name)]
+        body = xmlio.list_buckets_xml("polaris", [(b.name, b.created_at) for b in visible])
         await self._respond(r, 200, body=body, xml=True)
 
     async def _create_bucket(self, r: _Req) -> None:
@@ -540,6 +619,27 @@ class S3App:
                                       upload_id_marker=upload_id_marker, max_uploads=max_uploads,
                                       truncated=truncated, encoding_url=encoding == "url")
         await self._respond(r, 200, body=body, xml=True)
+
+    async def local_request(self, method: str, raw_path: str, raw_query: str, headers: dict[str, str],
+                            body: bytes = b"") -> tuple[int, dict[str, str], bytes]:
+        """Выполнить запрос внутри процесса (без сети) тем же ASGI-кодом: для самотестов. host нужен в headers."""
+        scope = {"type": "http", "method": method, "path": raw_path, "raw_path": raw_path.encode("latin-1"),
+                 "query_string": raw_query.encode("latin-1"), "scheme": "http", "root_path": "",
+                 "headers": [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()]}
+        sent: list[dict] = []
+        queue = [{"type": "http.request", "body": body, "more_body": False}]
+
+        async def receive():
+            return queue.pop(0) if queue else {"type": "http.disconnect"}
+
+        async def send(message):
+            sent.append(message)
+
+        await self(scope, receive, send)
+        start = next(m for m in sent if m["type"] == "http.response.start")
+        data = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
+        resp_headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in start["headers"]}
+        return start["status"], resp_headers, data
 
     def close(self) -> None:
         self._pool.shutdown(wait=False)

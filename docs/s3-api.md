@@ -19,8 +19,10 @@ S3_SECRET_ACCESS_KEY=<длинная случайная строка>      # ope
 
 * **Endpoint:** `https://<хост Polaris>/s3` (путь настраивается `S3_PATH_PREFIX`; корень `/` занят Mini App). **Только path-style** (`/s3/<bucket>/<key>`), virtual-hosted-style (`bucket.host`) не поддерживается.
 * **Регион:** `us-east-1` (`S3_REGION`). Регион в подписи клиента должен совпадать, иначе `AuthorizationHeaderMalformed`.
-* **Ключи:** `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` и дополнительные `S3_CREDENTIALS=id:secret,id2:secret2`; ключ отключается без удаления через `S3_DISABLED_KEYS=id`, заменяется правкой `.env` и перезапуском. Любой действующий ключ имеет полный доступ ко всем bucket-ам (ACL/пользователей нет). Secret Access Key нужен серверу в открытом виде для проверки подписи (как и у любого S3-сервера), поэтому он хранится только в `.env` (как токен бота) и **никогда** в базе, логах и ответах. Источник ключей — интерфейс `CredentialProvider` (`polaris/s3/credentials.py`): позже его можно заменить системой управления ключами, не трогая `sigv4.py`.
-
+* **Ключи** двух видов, проверка подписи одна:
+  * **Access Keys из интерфейса** (раздел Storage → Access Keys, [storage-management.md](storage-management.md)): свои права (`ListBucket`, `ReadObject`, `WriteObject`, `DeleteObject`, `MultipartUpload`) и список buckets; права проверяются при каждом запросе, в том числе по presigned URL; Revoke и Rotate действуют немедленно. Secret Access Key в базе не хранится.
+  * **Ключи из `.env`** (`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`, `S3_CREDENTIALS=id:secret,…`, отключение — `S3_DISABLED_KEYS=id`): как и раньше имеют **полный доступ**, включая создание и удаление buckets; переход на Access Keys их не ломает. Эти секреты лежат только в `.env` (как токен бота).
+  Создавать и удалять buckets ключи Access Management не могут (это действие администратора в интерфейсе или ключа из `.env`).
 ### За reverse proxy (nginx/Caddy)
 SigV4 подписывает путь и заголовок `Host`: прокси **не должен** отрезать префикс `/s3` и менять `Host`. Для больших загрузок отключите буферизацию и лимит тела:
 `client_max_body_size 0; proxy_request_buffering off; proxy_buffering off; proxy_read_timeout 3600s; proxy_http_version 1.1;`.

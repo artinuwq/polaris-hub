@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from polaris.s3.credentials import CredentialProvider, StaticCredentialProvider
-
 MIB = 1024 * 1024
 
 
@@ -40,7 +38,3 @@ class S3Config:
             clock_skew_seconds=settings.s3_clock_skew_seconds,
             body_timeout=settings.s3_body_timeout,
         )
-
-
-def credential_provider(settings) -> CredentialProvider:
-    return StaticCredentialProvider.from_settings(settings)
