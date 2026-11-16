@@ -84,6 +84,8 @@
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 12 2-4 2 4 4 2-4 2-2 4-2-4-4-2z"></path><path d="m17 6 .8 1.8L20 9l-2.2.6L17 11l-.8-1.4L14 9l2.2-1.2z"></path></svg>',
     home:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"></path></svg>',
+    folder:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path></svg>',
     database:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"></ellipse><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"></path><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path></svg>',
     settings:
@@ -112,6 +114,7 @@
     { id: 'knowledge', label: 'Knowledge', subtitle: 'Заметки и база знаний', icon: 'knowledge' },
     { id: 'athena', label: 'Athena', subtitle: 'Интеллектуальный помощник', icon: 'athena' },
     { id: 'home', label: 'Home', subtitle: 'Home Assistant', icon: 'home' },
+    { id: 'files', label: 'Files', subtitle: 'Папки и файлы Storage', icon: 'folder' },
     { id: 'storage', label: 'Storage', subtitle: 'Файлы, S3 и ключи доступа', icon: 'database', footer: true },
     { id: 'settings', label: 'Settings', subtitle: 'Почта и обновление', icon: 'settings', footer: true },
   ];
@@ -534,6 +537,13 @@
       `;
     }
 
+    if (view.id === 'files') {
+      return `
+        ${renderNotice()}
+        <div id="files-container" class="storage-page files-page"></div>
+      `;
+    }
+
     if (view.id === 'email') {
       return `
         ${renderNotice()}
@@ -648,12 +658,14 @@
     if (state.currentView !== 'email') window.EmailModule?.leave?.();
     if (state.currentView !== 'settings') window.SettingsModule?.leave?.();
     if (state.currentView !== 'storage') window.StorageModule?.leave?.();
+    if (state.currentView !== 'files') window.FilesModule?.leave?.();
 
     const mounts = {
       attention: ['HomeModule', 'home-container'],
       email: ['EmailModule', 'email-container'],
       settings: ['SettingsModule', 'settings-container'],
       storage: ['StorageModule', 'storage-container'],
+      files: ['FilesModule', 'files-container'],
     };
     const mount = mounts[state.currentView];
     if (state.authenticated && mount && window[mount[0]]) {

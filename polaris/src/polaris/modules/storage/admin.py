@@ -433,6 +433,123 @@ class StorageAdmin:
         except StorageBusy:
             raise AdminError(503, "Слишком много одновременных скачиваний, повторите позже") from None
 
+    # ─── файловый менеджер: папки = общие префиксы ключей ───
+
+    _LIST_PAGE = 500
+
+    @staticmethod
+    def _clean_path(value: Any, field: str, *, folder: bool) -> str:
+        """Ключ/префикс из интерфейса: без ведущего «/», «//», сегментов «.»/«..» и управляющих символов."""
+        if not isinstance(value, str) or not value.strip():
+            raise AdminError(422, "Проверьте значения", {field: "укажите путь"})
+        if value.startswith("/") or "//" in value or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise AdminError(422, "Проверьте значения", {field: "путь без ведущего «/», «//» и управляющих символов"})
+        if folder and not value.endswith("/"):
+            value += "/"
+        if not folder and value.endswith("/"):
+            raise AdminError(422, "Проверьте значения", {field: "имя файла не может оканчиваться на «/»"})
+        if any(part in (".", "..") for part in value.split("/")):
+            raise AdminError(422, "Проверьте значения", {field: "сегменты «.» и «..» запрещены"})
+        if len(value.encode("utf-8")) > 1024:
+            raise AdminError(422, "Проверьте значения", {field: "путь длиннее 1024 байт"})
+        return value
+
+    def bucket_browse(self, name: str, prefix: str = "", cursor: str = "", limit: int = 200) -> dict:
+        """Содержимое «папки» prefix: подпапки (общие префиксы по «/») и файлы. Маркер самой папки скрыт.
+        cursor — значение next_cursor предыдущего ответа (ключ или префикс, с которого продолжать)."""
+        self._visible_bucket(name)
+        prefix = self._clean_path(prefix, "prefix", folder=True) if prefix else ""
+        limit = max(1, min(int(limit), 500))
+        core = self._core()
+        folders: list[dict] = []
+        objects: list[dict] = []
+        next_cursor: str | None = None
+        from_key = cursor or ""
+        done = False
+        while not done:
+            batch = core.list_objects(name, prefix=prefix, from_key=from_key, limit=self._LIST_PAGE)
+            if not batch:
+                break
+            jumped = False
+            for obj in batch:
+                key = obj.object_key
+                rest = key[len(prefix):]
+                if not rest:
+                    continue  # маркер текущей папки
+                slash = rest.find("/")
+                if slash >= 0:
+                    folder = prefix + rest[:slash + 1]
+                    if len(folders) + len(objects) >= limit:
+                        next_cursor, done = folder, True
+                        break
+                    folders.append({"name": rest[:slash + 1], "prefix": folder})
+                    from_key = folder[:-1] + "0"  # «0» идёт сразу после «/»: перепрыгиваем всё содержимое папки
+                    jumped = True
+                    break
+                if len(folders) + len(objects) >= limit:
+                    next_cursor, done = key, True
+                    break
+                objects.append({**self._object_brief(obj), "name": rest})
+            if done:
+                break
+            if not jumped:
+                if len(batch) < self._LIST_PAGE:
+                    break
+                from_key = batch[-1].object_key + "\0"
+        return {"bucket": name, "prefix": prefix, "folders": folders, "objects": objects, "next_cursor": next_cursor}
+
+    def folder_create(self, bucket: str, prefix: Any) -> dict:
+        self._visible_bucket(bucket)
+        prefix = self._clean_path(prefix, "prefix", folder=True)
+        try:
+            self._core().put_object(bucket, prefix, b"", filename=prefix.rstrip("/").rsplit("/", 1)[-1],
+                                    mime_type="application/x-directory")
+        except InvalidName as exc:
+            raise AdminError(422, "Проверьте значения", {"prefix": str(exc)}) from None
+        except StorageBusy:
+            raise AdminError(503, "Слишком много одновременных операций, повторите позже") from None
+        logger.info("Storage: создана папка %s/%s", bucket, prefix)
+        return {"prefix": prefix}
+
+    def folder_delete(self, bucket: str, prefix: Any) -> dict:
+        """Удаляет все объекты с префиксом prefix (и маркер папки). Корень bucket-а так не очищается."""
+        self._visible_bucket(bucket)
+        prefix = self._clean_path(prefix, "prefix", folder=True)
+        core = self._core()
+        deleted = failed = 0
+        from_key = ""
+        while True:
+            batch = core.list_objects(bucket, prefix=prefix, from_key=from_key, limit=self._LIST_PAGE)
+            if not batch:
+                break
+            for obj in batch:
+                try:
+                    core.delete_object(obj.id)
+                    deleted += 1
+                except ObjectNotFound:
+                    pass
+                except (ObjectConflict, StorageError):
+                    failed += 1
+            if len(batch) < self._LIST_PAGE:
+                break
+            from_key = batch[-1].object_key + "\0"
+        logger.info("Storage: удалена папка %s/%s (объектов: %d, ошибок: %d)", bucket, prefix, deleted, failed)
+        return {"deleted": deleted, "failed": failed}
+
+    def object_upload(self, bucket: str, key: Any, source: Any, mime_type: str | None = None) -> dict:
+        self._visible_bucket(bucket)
+        key = self._clean_path(key, "key", folder=False)
+        try:
+            obj = self._core().put_object(bucket, key, source, mime_type=mime_type)
+        except InvalidName as exc:
+            raise AdminError(422, "Проверьте значения", {"key": str(exc)}) from None
+        except StorageBusy:
+            raise AdminError(503, "Слишком много одновременных загрузок, повторите позже") from None
+        except ObjectConflict as exc:
+            raise AdminError(409, str(exc)) from None
+        logger.info("Storage: загружен объект %s/%s (%d байт)", bucket, key, obj.size_bytes or 0)
+        return self._object_brief(obj)
+
     # ─── ключи доступа ───
 
     @staticmethod

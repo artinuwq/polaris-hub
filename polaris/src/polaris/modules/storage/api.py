@@ -8,6 +8,9 @@
   GET    /api/storage/buckets/{bucket} · DELETE /api/storage/buckets/{bucket}   (только пустой)
   GET    /api/storage/buckets/{bucket}/objects      — ?prefix=&after=&limit=
   GET    /api/storage/objects/{id} · DELETE /api/storage/objects/{id} · GET /api/storage/objects/{id}/download
+  GET    /api/storage/buckets/{bucket}/browse       — ?prefix=&cursor=&limit=: подпапки и файлы «папки» (файловый менеджер)
+  POST   /api/storage/buckets/{bucket}/folders      — {prefix}: создать папку · DELETE ...?prefix=: удалить папку со всем содержимым
+  PUT    /api/storage/buckets/{bucket}/upload       — ?key=: тело запроса — байты файла (перезаписывает существующий ключ)
   GET    /api/storage/credentials · POST /api/storage/credentials
   POST   /api/storage/credentials/{id}/revoke · POST .../rotate · PATCH .../{id} · DELETE .../{id}
   GET    /api/storage/diagnostics · POST /api/storage/diagnostics/run
@@ -19,9 +22,11 @@ S3-ключи (Authorization: AWS4-HMAC-SHA256 …) этим API не прини
 from __future__ import annotations
 
 import logging
+import tempfile
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
 from polaris.infra.settings import Settings
@@ -108,6 +113,50 @@ def list_bucket_objects(bucket: str, prefix: str = Query(default=""), after: str
                         limit: int = Query(default=100, ge=1, le=500),
                         _user: TelegramWebAppUser | None = Depends(require_admin)):
     return _ok(_run(get_admin().bucket_objects, bucket, prefix, after, limit))
+
+
+@router.get("/buckets/{bucket}/browse")
+def browse_bucket(bucket: str, prefix: str = Query(default=""), cursor: str = Query(default=""),
+                  limit: int = Query(default=200, ge=1, le=500),
+                  _user: TelegramWebAppUser | None = Depends(require_admin)):
+    return _ok(_run(get_admin().bucket_browse, bucket, prefix, cursor, limit))
+
+
+@router.post("/buckets/{bucket}/folders")
+def create_folder(bucket: str, body: dict | None = Body(default=None),
+                  _user: TelegramWebAppUser | None = Depends(require_admin)):
+    return _ok(_run(get_admin().folder_create, bucket, (body or {}).get("prefix")))
+
+
+@router.delete("/buckets/{bucket}/folders")
+def delete_folder(bucket: str, prefix: str = Query(default=""),
+                  _user: TelegramWebAppUser | None = Depends(require_admin)):
+    return _ok(_run(get_admin().folder_delete, bucket, prefix))
+
+
+@router.put("/buckets/{bucket}/upload")
+async def upload_object(bucket: str, request: Request, key: str = Query(default=""),
+                        _user: TelegramWebAppUser | None = Depends(require_admin)):
+    """Загрузка одного файла: тело запроса — сами байты (не multipart), полный ключ — в ?key=."""
+    limit_bytes = int(get_admin().settings.s3_max_request_size_mib) * 1024 * 1024
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit_bytes:
+        raise HTTPException(status_code=413, detail="Файл больше допустимого размера запроса")
+    mime = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if mime in ("", "application/octet-stream"):
+        mime = None
+    spool = tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024)  # noqa: SIM115 — закрывается в finally
+    try:
+        size = 0
+        async for piece in request.stream():
+            size += len(piece)
+            if size > limit_bytes:
+                raise HTTPException(status_code=413, detail="Файл больше допустимого размера запроса")
+            spool.write(piece)
+        spool.seek(0)
+        return _ok(await run_in_threadpool(_run, get_admin().object_upload, bucket, key, spool, mime))
+    finally:
+        spool.close()
 
 
 @router.delete("/buckets/{bucket}")

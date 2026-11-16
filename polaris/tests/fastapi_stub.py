@@ -52,6 +52,22 @@ class StreamingResponse:
         self.body_iterator, self.media_type, self.headers, self.status_code = content, media_type, headers or {}, status_code
 
 
+class Request:
+    """Заглушка starlette.Request: заголовки и асинхронный поток тела."""
+
+    def __init__(self, headers: dict | None = None, raw: bytes = b"", chunk: int = 64 * 1024) -> None:
+        self.headers = {k.lower(): v for k, v in (headers or {}).items()}
+        self._raw, self._chunk = raw, chunk
+
+    async def stream(self):
+        for pos in range(0, len(self._raw), self._chunk):
+            yield self._raw[pos:pos + self._chunk]
+
+
+async def run_in_threadpool(fn, *args, **kwargs):
+    return fn(*args, **kwargs)
+
+
 class APIRouter:
     def __init__(self, prefix: str = "", tags=None, **_) -> None:
         self.prefix, self.routes = prefix, []
@@ -71,12 +87,14 @@ class APIRouter:
 
 def _stub_modules():
     module = types.ModuleType("fastapi")
-    for name in ("HTTPException", "Header", "Query", "Body", "Depends", "Response", "APIRouter"):
+    for name in ("HTTPException", "Header", "Query", "Body", "Depends", "Response", "APIRouter", "Request"):
         setattr(module, name, globals()[name])
     responses = types.ModuleType("fastapi.responses")
     responses.StreamingResponse = StreamingResponse
-    module.responses = responses
-    return module, responses
+    concurrency = types.ModuleType("fastapi.concurrency")
+    concurrency.run_in_threadpool = run_in_threadpool
+    module.responses, module.concurrency = responses, concurrency
+    return module, responses, concurrency
 
 
 def install() -> bool:
@@ -86,7 +104,7 @@ def install() -> bool:
         return False
     except ImportError:
         pass
-    sys.modules["fastapi"], sys.modules["fastapi.responses"] = _stub_modules()
+    sys.modules["fastapi"], sys.modules["fastapi.responses"], sys.modules["fastapi.concurrency"] = _stub_modules()
     return True
 
 
@@ -101,10 +119,10 @@ def load_stubbed():
         return _loaded
     import importlib
 
-    names = ("fastapi", "fastapi.responses", "polaris.shared.auth", "polaris.modules.storage.api")
+    names = ("fastapi", "fastapi.responses", "fastapi.concurrency", "polaris.shared.auth", "polaris.modules.storage.api")
     saved = {n: sys.modules.get(n) for n in names}
-    sys.modules["fastapi"], sys.modules["fastapi.responses"] = _stub_modules()
-    for n in names[2:]:
+    sys.modules["fastapi"], sys.modules["fastapi.responses"], sys.modules["fastapi.concurrency"] = _stub_modules()
+    for n in names[3:]:
         sys.modules.pop(n, None)
     try:
         auth = importlib.import_module("polaris.shared.auth")
@@ -142,10 +160,13 @@ def _resolve(fn, ctx: dict, depth: int = 0):
             kwargs[name] = ctx["path"][name]
         elif name == "response":
             kwargs[name] = ctx["response"]
+        elif name == "request":
+            kwargs[name] = Request(ctx["headers"], ctx["raw"])
     return fn(**kwargs)
 
 
-def call(router, method: str, path: str, *, headers: dict | None = None, query: dict | None = None, body: Any = None):
+def call(router, method: str, path: str, *, headers: dict | None = None, query: dict | None = None, body: Any = None,
+         raw: bytes = b""):
     """Вызвать маршрут как FastAPI. Возвращает (status, payload, response_headers)."""
     for route_method, pattern, fn in router.routes:
         if route_method != method:
@@ -153,9 +174,14 @@ def call(router, method: str, path: str, *, headers: dict | None = None, query: 
         match = re.fullmatch(re.sub(r"\{(\w+)\}", r"(?P<\1>[^/]+)", pattern), path)
         if match:
             response = Response()
-            ctx = {"headers": headers or {}, "query": query or {}, "body": body, "path": match.groupdict(), "response": response}
+            ctx = {"headers": headers or {}, "query": query or {}, "body": body, "path": match.groupdict(),
+                   "response": response, "raw": raw}
             try:
-                return 200, _resolve(fn, ctx), response.headers
+                result = _resolve(fn, ctx)
+                if inspect.iscoroutine(result):  # async-обработчики (например, загрузка файла)
+                    import asyncio
+                    result = asyncio.run(result)
+                return 200, result, response.headers
             except HTTPException as exc:
                 return exc.status_code, exc.detail, response.headers
     raise LookupError(f"нет маршрута {method} {path}")
