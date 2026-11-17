@@ -954,9 +954,12 @@ body.drawer-ready .swipe-hint {
   .span-8, .span-6, .span-4 { grid-column: span 12; }
   .metric-card, .list-card, .empty-card, .module-card, .notice-card { padding: 18px; }
   .search-panel { padding: 16px; }
+}
 
-  /* Drawer fullscreen on mobile */
-  .drawer {
+@media (max-width: 720px) {
+  /* Мобильная шапка и шторка-на-весь-экран — только для сенсорных клиентов.
+     На компьютере (body.desktop-ui) узкое окно сохраняет кнопки меню и поиска. */
+  body:where(:not(.desktop-ui)) .drawer {
     top: 0 !important;
     bottom: 0 !important;
     left: 0 !important;
@@ -971,17 +974,17 @@ body.drawer-ready .swipe-hint {
     padding-top: 50px !important;
   }
 
-  .drawer.is-open {
+  body:where(:not(.desktop-ui)) .drawer.is-open {
     transform: translateX(0) !important;
   }
 
-  .drawer::before {
+  body:where(:not(.desktop-ui)) .drawer::before {
     border-radius: 0 !important;
   }
 
   /* Hide drawer and search buttons on mobile */
-  #drawer-toggle,
-  #search-toggle {
+  body:where(:not(.desktop-ui)) #drawer-toggle,
+  body:where(:not(.desktop-ui)) #search-toggle {
     display: none !important;
     visibility: hidden !important;
     opacity: 0 !important;
@@ -998,7 +1001,7 @@ body.drawer-ready .swipe-hint {
   }
 
   /* Adjust topbar for mobile with capsule only */
-  .topbar {
+  body:where(:not(.desktop-ui)) .topbar {
     grid-template-columns: 1fr !important;
     gap: 8px;
     /* 40px — чтобы капля стояла в одном ряду с кнопками Telegram («Закрыть» / «⋮») */
@@ -1011,13 +1014,13 @@ body.drawer-ready .swipe-hint {
     background: rgba(9, 11, 18, 0.7);
   }
 
-  .search-capsule {
+  body:where(:not(.desktop-ui)) .search-capsule {
     justify-self: center;
     margin-top: 0;
   }
 
   /* Место под закреплённую шапку на мобильном */
-  .app-shell {
+  body:where(:not(.desktop-ui)) .app-shell {
     padding-top: 99px;
   }
 }

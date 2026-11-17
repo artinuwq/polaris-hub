@@ -30,6 +30,11 @@
   if (isDesktop) {
     document.body.classList.add('tg-desktop');
   }
+  // Клиент с мышью (компьютер): узкое окно не переключает интерфейс на «телефонный» вариант,
+  // где меню открывается только свайпом
+  if (!isMobile && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
+    document.body.classList.add('desktop-ui');
+  }
   if (isWeb) {
     document.body.classList.add('tg-web');
   }
