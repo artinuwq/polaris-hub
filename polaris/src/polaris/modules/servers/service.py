@@ -222,35 +222,18 @@ def _parse_ts(value: str | None) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def _record_gap(server_id: str) -> None:
-    """Если агент молчал дольше порога, а никто не успел это заметить (событие
-    agent_offline создаётся лениво, при чтении), фиксируем простой задним числом —
-    иначе аптайм за 7 дней был бы завышен."""
-    row = repo.get_server_by_id(server_id)
-    if not row or row.get("status") != "online":
-        return
-    seen = _parse_ts(row.get("last_seen"))
-    if not seen:
-        return
-    elapsed = (datetime.now(timezone.utc) - seen).total_seconds()
-    if elapsed > OFFLINE_THRESHOLD_SECONDS and not repo.has_unresolved_event(server_id, "agent_offline"):
-        repo.add_downtime(server_id, row["last_seen"], _iso_now())
-
-
 def record_heartbeat(server_id: str, agent_version: str = "") -> None:
-    _record_gap(server_id)
     updates: dict[str, Any] = {"status": "online", "status_reason": None, "last_seen": _iso_now()}
     if agent_version:
         updates["agent_version"] = agent_version
-    repo.update_server(server_id, updates)
-    _raise_or_resolve_event(server_id, "agent_offline", "critical", {}, resolve=True)
+    repo.record_agent_heartbeat(
+        server_id, updates, offline_threshold_seconds=OFFLINE_THRESHOLD_SECONDS
+    )
 
 
 def ingest_metrics(server_id: str, payload: AgentMetricsRequest) -> None:
-    _record_gap(server_id)
-    disk_dicts = [d.model_dump() for d in payload.disk]
-
-    repo.insert_metric(server_id, {
+    disk_dicts = [disk.model_dump() for disk in payload.disk]
+    metric = {
         "cpu_usage": payload.cpu.usage,
         "cpu_load1": payload.cpu.load1,
         "cpu_load5": payload.cpu.load5,
@@ -263,7 +246,7 @@ def ingest_metrics(server_id: str, payload: AgentMetricsRequest) -> None:
         "net_rx_bytes": payload.network.rx_bytes,
         "net_tx_bytes": payload.network.tx_bytes,
         "uptime_seconds": payload.system.uptime_seconds,
-    })
+    }
 
     server_updates: dict[str, Any] = {"status": "online", "status_reason": None, "last_seen": _iso_now()}
     if payload.system.hostname:
@@ -276,37 +259,25 @@ def ingest_metrics(server_id: str, payload: AgentMetricsRequest) -> None:
         server_updates["architecture"] = payload.system.architecture
     if payload.system.uptime_seconds is not None:
         server_updates["uptime_seconds"] = payload.system.uptime_seconds
-    repo.update_server(server_id, server_updates)
-    _raise_or_resolve_event(server_id, "agent_offline", "critical", {}, resolve=True)
 
-    # ── Диски: порог фиксируем как факт, "достойно ли внимания" решает Attention Engine ──
-    for disk in disk_dicts:
-        mount = disk.get("mount", "")
-        percent = disk.get("percent")
-        if percent is None:
-            continue
-        if percent >= DISK_WARNING_THRESHOLD:
-            severity = "critical" if percent >= DISK_CRITICAL_THRESHOLD else "warning"
-            _raise_or_resolve_event(
-                server_id, "disk_threshold", severity,
-                {"mount": mount, "usage": percent, "_dedup_key": mount},
-                resolve=False, dedup_seconds=DISK_EVENT_DEDUP_SECONDS,
-            )
-        else:
-            _raise_or_resolve_event(server_id, "disk_threshold", "warning", {"_dedup_key": mount}, resolve=True)
+    disk_states = [
+        (str(disk.get("mount", "")), disk.get("percent"))
+        for disk in disk_dicts
+    ]
+    service_states = [(svc.name, svc.status.value) for svc in payload.services]
 
-    # ── Сервисы: статус + событие при переходе в stopped/failed ──
-    for svc in payload.services:
-        repo.upsert_service_status(server_id, svc.name, svc.status.value)
-        if svc.status.value in ("stopped", "failed"):
-            severity = "critical" if svc.status.value == "failed" else "warning"
-            _raise_or_resolve_event(
-                server_id, "service_down", severity,
-                {"service": svc.name, "status": svc.status.value, "_dedup_key": svc.name},
-                resolve=False, dedup_seconds=SERVICE_EVENT_DEDUP_SECONDS,
-            )
-        else:
-            _raise_or_resolve_event(server_id, "service_down", "warning", {"_dedup_key": svc.name}, resolve=True)
+    repo.ingest_metrics_sample(
+        server_id,
+        metric,
+        server_updates,
+        disk_states,
+        service_states,
+        offline_threshold_seconds=OFFLINE_THRESHOLD_SECONDS,
+        disk_warning_threshold=DISK_WARNING_THRESHOLD,
+        disk_critical_threshold=DISK_CRITICAL_THRESHOLD,
+        disk_event_dedup_seconds=DISK_EVENT_DEDUP_SECONDS,
+        service_event_dedup_seconds=SERVICE_EVENT_DEDUP_SECONDS,
+    )
 
     # Заведомо НЕ создаём событие по одиночному замеру CPU/RAM. Sustained-паттерны
     # (например "CPU>90% несколько минут подряд") — задача Attention Engine,
