@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from polaris.infra import database
+from polaris.infra import database, migrations
 from polaris.modules.mail import daemon, imap, repository, service
 
 RAW = (
@@ -163,7 +163,7 @@ def wait_for(cond, timeout=15.0):
 @pytest.fixture()
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "t.db")
-    repository.ensure_schema()
+    migrations.migrate()
     imap_state, tg_state = FakeImap(), FakeTelegram()
     imap_srv, tg_srv = make_imap_server(imap_state), make_tg_server(tg_state)
     monkeypatch.setitem(imap.PROVIDERS, "gmail", {"label": "Google", "host": "127.0.0.1", "port": imap_srv.server_address[1], "ssl": False})

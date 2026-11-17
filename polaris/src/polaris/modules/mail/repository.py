@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
-from polaris.infra.database import get_db, run_migration
+from polaris.infra.database import get_db
 
-MIGRATION_FILE = Path(__file__).resolve().parents[4] / "database" / "migrations" / "006_create_mail.sql"
+# Таблицы создаёт polaris.infra.migrations (006_create_mail.sql); модуль Mail схему не меняет.
+REQUIRED_TABLES = ("mail_accounts", "mail_account_state", "mail_destinations", "mail_messages", "mail_deliveries")
 
 
 def now_iso() -> str:
@@ -20,9 +20,22 @@ def iso_in(seconds: int) -> str:
     return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def ensure_schema() -> None:
-    """Демон работает в процессе бота и может стартовать раньше web — создаём таблицы сами."""
-    run_migration(MIGRATION_FILE.read_text(encoding="utf-8"))
+def require_schema() -> None:
+    """Проверить, что миграции Mail уже применены. Только чтение: ничего не создаёт и не меняет."""
+    marks = ",".join("?" * len(REQUIRED_TABLES))
+    with get_db() as conn:
+        found = {
+            row[0]
+            for row in conn.execute(
+                f"SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ({marks})", REQUIRED_TABLES
+            )
+        }
+    missing = [name for name in REQUIRED_TABLES if name not in found]
+    if missing:
+        raise RuntimeError(
+            "Mail: в БД нет таблиц " + ", ".join(missing) + " — сначала нужно выполнить миграции "
+            "(polaris.infra.migrations.migrate())"
+        )
 
 
 # ───────────────────────────── accounts ─────────────────────────────

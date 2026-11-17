@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from polaris.infra.database import run_migration
+from polaris.infra.migrations import migrate
 from polaris.infra.settings import Settings
 from polaris.integrations.telegram.auth import TelegramWebAppUser, authenticate_webapp
 from polaris.modules.calendar.api import router as calendar_router
@@ -27,15 +27,7 @@ from polaris.shared.exceptions import AuthorizationError, PolarisError
 from polaris.update.manager import UpdateManager
 
 settings = Settings.from_env()
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "database" / "migrations"
 FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
-
-
-def _run_migrations() -> None:
-    """Run pending database migrations on startup."""
-    if MIGRATIONS_DIR.exists():
-        for sql_file in sorted(MIGRATIONS_DIR.glob("*.sql")):
-            run_migration(sql_file.read_text())
 
 
 def _git_version() -> str:
@@ -59,7 +51,8 @@ def _render_index() -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: run migrations on startup."""
-    _run_migrations()
+    # Единая точка миграций (polaris.infra.migrations): Bot вызывает её же, процессы друг друга ждут.
+    migrate()
     try:
         # Storage не должен ронять весь сервис: при любых проблемах он остаётся unavailable
         from polaris.storage import init_storage

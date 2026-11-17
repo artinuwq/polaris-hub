@@ -26,6 +26,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from polaris.bot.notify import build_attention_message, build_open_link
 from polaris.infra.config_store import write_env_value
+from polaris.infra.migrations import migrate
 from polaris.infra.settings import Settings
 from polaris.shared.exceptions import ConfigurationError, PolarisError
 from polaris.modules.finance import reminders as payment_reminders
@@ -529,6 +530,9 @@ class PolarisBot:
 
 async def run_bot() -> None:
     settings = Settings.from_env()
+    # Бот может стартовать раньше Web (или без него) — схема должна быть готова до MailDaemon,
+    # напоминаний и остального. Исключение не глотаем: без таблиц бот работать не должен.
+    await asyncio.to_thread(migrate)
     bot = PolarisBot(settings)
     try:
         await bot.start_polling()

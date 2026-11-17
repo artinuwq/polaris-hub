@@ -197,7 +197,9 @@ class MailDaemon:
         self._threads: list[threading.Thread] = []
 
     def start(self) -> None:
-        repository.ensure_schema()
+        # Схему создаёт только polaris.infra.migrations (её вызывает бот перед запуском демона);
+        # здесь лишь проверка: без таблиц демон не стартует, а не создаёт их сам.
+        repository.require_schema()
         for target, name in ((self._manager_loop, "mail-manager"), (self._sender_loop, "mail-sender")):
             thread = threading.Thread(target=target, name=name, daemon=True)
             thread.start()
