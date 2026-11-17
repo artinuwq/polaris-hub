@@ -7,6 +7,8 @@ window.FilesModule = (() => {
 
   const PAGE = 200;
   const ICON_FOLDER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path></svg>';
+  const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10"></path><path d="m8 10 4 4 4-4"></path><path d="M5 19h14"></path></svg>';
+  const ICON_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path><path d="M10 11v6M14 11v6"></path></svg>';
   const ICON_FILE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M14 3v5h5"></path></svg>';
 
   let container = null;
@@ -286,7 +288,7 @@ window.FilesModule = (() => {
       <div class="fm-row is-folder" data-fm="open-folder" data-prefix="${escapeHTML(f.prefix)}">
         <span class="fm-icon">${ICON_FOLDER}</span>
         <span class="fm-main"><span class="fm-name">${escapeHTML(f.name.replace(/\/$/, ''))}</span><span class="fm-meta">папка</span></span>
-        <span class="fm-actions"><button type="button" class="st-btn danger" data-fm="delete-folder" data-prefix="${escapeHTML(f.prefix)}" data-name="${escapeHTML(f.name)}">Удалить</button></span>
+        <span class="fm-actions"><button type="button" class="fm-ibtn is-danger" data-fm="delete-folder" data-prefix="${escapeHTML(f.prefix)}" data-name="${escapeHTML(f.name)}" aria-label="Удалить папку" title="Удалить папку">${ICON_TRASH}</button></span>
       </div>`;
   }
 
@@ -297,8 +299,8 @@ window.FilesModule = (() => {
         <span class="fm-icon">${ICON_FILE}</span>
         <span class="fm-main"><span class="fm-name">${escapeHTML(o.name)}</span><span class="fm-meta">${escapeHTML(meta)}</span></span>
         <span class="fm-actions">
-          <button type="button" class="st-btn" data-fm="download" data-id="${escapeHTML(o.id)}" data-name="${escapeHTML(o.name)}">Скачать</button>
-          <button type="button" class="st-btn danger" data-fm="delete-file" data-id="${escapeHTML(o.id)}" data-name="${escapeHTML(o.name)}">Удалить</button>
+          <button type="button" class="fm-ibtn" data-fm="download" data-id="${escapeHTML(o.id)}" data-name="${escapeHTML(o.name)}" aria-label="Скачать" title="Скачать">${ICON_DOWNLOAD}</button>
+          <button type="button" class="fm-ibtn is-danger" data-fm="delete-file" data-id="${escapeHTML(o.id)}" data-name="${escapeHTML(o.name)}" aria-label="Удалить" title="Удалить">${ICON_TRASH}</button>
         </span>
       </div>`;
   }
