@@ -4,9 +4,11 @@
 
   /* ─── Platform detection ─── */
   const platform = tg?.platform || 'unknown';
-  const isMobile = /android|ios/i.test(platform) || window.innerWidth < 720;
-  const isDesktop = /macos|windows|linux/i.test(platform) && window.innerWidth >= 720;
-  const isWeb = platform === 'web' && window.innerWidth >= 720;
+  // Мобильным считаем только по платформе Telegram (android/ios). Ширина окна не в счёт:
+  // узкое окно Telegram Desktop не должно раскрываться на весь экран.
+  const isMobile = /^(android|ios)/i.test(platform);
+  const isDesktop = !isMobile && !/^web/i.test(platform);
+  const isWeb = !isMobile && /^web/i.test(platform);
   const isFullscreen = tg?.isFullscreen || false;
 
   if (isMobile) {
@@ -17,8 +19,11 @@
     setTimeout(() => {
       tg?.expand?.();
       // Пробуем полноэкранный режим если поддерживается
-      if (tg?.requestFullscreen) {
-        tg.requestFullscreen().catch(() => {});
+      try {
+        const result = tg?.requestFullscreen?.();
+        result?.catch?.(() => {});
+      } catch (_) {
+        // полноэкранный режим недоступен — остаёмся в раскрытом виде
       }
     }, 300);
   }
@@ -78,8 +83,6 @@
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3Z"></path><path d="M12 8v8M9 11.5c0-1 .9-1.5 2.3-1.5h1.4c1.4 0 2.3.5 2.3 1.5S14.1 13 12.8 13h-1.6C9.9 13 9 13.5 9 14.5s.9 1.5 2.3 1.5h1.4c1.4 0 2.3-.5 2.3-1.5"></path></svg>',
     mail:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m4 7 8 6 8-6"></path></svg>',
-    knowledge:
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h8a4 4 0 0 1 4 4v10a3 3 0 0 0-3-3H5z"></path><path d="M19 5h-2a4 4 0 0 0-4 4v10"></path></svg>',
     athena:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 12 2-4 2 4 4 2-4 2-2 4-2-4-4-2z"></path><path d="m17 6 .8 1.8L20 9l-2.2.6L17 11l-.8-1.4L14 9l2.2-1.2z"></path></svg>',
     home:
@@ -111,7 +114,6 @@
     { id: 'servers', label: 'Servers', subtitle: 'Инфраструктура', icon: 'servers' },
     { id: 'finance', label: 'Finance', subtitle: 'То, что требует оплаты', icon: 'finance' },
     { id: 'email', label: 'Email', subtitle: 'Почта из всех ящиков', icon: 'mail' },
-    { id: 'knowledge', label: 'Knowledge', subtitle: 'Заметки и база знаний', icon: 'knowledge' },
     { id: 'athena', label: 'Athena', subtitle: 'Интеллектуальный помощник', icon: 'athena' },
     { id: 'home', label: 'Home', subtitle: 'Home Assistant', icon: 'home' },
     { id: 'files', label: 'Files', subtitle: 'Папки и файлы Storage', icon: 'folder' },
@@ -174,8 +176,9 @@
     }
   }
 
-  function setNotice(text, tone = '') {
-    state.notice = text ? { text, tone } : null;
+  // scope: 'settings' — сообщение показывается только на экране Settings
+  function setNotice(text, tone = '', scope = '') {
+    state.notice = text ? { text, tone, scope } : null;
     renderMain();
   }
 
@@ -414,6 +417,9 @@
 
   function renderNotice() {
     if (!state.notice) {
+      return '';
+    }
+    if (state.notice.scope === 'settings' && state.currentView !== 'settings') {
       return '';
     }
 
@@ -844,14 +850,14 @@
       if (tone === 'success') {
         setNotice('');
       } else {
-        setNotice(payload.message || 'Статус обновлений получен.', tone);
+        setNotice(payload.message || 'Статус обновлений получен.', tone, 'settings');
       }
     } catch (error) {
       state.update.loading = false;
       state.update.loaded = true;
       state.update.error = error.message;
       state.update.message = '';
-      setNotice(`Ошибка проверки: ${error.message}`, 'error');
+      setNotice(`Ошибка проверки: ${error.message}`, 'error', 'settings');
     } finally {
       state.busy = '';
       renderShell();
@@ -875,7 +881,7 @@
     toggleActionBusy('update');
     try {
       const payload = await request('/api/update', 'POST');
-      setNotice(payload.message || 'Обновление выполнено.', 'success');
+      setNotice(payload.message || 'Обновление выполнено.', 'success', 'settings');
       tg?.HapticFeedback?.notificationOccurred?.('success');
       await loadUpdateStatus();
     } catch (error) {
@@ -883,7 +889,7 @@
         // Обновление перезапускает сервис — соединение обрывается само. Это не ошибка.
         window.PolarisRestart.show('Идёт обновление, сервис перезапускается…');
       } else {
-        setNotice(`Ошибка обновления: ${error.message}`, 'error');
+        setNotice(`Ошибка обновления: ${error.message}`, 'error', 'settings');
         tg?.HapticFeedback?.notificationOccurred?.('error');
       }
     } finally {
