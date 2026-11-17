@@ -30,6 +30,8 @@ EXPECTED = {
     ("PATCH", "/api/storage/credentials/{credential_id}"), ("DELETE", "/api/storage/credentials/{credential_id}"),
     ("GET", "/api/storage/diagnostics"), ("POST", "/api/storage/diagnostics/run"), ("GET", "/api/storage/multipart"),
     ("POST", "/api/storage/multipart/{upload_id}/abort"),
+    ("POST", "/api/storage/buckets/{bucket}/multipart"), ("PUT", "/api/storage/multipart/{upload_id}/parts/{part_number}"),
+    ("POST", "/api/storage/multipart/{upload_id}/complete"),
     ("POST", "/api/storage/objects/{object_id}/download-link"), ("GET", "/api/storage/download/{token}"),
     ("GET", "/api/storage/buckets/{bucket}/browse"), ("POST", "/api/storage/buckets/{bucket}/folders"),
     ("DELETE", "/api/storage/buckets/{bucket}/folders"), ("PUT", "/api/storage/buckets/{bucket}/upload"),
@@ -37,7 +39,7 @@ EXPECTED = {
 
 
 def concrete(path: str) -> str:
-    return path.replace("{bucket}", "files").replace("{object_id}", "oid").replace("{credential_id}", "cid").replace("{upload_id}", "u" * 32).replace("{token}", "tok")
+    return path.replace("{bucket}", "files").replace("{object_id}", "oid").replace("{credential_id}", "cid").replace("{upload_id}", "u" * 32).replace("{token}", "tok").replace("{part_number}", "1")
 
 
 class RecordingAdmin:
@@ -83,7 +85,7 @@ class AdminProtectionTests(unittest.TestCase):
 
     def test_admin_token_passes_through_to_handlers(self):
         for method, path, _ in api.router.routes:
-            if path.endswith(("/download", "/upload")) or path.startswith(PUBLIC_PREFIX):  # ответ-поток / тело запроса: свои тесты ниже
+            if path.endswith(("/download", "/upload")) or "/parts/" in path or path.startswith(PUBLIC_PREFIX):  # ответ-поток / тело запроса: свои тесты ниже
                 continue
             status, payload, _ = fastapi_stub.call(api.router, method, concrete(path), headers=ADMIN, body={})
             self.assertEqual(status, 200, f"{method} {path}")
@@ -183,6 +185,42 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(self.put(b"x", **{"Content-Length": str(10 * 1024 * 1024)})[0], 413)
         self.assertIsNone(self.admin.seen)
         self.assertEqual(self.put(b"x" * 1024 * 1024)[0], 200)
+
+
+class PartAdmin:
+    def __init__(self):
+        self.seen = None
+
+    def multipart_part(self, upload_id, part_number, data):
+        self.seen = (upload_id, part_number, bytes(data))
+        return {"part_number": part_number, "etag": "e" * 32, "size": len(data)}
+
+
+class PartRouteTests(unittest.TestCase):
+    def setUp(self):
+        patch = mock.patch.multiple(auth.settings, update_api_token=TOKEN, debug=False)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.admin = PartAdmin()
+        api._admin = self.admin
+        self.addCleanup(setattr, api, "_admin", None)
+
+    def put(self, body: bytes, number="3", **headers):
+        return fastapi_stub.call(api.router, "PUT", f"/api/storage/multipart/{'u' * 32}/parts/{number}",
+                                 headers={**ADMIN, **headers}, raw=body)
+
+    def test_part_bytes_reach_the_admin_layer_with_int_number(self):
+        status, payload, _ = self.put(bytes(range(256)) * 600)
+        self.assertEqual((status, payload["data"]["part_number"]), (200, 3))
+        self.assertEqual(self.admin.seen[:2], ("u" * 32, 3))
+        self.assertEqual(len(self.admin.seen[2]), 256 * 600)
+
+    def test_empty_and_oversized_parts_are_rejected(self):
+        self.assertEqual(self.put(b"")[0], 422)
+        with mock.patch.object(api, "_PART_LIMIT", 1024):
+            self.assertEqual(self.put(b"x" * 1025)[0], 413)
+            self.assertEqual(self.put(b"x", **{"Content-Length": "5000"})[0], 413)
+            self.assertEqual(self.put(b"x" * 1024)[0], 200)
 
 
 class PublicDownloadTests(unittest.TestCase):

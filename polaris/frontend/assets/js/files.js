@@ -79,25 +79,87 @@ window.FilesModule = (() => {
     return payload.data ?? payload;
   }
 
-  /* Загрузка через XMLHttpRequest — только ради прогресса отправки (fetch его не отдаёт). */
-  function xhrUpload(bucket, key, file, onProgress) {
+  /* Отправка тела через XMLHttpRequest — только ради прогресса (fetch его не отдаёт). onProgress(отправлено, всего). */
+  function xhrSend(url, body, contentType, onProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('PUT', `/api/storage/buckets/${enc(bucket)}/upload?key=${enc(key)}`);
+      xhr.open('PUT', url);
       Object.entries(authHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
-      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+      xhr.setRequestHeader('Content-Type', contentType || 'application/octet-stream');
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
       xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) { resolve(); return; }
         let payload = {};
         try { payload = JSON.parse(xhr.responseText); } catch (e) { /* не JSON */ }
+        if (xhr.status >= 200 && xhr.status < 300) { resolve(payload.data ?? payload); return; }
         reject(detailToError(payload, xhr.status));
       };
       xhr.onerror = () => reject(new ApiError('Нет связи с сервером Polaris', 0));
       xhr.onabort = () => reject(new ApiError('Загрузка прервана', 0));
-      xhr.send(file);
+      xhr.send(body);
     });
   }
+
+  const xhrUpload = (bucket, key, file, onProgress) => xhrSend(
+    `/api/storage/buckets/${enc(bucket)}/upload?key=${enc(key)}`, file, file.type, (loaded, total) => onProgress(loaded / total));
+
+  /* Большие файлы режет браузер: части грузятся параллельно (число задаёт сервер), каждая повторяется при сбое,
+     потом сервер склеивает объект без повторной заливки. Так нет временного файла на сервере и лимита прокси на файл целиком. */
+  const MULTIPART_MIN = 16 * 1024 * 1024;   // файлы не больше — одним запросом
+  const PART_TRIES = 4;
+  const retryDelay = (attempt) => 1000 * attempt;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  // сеть, прокси и «Storage занят» (все слоты загрузки заняты) стоит повторить; остальное — окончательная ошибка
+  const retryable = (e) => [0, 429, 502, 503, 504].includes(e.status);
+
+  async function multipartUpload(bucket, key, file, onProgress) {
+    const start = await api(`/api/storage/buckets/${enc(bucket)}/multipart`, 'POST', { key, content_type: file.type || undefined });
+    const { upload_id: uploadId, part_size: partSize } = start;
+    const total = Math.ceil(file.size / partSize);
+    const workers = Math.max(1, Math.min(start.max_parallel || 1, total));
+    const etags = new Array(total);
+    const sent = new Array(total).fill(0);
+    let next = 0;
+    let failure = null;
+    let finished = 0;
+    const report = () => onProgress(sent.reduce((a, b) => a + b, 0) / file.size, `${finished}/${total} ч.`);
+
+    async function worker() {
+      while (!failure) {
+        const index = next;
+        next += 1;
+        if (index >= total) return;
+        const blob = file.slice(index * partSize, Math.min(file.size, (index + 1) * partSize));
+        for (let attempt = 1; !failure; attempt += 1) {
+          try {
+            const part = await xhrSend(`/api/storage/multipart/${uploadId}/parts/${index + 1}`, blob, 'application/octet-stream',
+              (loaded) => { sent[index] = loaded; report(); });
+            etags[index] = part.etag;
+            sent[index] = blob.size;
+            finished += 1;
+            report();
+            break;
+          } catch (e) {
+            sent[index] = 0;
+            if (attempt >= PART_TRIES || !retryable(e)) { failure = failure || e; return; }
+            await sleep(retryDelay(attempt));
+          }
+        }
+      }
+    }
+
+    report();
+    await Promise.all(Array.from({ length: workers }, worker));
+    if (failure) {
+      api(`/api/storage/multipart/${uploadId}/abort`, 'POST').catch(() => {});  // убрать брошенные части
+      throw failure;
+    }
+    await api(`/api/storage/multipart/${uploadId}/complete`, 'POST',
+      { parts: etags.map((etag, i) => ({ part_number: i + 1, etag })) });
+  }
+
+  const uploadOne = (bucket, key, file, onProgress) => (file.size > MULTIPART_MIN
+    ? multipartUpload(bucket, key, file, onProgress)
+    : xhrUpload(bucket, key, file, (p) => onProgress(p, '')));
 
   function setNotice(kind, text) { notice = text ? { kind, text } : null; renderNotice(); }
 
@@ -277,7 +339,7 @@ window.FilesModule = (() => {
     const rows = S.uploads.map((u) => `
       <div class="fm-upload is-${u.state}">
         <div class="fm-upload-head"><span class="fm-name">${escapeHTML(u.name)}</span>
-          <span class="fm-meta">${escapeHTML(u.state === 'run' ? `${Math.round(u.pct * 100)}%` : (u.state === 'error' ? u.error : label[u.state]))}</span></div>
+          <span class="fm-meta">${escapeHTML(u.state === 'run' ? `${Math.round(u.pct * 100)}%${u.note ? ` · ${u.note}` : ''}` : (u.state === 'error' ? u.error : label[u.state]))}</span></div>
         <div class="fm-bar"><i style="width:${Math.round((u.state === 'ok' ? 1 : u.pct) * 100)}%"></i></div>
       </div>`).join('');
     box.innerHTML = `${rows}${uploading ? '' : '<button type="button" class="st-btn" data-fm="dismiss-uploads">Скрыть</button>'}`;
@@ -406,7 +468,7 @@ window.FilesModule = (() => {
       item.state = 'run';
       renderUploads();
       try {
-        await xhrUpload(bucket, `${prefix}${files[i].name}`, files[i], (p) => { item.pct = p; renderUploads(); });
+        await uploadOne(bucket, `${prefix}${files[i].name}`, files[i], (p, note) => { item.pct = p; item.note = note; renderUploads(); });
         item.state = 'ok';
       } catch (e) {
         item.state = 'error';

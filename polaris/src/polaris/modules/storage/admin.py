@@ -31,6 +31,7 @@ from polaris.storage.errors import (
     BucketExists, BucketNotEmpty, BucketNotFound, InvalidName, MultipartError, ObjectConflict, ObjectNotFound,
     ObjectNotReady, StorageBusy, StorageError, StorageUnavailable,
 )
+from polaris.storage.multipart import MAX_PARTS
 
 logger = logging.getLogger(__name__)
 
@@ -452,6 +453,64 @@ class StorageAdmin:
         if object_id is None:
             raise AdminError(403, "Ссылка недействительна или истекла")
         return self.object_download(object_id)
+
+    # ─── клиентская нарезка: multipart для Mini App ───
+
+    _CLIENT_MAX_PARALLEL = 4
+
+    @staticmethod
+    def _multipart_error(exc: MultipartError) -> AdminError:
+        return AdminError(404 if exc.code == "NoSuchUpload" else 422, str(exc))
+
+    def multipart_start(self, bucket: str, key: Any, content_type: Any = None) -> dict:
+        """Начать multipart-загрузку. Режет файл на части браузер; размер части задаёт сервер: ровно один чанк
+        (одно сообщение Telegram). Число параллельных частей не больше слотов загрузки Storage (и 4)."""
+        self._visible_bucket(bucket)
+        key = self._clean_path(key, "key", folder=False)
+        core = self._core()
+        mime = content_type.strip() if isinstance(content_type, str) and content_type.strip() else "application/octet-stream"
+        try:
+            upload = core.multipart.create(bucket, key, mime_type=mime)
+        except InvalidName as exc:
+            raise AdminError(422, "Проверьте значения", {"key": str(exc)}) from None
+        parallel = max(1, min(self._CLIENT_MAX_PARALLEL, int(self.settings.storage_max_concurrent_uploads)))
+        logger.info("Storage: начата клиентская multipart-загрузка %s/%s (%s)", bucket, key, upload.id)
+        return {"upload_id": upload.id, "part_size": max(core.chunk_size, core.multipart.min_part_size),
+                "max_parallel": parallel, "max_parts": MAX_PARTS}
+
+    def multipart_part(self, upload_id: str, part_number: int, data: Any) -> dict:
+        if not _UPLOAD_ID_RE.match(upload_id or ""):
+            raise AdminError(404, "Загрузка не найдена")
+        try:
+            session = self._core().multipart.begin_part(upload_id, part_number)
+            with session:
+                view = memoryview(data)
+                for pos in range(0, len(view), 1 << 20):
+                    session.write(view[pos:pos + (1 << 20)])
+                obj = session.complete()
+        except MultipartError as exc:
+            raise self._multipart_error(exc) from None
+        except StorageBusy:
+            raise AdminError(503, "Слишком много одновременных загрузок, повторите позже") from None
+        return {"part_number": part_number, "etag": obj.etag, "size": obj.size_bytes}
+
+    def multipart_finish(self, upload_id: str, parts: Any) -> dict:
+        if not _UPLOAD_ID_RE.match(upload_id or ""):
+            raise AdminError(404, "Загрузка не найдена")
+        try:
+            requested = [(int(p["part_number"]), str(p["etag"])) for p in parts]
+            if not requested:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            raise AdminError(422, "Проверьте значения", {"parts": "ожидается непустой список [{part_number, etag}]"}) from None
+        try:
+            obj = self._core().multipart.complete(upload_id, requested)
+        except MultipartError as exc:
+            raise self._multipart_error(exc) from None
+        except StorageBusy:
+            raise AdminError(503, "Слишком много одновременных операций, повторите позже") from None
+        logger.info("Storage: собран объект %s/%s из %d частей", obj.bucket, obj.object_key, len(requested))
+        return self._object_brief(obj)
 
     # ─── файловый менеджер: папки = общие префиксы ключей ───
 

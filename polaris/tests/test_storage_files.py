@@ -126,6 +126,101 @@ class FileManagerTests(AdminTestCase):
             self.admin.download_by_token(token)
         self.assertEqual(cm.exception.status, 404)
 
+    # ─── клиентская нарезка (multipart из Mini App) ───
+
+    MIB = 1024 * 1024
+
+    def part(self, upload_id, n, data):
+        return self.admin.multipart_part(upload_id, n, data)["etag"]
+
+    def test_multipart_start_tells_the_client_how_to_cut(self):
+        start = self.admin.multipart_start("files", "big/video.bin", "video/mp4")
+        self.assertRegex(start["upload_id"], r"^[0-9a-f]{32}$")
+        self.assertGreaterEqual(start["part_size"], 5 * self.MIB)  # не меньше минимума S3 для не последней части
+        self.assertEqual((start["max_parallel"], start["max_parts"]), (2, 10000))  # слоты загрузки Storage по умолчанию
+
+    def test_multipart_roundtrip_out_of_order_parts(self):
+        upload = self.admin.multipart_start("files", "big/data.bin")["upload_id"]
+        first, second, tail = bytes([1]) * (5 * self.MIB), bytes([2]) * (5 * self.MIB), b"tail-bytes"
+        etags = {3: self.part(upload, 3, tail), 1: self.part(upload, 1, first), 2: self.part(upload, 2, second)}
+        brief = self.admin.multipart_finish(upload, [{"part_number": n, "etag": etags[n]} for n in (1, 2, 3)])
+        self.assertEqual((brief["key"], brief["size"]), ("big/data.bin", 10 * self.MIB + len(tail)))
+        listed = [o for o in self.admin.bucket_browse("files", "big/")["objects"] if o["name"] == "data.bin"]
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(b"".join(self.admin.object_download(listed[0]["id"])[1]), first + second + tail)
+
+    def test_retried_part_replaces_the_failed_attempt(self):
+        upload = self.admin.multipart_start("files", "retry.bin")["upload_id"]
+        self.part(upload, 1, b"old")
+        etag = self.part(upload, 1, b"new")  # повтор после сбоя сети
+        brief = self.admin.multipart_finish(upload, [{"part_number": 1, "etag": etag}])
+        self.assertEqual(b"".join(self.admin.object_download(brief["id"])[1]), b"new")
+
+    def test_parts_can_be_uploaded_in_parallel(self):
+        from concurrent.futures import ThreadPoolExecutor
+        upload = self.admin.multipart_start("files", "parallel.bin")["upload_id"]
+        sizes = [5 * self.MIB, 5 * self.MIB, 5 * self.MIB, 100]
+        with ThreadPoolExecutor(4) as pool:
+            etags = list(pool.map(lambda i: self.part(upload, i + 1, bytes([i + 1]) * sizes[i]), range(4)))
+        brief = self.admin.multipart_finish(upload, [{"part_number": i + 1, "etag": e} for i, e in enumerate(etags)])
+        self.assertEqual(brief["size"], sum(sizes))
+
+    def test_busy_server_answers_503_and_the_retry_succeeds(self):
+        upload = self.admin.multipart_start("files", "busy.bin")["upload_id"]
+        slots = self.core._upload_slots
+        taken = 0
+        while slots.acquire(blocking=False):
+            taken += 1
+        try:
+            with self.assertRaises(AdminError) as cm:
+                self.admin.multipart_part(upload, 1, b"data")
+            self.assertEqual(cm.exception.status, 503)  # клиент повторит
+        finally:
+            for _ in range(taken):
+                slots.release()
+        etag = self.part(upload, 1, b"data")
+        brief = self.admin.multipart_finish(upload, [{"part_number": 1, "etag": etag}])
+        self.assertEqual(b"".join(self.admin.object_download(brief["id"])[1]), b"data")
+
+    def test_multipart_finish_rejects_bad_requests(self):
+        upload = self.admin.multipart_start("files", "bad.bin")["upload_id"]
+        etag = self.part(upload, 1, b"x" * 10)
+        etag2 = self.part(upload, 2, b"y" * 10)
+        cases = [
+            ([], 422), (None, 422), ([{"part_number": 1}], 422), ([{"part_number": 1, "etag": "0" * 32}], 422),
+            ([{"part_number": 9, "etag": etag}], 422),
+            ([{"part_number": 2, "etag": etag}, {"part_number": 1, "etag": etag}], 422),  # порядок
+            ([{"part_number": 1, "etag": etag}, {"part_number": 2, "etag": etag2}], 422),  # не последняя часть < 5 МиБ
+        ]
+        for parts, status in cases:
+            with self.assertRaises(AdminError) as cm:
+                self.admin.multipart_finish(upload, parts)
+            self.assertEqual(cm.exception.status, status, parts)
+
+    def test_unknown_or_aborted_upload_is_404_and_bad_key_is_422(self):
+        upload = self.admin.multipart_start("files", "gone.bin")["upload_id"]
+        self.part(upload, 1, b"x")
+        self.admin.multipart_abort(upload)
+        for call in (lambda: self.part(upload, 1, b"x"), lambda: self.admin.multipart_finish(upload, [{"part_number": 1, "etag": "a"}]),
+                     lambda: self.part("not-an-id", 1, b"x")):
+            with self.assertRaises(AdminError) as cm:
+                call()
+            self.assertEqual(cm.exception.status, 404)
+        for key in ("", "/abs", "../x", "dir/"):
+            with self.assertRaises(AdminError) as cm:
+                self.admin.multipart_start("files", key)
+            self.assertEqual(cm.exception.status, 422, key)
+        with self.assertRaises(AdminError) as cm:
+            self.admin.multipart_start("nope", "a")
+        self.assertEqual(cm.exception.status, 404)
+
+    def test_part_number_out_of_range_is_422(self):
+        upload = self.admin.multipart_start("files", "range.bin")["upload_id"]
+        for n in (0, 10001):
+            with self.assertRaises(AdminError) as cm:
+                self.admin.multipart_part(upload, n, b"x")
+            self.assertEqual(cm.exception.status, 422)
+
     def test_unknown_bucket_is_404(self):
         for call in (lambda: self.admin.bucket_browse("nope"), lambda: self.admin.folder_create("nope", "a/"),
                      lambda: self.admin.folder_delete("nope", "a/"),

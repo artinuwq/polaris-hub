@@ -13,6 +13,8 @@
   GET    /api/storage/buckets/{bucket}/browse       — ?prefix=&cursor=&limit=: подпапки и файлы «папки» (файловый менеджер)
   POST   /api/storage/buckets/{bucket}/folders      — {prefix}: создать папку · DELETE ...?prefix=: удалить папку со всем содержимым
   PUT    /api/storage/buckets/{bucket}/upload       — ?key=: тело запроса — байты файла (перезаписывает существующий ключ)
+  POST   /api/storage/buckets/{bucket}/multipart    — {key, content_type}: начать загрузку, которую режет браузер (размер части и параллелизм — в ответе)
+  PUT    /api/storage/multipart/{id}/parts/{n}      — байты части → {etag} · POST .../complete — {parts:[{part_number, etag}]}: собрать объект
   GET    /api/storage/credentials · POST /api/storage/credentials
   POST   /api/storage/credentials/{id}/revoke · POST .../rotate · PATCH .../{id} · DELETE .../{id}
   GET    /api/storage/diagnostics · POST /api/storage/diagnostics/run
@@ -42,6 +44,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 _admin: StorageAdmin | None = None
 _NO_STORE = {"Cache-Control": "no-store"}
+_PART_LIMIT = 64 * 1024 * 1024  # часть multipart целиком копится в памяти: потолок на запрос
 
 
 def get_admin() -> StorageAdmin:
@@ -134,6 +137,36 @@ def create_folder(bucket: str, body: dict | None = Body(default=None),
 def delete_folder(bucket: str, prefix: str = Query(default=""),
                   _user: TelegramWebAppUser | None = Depends(require_admin)):
     return _ok(_run(get_admin().folder_delete, bucket, prefix))
+
+
+@router.post("/buckets/{bucket}/multipart")
+def start_multipart(bucket: str, body: dict | None = Body(default=None),
+                    _user: TelegramWebAppUser | None = Depends(require_admin)):
+    body = body or {}
+    return _ok(_run(get_admin().multipart_start, bucket, body.get("key"), body.get("content_type")))
+
+
+@router.put("/multipart/{upload_id}/parts/{part_number}")
+async def upload_part(upload_id: str, part_number: int, request: Request,
+                      _user: TelegramWebAppUser | None = Depends(require_admin)):
+    """Одна часть (режет браузер): тело запроса — байты части. Часть целиком в памяти, но не больше _PART_LIMIT."""
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > _PART_LIMIT:
+        raise HTTPException(status_code=413, detail="Часть больше допустимого размера")
+    data = bytearray()
+    async for piece in request.stream():
+        data += piece
+        if len(data) > _PART_LIMIT:
+            raise HTTPException(status_code=413, detail="Часть больше допустимого размера")
+    if not data:
+        raise HTTPException(status_code=422, detail="Пустая часть")
+    return _ok(await run_in_threadpool(_run, get_admin().multipart_part, upload_id, int(part_number), data))
+
+
+@router.post("/multipart/{upload_id}/complete")
+def complete_multipart(upload_id: str, body: dict | None = Body(default=None),
+                       _user: TelegramWebAppUser | None = Depends(require_admin)):
+    return _ok(_run(get_admin().multipart_finish, upload_id, (body or {}).get("parts")))
 
 
 @router.put("/buckets/{bucket}/upload")
