@@ -1,5 +1,8 @@
 /* Экран «Идёт перезапуск»: закрывает интерфейс, пока сервис перезапускается, и сам
-   перезагружает страницу, когда /health снова отвечает. API: PolarisRestart.show(текст). */
+   перезагружает страницу, когда /health снова отвечает.
+   API: PolarisRestart.show(текст, { sub, hold }), .release(текст), .hide().
+   hold: true — пока идёт операция (обновление), не перезагружать страницу, даже если /health отвечает;
+   release() снимает ожидание, hide() закрывает экран без перезагрузки (например, при ошибке). */
 (() => {
   'use strict';
 
@@ -7,6 +10,9 @@
   const MIN_WAIT_MS = 4000;   // если сервис «не упал» за это время — считаем перезапуск быстрым
   const TIMEOUT_MS = 120000;  // дальше ждать бессмысленно — предлагаем обновить вручную
   let overlay = null;
+  let styleEl = null;
+  let session = 0;   // номер показа: устаревшие тики опроса сами останавливаются
+  let holding = false;
 
   const css = `
     .pr-overlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;
@@ -34,9 +40,12 @@
     }
   }
 
-  function show(message) {
+  function show(message, opts = {}) {
     if (overlay) return;
+    const mySession = ++session;
+    holding = Boolean(opts.hold);
     const style = document.createElement('style');
+    styleEl = style;
     style.textContent = css;
     overlay = document.createElement('div');
     overlay.className = 'pr-overlay';
@@ -48,6 +57,7 @@
         <p class="pr-sub">Подождите, страница загрузится сама, когда сервер поднимется.</p>
       </div>`;
     overlay.querySelector('.pr-title').textContent = message || 'Идёт перезапуск…';
+    if (opts.sub) overlay.querySelector('.pr-sub').textContent = opts.sub;
     document.head.appendChild(style);
     document.body.appendChild(overlay);
 
@@ -55,14 +65,17 @@
     let wentDown = false;
     const tick = async () => {
       const ok = await ping();
+      if (mySession !== session || !overlay) return;
       const elapsed = Date.now() - began;
       if (!ok) wentDown = true;
-      if (ok && (wentDown || elapsed >= MIN_WAIT_MS)) {
+      // во время обновления «живой» сервер ещё не значит, что всё готово — ждём, пока он упадёт и поднимется
+      if (ok && (wentDown || (!holding && elapsed >= MIN_WAIT_MS))) {
         overlay.querySelector('.pr-title').textContent = 'Готово, загружаю…';
         setTimeout(() => window.location.reload(), 300);
         return;
       }
       if (elapsed > TIMEOUT_MS) {
+        holding = false;
         overlay.querySelector('.pr-spinner').remove();
         overlay.querySelector('.pr-title').textContent = 'Сервер долго не отвечает';
         overlay.querySelector('.pr-sub').textContent = 'Проверьте сервис на сервере или попробуйте обновить страницу.';
@@ -79,5 +92,19 @@
     setTimeout(tick, POLL_MS);
   }
 
-  window.PolarisRestart = { show };
+  function release(message) {
+    holding = false;
+    if (overlay && message) overlay.querySelector('.pr-title').textContent = message;
+  }
+
+  function hide() {
+    session += 1;
+    holding = false;
+    overlay?.remove();
+    styleEl?.remove();
+    overlay = null;
+    styleEl = null;
+  }
+
+  window.PolarisRestart = { show, release, hide };
 })();

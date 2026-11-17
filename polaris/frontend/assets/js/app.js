@@ -878,17 +878,31 @@
       return;
     }
 
+    // Экран обновления закрывает интерфейс сразу и сам перезагружает страницу, когда сервис поднимется
+    window.PolarisRestart.show('Обновляю Polaris…', {
+      sub: 'Скачиваю изменения и перезапускаю сервис. Страница загрузится сама.',
+      hold: true,
+    });
     toggleActionBusy('update');
     try {
       const payload = await request('/api/update', 'POST');
+      if (payload.data?.restarted) {
+        // сервис перезапускается — экран остаётся и перезагрузит страницу, когда сервер ответит
+        window.PolarisRestart.release('Обновлено, перезапускаю сервис…');
+        tg?.HapticFeedback?.notificationOccurred?.('success');
+        return;
+      }
+      // перезапуска не было (уже актуально или нужен ручной перезапуск) — показываем результат
+      window.PolarisRestart.hide();
       setNotice(payload.message || 'Обновление выполнено.', 'success', 'settings');
       tg?.HapticFeedback?.notificationOccurred?.('success');
       await loadUpdateStatus();
     } catch (error) {
       if (isConnectionDrop(error)) {
         // Обновление перезапускает сервис — соединение обрывается само. Это не ошибка.
-        window.PolarisRestart.show('Идёт обновление, сервис перезапускается…');
+        window.PolarisRestart.release('Сервис перезапускается…');
       } else {
+        window.PolarisRestart.hide();
         setNotice(`Ошибка обновления: ${error.message}`, 'error', 'settings');
         tg?.HapticFeedback?.notificationOccurred?.('error');
       }
