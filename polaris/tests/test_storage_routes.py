@@ -18,6 +18,7 @@ from tests.test_storage_admin import AdminTestCase  # noqa: E402
 
 TOKEN = "admin-token-123"
 ADMIN = {"X-Polaris-Token": TOKEN}
+PUBLIC_PREFIX = "/api/storage/download/"
 EXPECTED = {
     ("GET", "/api/storage/status"), ("GET", "/api/storage/config"), ("PUT", "/api/storage/config"),
     ("POST", "/api/storage/test"), ("GET", "/api/storage/buckets"), ("POST", "/api/storage/buckets"),
@@ -29,13 +30,14 @@ EXPECTED = {
     ("PATCH", "/api/storage/credentials/{credential_id}"), ("DELETE", "/api/storage/credentials/{credential_id}"),
     ("GET", "/api/storage/diagnostics"), ("POST", "/api/storage/diagnostics/run"), ("GET", "/api/storage/multipart"),
     ("POST", "/api/storage/multipart/{upload_id}/abort"),
+    ("POST", "/api/storage/objects/{object_id}/download-link"), ("GET", "/api/storage/download/{token}"),
     ("GET", "/api/storage/buckets/{bucket}/browse"), ("POST", "/api/storage/buckets/{bucket}/folders"),
     ("DELETE", "/api/storage/buckets/{bucket}/folders"), ("PUT", "/api/storage/buckets/{bucket}/upload"),
 }
 
 
 def concrete(path: str) -> str:
-    return path.replace("{bucket}", "files").replace("{object_id}", "oid").replace("{credential_id}", "cid").replace("{upload_id}", "u" * 32)
+    return path.replace("{bucket}", "files").replace("{object_id}", "oid").replace("{credential_id}", "cid").replace("{upload_id}", "u" * 32).replace("{token}", "tok")
 
 
 class RecordingAdmin:
@@ -69,6 +71,8 @@ class AdminProtectionTests(unittest.TestCase):
                                     "SignedHeaders=host, Signature=" + "0" * 64,
                    "x-amz-date": "20261115T000000Z", "x-amz-content-sha256": "UNSIGNED-PAYLOAD"}
         for method, path, _ in api.router.routes:
+            if path.startswith(PUBLIC_PREFIX):  # единственный маршрут без admin-заголовков: защищён подписью, см. PublicDownloadTests
+                continue
             url = concrete(path)
             for label, headers in (("без учётных данных", {}), ("S3-подпись", s3_like), ("неверный токен", {"X-Polaris-Token": "x"}),
                                    ("S3-секрет в роли токена", {"X-Polaris-Token": "S" * 40}),
@@ -79,7 +83,7 @@ class AdminProtectionTests(unittest.TestCase):
 
     def test_admin_token_passes_through_to_handlers(self):
         for method, path, _ in api.router.routes:
-            if path.endswith(("/download", "/upload")):  # ответ-поток / тело запроса: свои тесты ниже
+            if path.endswith(("/download", "/upload")) or path.startswith(PUBLIC_PREFIX):  # ответ-поток / тело запроса: свои тесты ниже
                 continue
             status, payload, _ = fastapi_stub.call(api.router, method, concrete(path), headers=ADMIN, body={})
             self.assertEqual(status, 200, f"{method} {path}")
@@ -179,6 +183,34 @@ class UploadRouteTests(unittest.TestCase):
         self.assertEqual(self.put(b"x", **{"Content-Length": str(10 * 1024 * 1024)})[0], 413)
         self.assertIsNone(self.admin.seen)
         self.assertEqual(self.put(b"x" * 1024 * 1024)[0], 200)
+
+
+class PublicDownloadTests(unittest.TestCase):
+    class Admin:
+        def download_by_token(self, token):
+            if token != "good":
+                raise AdminError(403, "Ссылка недействительна или истекла")
+            return {"key": "dir/photo.jpg", "content_type": "image/jpeg", "size": 3}, iter([b"abc"])
+
+    def setUp(self):
+        api._admin = self.Admin()
+        self.addCleanup(setattr, api, "_admin", None)
+
+    def test_valid_link_streams_the_file_without_any_auth_headers(self):
+        status, response, _ = fastapi_stub.call(api.router, "GET", "/api/storage/download/good")
+        self.assertEqual(status, 200)
+        self.assertEqual(b"".join(response.body_iterator), b"abc")
+        self.assertIn("attachment", response.headers["Content-Disposition"])
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_bad_link_is_rejected(self):
+        status, detail, _ = fastapi_stub.call(api.router, "GET", "/api/storage/download/bad")
+        self.assertEqual((status, detail), (403, "Ссылка недействительна или истекла"))
+
+    def test_link_creation_itself_requires_admin(self):
+        with mock.patch.multiple(auth.settings, update_api_token=TOKEN, debug=False):
+            status, _, _ = fastapi_stub.call(api.router, "POST", "/api/storage/objects/oid/download-link")
+        self.assertIn(status, (401, 403))
 
 
 class ErrorMappingTests(unittest.TestCase):

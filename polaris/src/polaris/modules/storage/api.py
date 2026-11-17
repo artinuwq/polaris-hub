@@ -8,6 +8,8 @@
   GET    /api/storage/buckets/{bucket} · DELETE /api/storage/buckets/{bucket}   (только пустой)
   GET    /api/storage/buckets/{bucket}/objects      — ?prefix=&after=&limit=
   GET    /api/storage/objects/{id} · DELETE /api/storage/objects/{id} · GET /api/storage/objects/{id}/download
+  POST   /api/storage/objects/{id}/download-link    — подписанная ссылка на скачивание (для Telegram.WebApp.downloadFile)
+  GET    /api/storage/download/{token}              — единственный маршрут без admin-заголовков: доступ даёт токен ссылки
   GET    /api/storage/buckets/{bucket}/browse       — ?prefix=&cursor=&limit=: подпапки и файлы «папки» (файловый менеджер)
   POST   /api/storage/buckets/{bucket}/folders      — {prefix}: создать папку · DELETE ...?prefix=: удалить папку со всем содержимым
   PUT    /api/storage/buckets/{bucket}/upload       — ?key=: тело запроса — байты файла (перезаписывает существующий ключ)
@@ -174,14 +176,29 @@ def delete_object(object_id: str, _user: TelegramWebAppUser | None = Depends(req
     return _ok(_run(get_admin().object_delete, object_id))
 
 
-@router.get("/objects/{object_id}/download")
-def download_object(object_id: str, _user: TelegramWebAppUser | None = Depends(require_admin)):
-    info, stream = _run(get_admin().object_download, object_id)
+def _file_response(info: dict, stream) -> StreamingResponse:
     filename = info["key"].rsplit("/", 1)[-1] or "object"
     ascii_name = "".join(c if 32 <= ord(c) < 127 and c not in '"\\' else "_" for c in filename)
     headers = {"Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}",
                "Content-Length": str(info["size"]), **_NO_STORE}
     return StreamingResponse(stream, media_type=info["content_type"] or "application/octet-stream", headers=headers)
+
+
+@router.get("/objects/{object_id}/download")
+def download_object(object_id: str, _user: TelegramWebAppUser | None = Depends(require_admin)):
+    return _file_response(*_run(get_admin().object_download, object_id))
+
+
+@router.post("/objects/{object_id}/download-link")
+def download_object_link(object_id: str, response: Response,
+                         _user: TelegramWebAppUser | None = Depends(require_admin)):
+    return _secret_response(response, _run(get_admin().download_link, object_id))
+
+
+@router.get("/download/{token}")
+def download_by_link(token: str):
+    """Без заголовков авторизации: доступ даёт подписанный токен из download-link (один объект, ~5 минут)."""
+    return _file_response(*_run(get_admin().download_by_token, token))
 
 
 @router.get("/credentials")

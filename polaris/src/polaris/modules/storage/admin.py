@@ -21,6 +21,7 @@ from typing import Any, Callable, Iterator
 
 from polaris.infra.config_store import read_env_value, write_env_value
 from polaris.infra.settings import Settings
+from polaris.modules.storage import download_links
 from polaris.modules.storage.config_fields import BY_KEY, FIELDS, FieldError, from_env, mask_secret, to_env
 from polaris.storage import core as storage_core
 from polaris.storage.access_keys import PERMISSIONS, AccessKey, AccessKeyError, AccessKeyStore
@@ -432,6 +433,25 @@ class StorageAdmin:
             return {"key": o.object_key, "content_type": o.mime_type, "size": o.size_bytes}, self._core().stream(o.id)
         except StorageBusy:
             raise AdminError(503, "Слишком много одновременных скачиваний, повторите позже") from None
+
+    def _link_secret(self) -> str:
+        secret = self.settings.telegram_bot_token or self.settings.update_api_token
+        if not secret:
+            raise AdminError(503, "Не задан секрет для подписи ссылок (TELEGRAM_BOT_TOKEN или UPDATE_API_TOKEN)")
+        return secret
+
+    def download_link(self, object_id: str) -> dict:
+        """Одноразово-читаемая ссылка на скачивание без заголовков авторизации (см. download_links)."""
+        o = self._object(object_id)
+        token = download_links.sign(self._link_secret(), o.id)
+        return {"path": f"/api/storage/download/{token}", "file_name": o.object_key.rsplit("/", 1)[-1] or "object",
+                "expires_in": download_links.TTL_SECONDS}
+
+    def download_by_token(self, token: str) -> tuple[dict, Iterator[bytes]]:
+        object_id = download_links.verify(self._link_secret(), token)
+        if object_id is None:
+            raise AdminError(403, "Ссылка недействительна или истекла")
+        return self.object_download(object_id)
 
     # ─── файловый менеджер: папки = общие префиксы ключей ───
 

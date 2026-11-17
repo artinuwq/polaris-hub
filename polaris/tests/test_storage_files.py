@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import unittest
 
+from polaris.modules.storage import download_links
 from polaris.modules.storage.admin import AdminError
 from tests.test_storage_admin import AdminTestCase
 
@@ -95,6 +96,35 @@ class FileManagerTests(AdminTestCase):
             with self.assertRaises(AdminError) as cm:
                 self.admin.folder_create("files", prefix)
             self.assertEqual(cm.exception.status, 422, repr(prefix))
+
+    def test_signed_download_link_roundtrip(self):
+        oid = self.admin.bucket_browse("files", "docs/")["objects"][0]["id"]
+        link = self.admin.download_link(oid)
+        self.assertEqual((link["file_name"], link["expires_in"]), ("a.txt", 300))
+        token = link["path"].rsplit("/", 1)[-1]
+        info, stream = self.admin.download_by_token(token)
+        self.assertEqual((info["key"], b"".join(stream)), ("docs/a.txt", b"docs/a.txt"))
+
+    def test_download_links_cannot_be_forged_expired_or_reused_for_other_objects(self):
+        oid = self.admin.bucket_browse("files", "docs/")["objects"][0]["id"]
+        other = self.admin.bucket_browse("files")["objects"][0]["id"]
+        secret = self.settings.telegram_bot_token
+        token = download_links.sign(secret, oid)
+        payload, sig = token.split(".")
+        forged = download_links.sign(secret, other).split(".")[0] + "." + sig  # чужой payload с подписью от другого
+        for bad in (download_links.sign(secret, oid, ttl=-1), forged, token[:-2] + "xx", "", "garbage", token + ".x",
+                    download_links.sign("other-secret", oid)):
+            with self.assertRaises(AdminError) as cm:
+                self.admin.download_by_token(bad)
+            self.assertEqual(cm.exception.status, 403, bad)
+
+    def test_link_for_deleted_object_is_gone(self):
+        oid = self.admin.bucket_browse("files", "docs/")["objects"][0]["id"]
+        token = self.admin.download_link(oid)["path"].rsplit("/", 1)[-1]
+        self.admin.object_delete(oid)
+        with self.assertRaises(AdminError) as cm:
+            self.admin.download_by_token(token)
+        self.assertEqual(cm.exception.status, 404)
 
     def test_unknown_bucket_is_404(self):
         for call in (lambda: self.admin.bucket_browse("nope"), lambda: self.admin.folder_create("nope", "a/"),

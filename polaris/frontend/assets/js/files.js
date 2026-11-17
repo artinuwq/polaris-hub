@@ -381,19 +381,10 @@ window.FilesModule = (() => {
   }
 
   async function downloadFile(id, name) {
-    setNotice('ok', `Скачивание «${name}»…`);
+    setNotice('ok', `Готовлю «${name}»… если Telegram спросит — подтвердите скачивание`);
     try {
-      const response = await api(`/api/storage/objects/${enc(id)}/download`, 'GET', undefined, true);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-      setNotice('ok', `«${name}» скачан`);
+      const result = await window.PolarisDownload.start(id, name);
+      setNotice('ok', window.PolarisDownload.message(result, name));
     } catch (e) { setNotice('error', `Не удалось скачать: ${errText(e)}`); }
   }
 
