@@ -43,7 +43,7 @@ window.StorageModule = (() => {
   let loadToken = 0;
 
   const S = {             // данные разделов (только то, что отдал сервер)
-    status: null, statusError: '', checking: false,
+    status: null, statusError: '', checking: false, statsInfo: false,
     config: null, configError: '', draft: {}, secretMode: {}, preview: null, applied: null, testResult: null,
     buckets: null, bucketsError: '',
     bucket: null, objects: [], objectsMore: null, objectsPrefix: '', objectsError: '',
@@ -317,8 +317,7 @@ window.StorageModule = (() => {
       return `
         <div class="card sg-comp" data-component="${key}">
           <div class="st-item-head"><span class="st-item-title">${label}</span>${badge(c.status)}</div>
-          <div class="st-item-sub">${escapeHTML(c.message || '')}</div>
-          <div class="st-item-sub">Последнее успешное обращение: ${c.last_ok_at ? `${escapeHTML(relTime(c.last_ok_at))}` : 'ещё не было'}</div>
+          ${c.status !== 'ok' && c.message ? `<div class="st-item-sub">${escapeHTML(c.message)}</div>` : ''}
           <div class="st-item-sub">Проверено: ${c.checked_at ? escapeHTML(relTime(c.checked_at)) : 'не проверялось'}${c.duration_ms !== null && c.duration_ms !== undefined ? ` · ${c.duration_ms} мс` : ''}</div>
         </div>`;
     }).join('');
@@ -331,7 +330,7 @@ window.StorageModule = (() => {
         ${tile('Blobs (физические)', s.blobs, `${fmtSize(s.physical_bytes)} в хранилище`)}
         ${tile('Незавершённые multipart', s.multipart_uploads, `частей: ${s.multipart_parts} · ${fmtSize(s.multipart_bytes)}`)}
       </div>
-      <p class="st-item-sub sg-note">Цифры точные (суммы из базы, не оценки). Логические объекты и физические blobs считаются раздельно: при дедупликации blobs меньше объектов${dedup ? ` — экономия ${escapeHTML(fmtSize(dedup))}` : ''}. В физический объём входят и части незавершённых multipart-загрузок. Сообщений в Telegram: ${s.chunks}.</p>`
+      <p class="st-item-sub sg-note" id="sg-stats-note"${S.statsInfo ? '' : ' hidden'}>Цифры точные (суммы из базы, не оценки). Логические объекты и физические blobs считаются раздельно: при дедупликации blobs меньше объектов${dedup ? ` — экономия ${escapeHTML(fmtSize(dedup))}` : ''}. В физический объём входят и части незавершённых multipart-загрузок. Сообщений в Telegram: ${s.chunks}.</p>`
       : `<p class="st-empty">Статистика недоступна: Storage не запущен.</p>`;
     const problems = st.storage.state !== 'ready' ? `
       <div class="card sg-banner is-warn" role="status">
@@ -347,14 +346,10 @@ window.StorageModule = (() => {
       </div>
       ${S.statusError ? errorBlock(S.statusError) : ''}
       <div class="sg-grid">${components}</div>
-      <h3 class="st-subtitle">Статистика</h3>${stats}
-      <h3 class="st-subtitle">Быстрые действия</h3>
-      <div class="st-item-actions sg-quick">
-        <button type="button" class="st-btn primary" data-sg="new-bucket">Create Bucket</button>
-        <button type="button" class="st-btn primary" data-sg="new-key">Create Access Key</button>
-        <button type="button" class="st-btn primary" data-sg="quick-test" ${busy.test ? 'disabled' : ''}>${busy.test ? 'Тестируем…' : 'Test Storage'}</button>
-        <button type="button" class="st-btn" data-sg="section" data-section="diagnostics">Open Diagnostics</button>
-      </div>`;
+      <div class="sg-toolbar sg-stats-head">
+        <h3 class="st-subtitle">Статистика</h3>
+        ${s ? `<button type="button" class="sg-info${S.statsInfo ? ' is-open' : ''}" data-sg="toggle-stats-info" aria-expanded="${S.statsInfo ? 'true' : 'false'}" aria-controls="sg-stats-note" aria-label="О цифрах статистики" title="О цифрах статистики">i</button>` : ''}
+      </div>${stats}`;
   }
 
   const tile = (label, value, sub = '') => `
@@ -982,7 +977,15 @@ window.StorageModule = (() => {
       case 'run-check': return runChecks([d.name]);
       case 'new-bucket': return openCreateBucket();
       case 'new-key': return openCreateKey();
-      case 'quick-test': case 'run-tests': return runTests();
+      case 'run-tests': return runTests();
+      case 'toggle-stats-info': {
+        S.statsInfo = !S.statsInfo;
+        el.classList.toggle('is-open', S.statsInfo);
+        el.setAttribute('aria-expanded', S.statsInfo ? 'true' : 'false');
+        const note = container.querySelector('#sg-stats-note');
+        if (note) note.hidden = !S.statsInfo;
+        return;
+      }
       case 'run-step': return runTests([d.step]);
       case 'restart': return confirmRestart();
       case 'copy-endpoint': return copyWithNotice(container.querySelector('#sg-endpoint')?.textContent || '', 'Endpoint скопирован');

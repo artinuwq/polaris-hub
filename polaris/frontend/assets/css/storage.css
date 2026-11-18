@@ -12,6 +12,11 @@
 .sg-tile-value { font-size: 1.5rem; font-weight: 700; line-height: 1.1; }
 .sg-tile-label { color: var(--text-secondary); font-size: 0.8rem; }
 .sg-note { margin: 0 2px; }
+.sg-stats-head { justify-content: flex-start; gap: 8px; }
+.sg-info { width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--border-soft); background: transparent; color: var(--text-muted); font: italic 700 0.72rem/1 Georgia, serif; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: color .15s, border-color .15s, background .15s; }
+.sg-info:hover, .sg-info.is-open { color: var(--text); border-color: var(--text-muted); background: var(--surface-raised); }
+.sg-info:focus-visible { outline: 2px solid var(--text-muted); outline-offset: 2px; }
+.sg-note[hidden] { display: none; }
 .sg-banner { padding: 10px 14px; font-size: 0.88rem; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .sg-banner.is-warn { border-color: rgba(245, 185, 66, 0.5); }
 .sg-banner.is-ok { border-color: rgba(82, 210, 115, 0.45); }

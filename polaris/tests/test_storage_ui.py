@@ -142,7 +142,7 @@ class NavigationAndOverviewTests(UiTestCase):
             badge = page.locator(f'.sg-comp[data-component="{component}"] .st-badge')
             self.assertEqual(badge.get_attribute("data-status"), "ok", component)
             comp_text = page.inner_text(f'.sg-comp[data-component="{component}"]')
-            self.assertNotIn("ещё не было", comp_text)
+            self.assertNotIn("Последнее успешное обращение", comp_text)
             self.assertIn("мс", comp_text)
         self.assertEqual(page.locator(".sg-comp").count(), 4)
         tiles = page.inner_text(".sg-stats")
@@ -151,7 +151,14 @@ class NavigationAndOverviewTests(UiTestCase):
         self.assertIn("Blobs (физические)", tiles)
         self.assertIn("Незавершённые multipart", tiles)
         self.assertIn("1000 Б", tiles.replace("\xa0", " "))
-        self.assertIn("точные", page.inner_text(".sg-note"))
+        self.assertNotIn("Быстрые действия", self.text())
+        self.assertEqual(page.locator(".sg-quick").count(), 0)
+        self.assertTrue(page.locator("#sg-stats-note").is_hidden())  # сводка скрыта по умолчанию
+        page.click('[data-sg="toggle-stats-info"]')
+        self.assertIn("точные", page.inner_text("#sg-stats-note"))
+        self.assertEqual(page.get_attribute('[data-sg="toggle-stats-info"]', "aria-expanded"), "true")
+        page.click('[data-sg="toggle-stats-info"]')
+        self.assertTrue(page.locator("#sg-stats-note").is_hidden())
 
     def test_nothing_is_online_when_checks_did_not_run(self):
         self.page.route("**/api/storage/diagnostics/run", lambda route: route.abort())
@@ -161,7 +168,6 @@ class NavigationAndOverviewTests(UiTestCase):
             badge = self.page.locator(f'.sg-comp[data-component="{component}"] .st-badge')
             self.assertEqual(badge.get_attribute("data-status"), "unknown", component)
             self.assertEqual(badge.inner_text(), "Не проверялось")
-        self.assertIn("ещё не было", self.text('.sg-comp[data-component="telegram"]'))
         self.assertIn("Нет связи", self.text())
 
     def test_failure_is_visible_after_recheck(self):
@@ -172,7 +178,6 @@ class NavigationAndOverviewTests(UiTestCase):
         self.page.click('[data-sg="recheck"]')
         self.page.wait_for_selector('.sg-comp[data-component="telegram"] .st-badge[data-status="error"]')
         self.assertIn("Telegram отклонил токен", self.text('.sg-comp[data-component="telegram"]'))
-        self.assertIn("Последнее успешное обращение", self.text('.sg-comp[data-component="telegram"]'))
 
     def test_disabled_storage_is_explained_not_faked(self):
         self.service.state = "disabled"
@@ -184,28 +189,6 @@ class NavigationAndOverviewTests(UiTestCase):
         for component in ("core", "database", "telegram"):
             self.assertNotEqual(self.page.locator(f'.sg-comp[data-component="{component}"] .st-badge').get_attribute("data-status"), "ok")
         self.assertIn("недоступна", self.text())
-
-    def test_quick_actions(self):
-        self.open_storage()
-        page = self.page
-        page.wait_for_selector(".sg-quick")
-        page.click('.sg-quick [data-sg="new-bucket"]')
-        page.fill("#sm-name", "quick-bucket")
-        page.click("#sm-create")
-        self.wait_modal_closed()
-        self.assertIn("quick-bucket", [b.name for b in self.core.list_buckets()])
-        page.click('.sg-quick [data-sg="new-key"]')
-        page.wait_for_selector("#sm-kname")
-        self.click_modal("close")
-        self.wait_modal_closed()
-        page.click('.sg-quick [data-sg="quick-test"]')
-        page.wait_for_selector("[data-test-table]")
-        self.assertEqual(page.locator("[data-test-table] .st-badge[data-status='ok']").count(), 7)
-        self.click_modal("close")
-        page.click('.sg-quick [data-sg="section"]')
-        page.wait_for_selector("tr[data-check='database']")
-        self.assertEqual(self.core.list_objects("files"), [])  # тест ничего не оставил
-        self.assertEqual([b.name for b in self.core.list_buckets()], ["files", "quick-bucket"])
 
 
 class BucketUiTests(UiTestCase):
