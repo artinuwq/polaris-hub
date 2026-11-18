@@ -5,7 +5,7 @@ window.MemeModule = (() => {
   'use strict';
 
   const PAGE = 24;
-  const ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+  const ACCEPT = 'image/*';  // тип проверяет сервер по байтам; список MIME в accept на части мобильных WebView не открывает выбор
   const MAX_BYTES = 10 * 1024 * 1024;
   const ICON_EDIT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"></path><path d="m13.5 6.5 4 4"></path></svg>';
   const ICON_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path><path d="M10 11v6M14 11v6"></path></svg>';
@@ -131,8 +131,12 @@ window.MemeModule = (() => {
     let previewUrl = '';
     openModal(`
       <div class="tk-head"><h3>Новое изображение</h3></div>
-      <div class="tk-field"><label for="mmm-file">Файл (JPEG, PNG, WebP, GIF до 10 МиБ)</label>
-        <input id="mmm-file" type="file" accept="${ACCEPT}" /></div>
+      <div class="tk-field"><label>Файл (JPEG, PNG, WebP, GIF до 10 МиБ)</label>
+        <div class="mm-pick">
+          <button type="button" class="tk-btn" data-mmm="pick">Выбрать файл</button>
+          <span id="mmm-file-name" class="st-hint">Файл не выбран</span>
+        </div>
+        <input id="mmm-file" type="file" accept="${ACCEPT}" hidden /></div>
       <img id="mmm-preview" class="mm-preview" alt="" hidden />
       ${fields()}
       <div class="tk-actions"><div class="tk-actions-row">
@@ -140,6 +144,8 @@ window.MemeModule = (() => {
         <button type="button" class="tk-btn" data-mmm="close">Отмена</button>
       </div></div>`, async (action, btn) => {
       if (action === 'close') { closeModal(); return; }
+      // как в разделе Files: скрытый input открывается кликом по обычной кнопке (нативный input в Mini App ненадёжен)
+      if (action === 'pick') { overlayEl.querySelector('#mmm-file').click(); return; }
       if (action !== 'submit') return;
       if (!file) { modalError('Выберите файл изображения'); return; }
       const v = readFields();
@@ -160,9 +166,11 @@ window.MemeModule = (() => {
     overlayEl.querySelector('#mmm-file').addEventListener('change', (e) => {
       file = e.target.files?.[0] || null;
       const img = overlayEl.querySelector('#mmm-preview');
+      const label = overlayEl.querySelector('#mmm-file-name');
       if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = ''; }
+      if (label) label.textContent = file ? `${file.name} · ${fmtSize(file.size)}` : 'Файл не выбран';
       if (!file) { img.hidden = true; return; }
-      if (file.size > MAX_BYTES) { modalError('Файл больше 10 МиБ — это предел Telegram для изображений'); file = null; e.target.value = ''; img.hidden = true; return; }
+      if (file.size > MAX_BYTES) { modalError('Файл больше 10 МиБ — это предел Telegram для изображений'); file = null; e.target.value = ''; img.hidden = true; if (label) label.textContent = 'Файл не выбран'; return; }
       modalError('');
       previewUrl = URL.createObjectURL(file);
       img.src = previewUrl;
