@@ -92,6 +92,8 @@
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 12 2-4 2 4 4 2-4 2-2 4-2-4-4-2z"></path><path d="m17 6 .8 1.8L20 9l-2.2.6L17 11l-.8-1.4L14 9l2.2-1.2z"></path></svg>',
     home:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"></path></svg>',
+    image:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="m4 18 5-5 4 4 3-3 4 4"></path></svg>',
     folder:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path></svg>',
     database:
@@ -121,6 +123,7 @@
     { id: 'email', label: 'Email', subtitle: 'Почта из всех ящиков', icon: 'mail' },
     { id: 'athena', label: 'Athena', subtitle: 'Интеллектуальный помощник', icon: 'athena' },
     { id: 'home', label: 'Home', subtitle: 'Home Assistant', icon: 'home' },
+    { id: 'meme', label: 'Polaris Meme', subtitle: 'Картинки для inline-поиска в Telegram', icon: 'image' },
     { id: 'files', label: 'Files', subtitle: 'Папки и файлы Storage', icon: 'folder' },
     { id: 'storage', label: 'Storage', subtitle: 'Файлы, S3 и ключи доступа', icon: 'database', footer: true },
     { id: 'settings', label: 'Settings', subtitle: 'Почта и обновление', icon: 'settings', footer: true },
@@ -548,6 +551,13 @@
       `;
     }
 
+    if (view.id === 'meme') {
+      return `
+        ${renderNotice()}
+        <div id="meme-container" class="meme-page"></div>
+      `;
+    }
+
     if (view.id === 'files') {
       return `
         ${renderNotice()}
@@ -670,6 +680,7 @@
     if (state.currentView !== 'settings') window.SettingsModule?.leave?.();
     if (state.currentView !== 'storage') window.StorageModule?.leave?.();
     if (state.currentView !== 'files') window.FilesModule?.leave?.();
+    if (state.currentView !== 'meme') window.MemeModule?.leave?.();
 
     const mounts = {
       attention: ['HomeModule', 'home-container'],
@@ -677,6 +688,7 @@
       settings: ['SettingsModule', 'settings-container'],
       storage: ['StorageModule', 'storage-container'],
       files: ['FilesModule', 'files-container'],
+      meme: ['MemeModule', 'meme-container'],
     };
     const mount = mounts[state.currentView];
     if (state.authenticated && mount && window[mount[0]]) {

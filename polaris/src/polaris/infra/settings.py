@@ -56,6 +56,7 @@ class Settings:
     storage_enabled: bool = False
     storage_db_path: str = ""
     cloud_storage_chat_id: str = ""
+    meme_cache_chat_id: str = ""  # Polaris Meme: чат для получения file_id (см. docs/meme.md)
     storage_chunk_size_mib: int = 15
     storage_connect_timeout: float = 10.0
     storage_read_timeout: float = 120.0
@@ -110,6 +111,7 @@ class Settings:
             storage_enabled=os.getenv("STORAGE_ENABLED", "false").strip().lower() in {"1", "true", "yes"},
             storage_db_path=os.getenv("STORAGE_DB_PATH", "").strip(),
             cloud_storage_chat_id=os.getenv("CLOUD_STORAGE_CHAT_ID", "").strip(),
+            meme_cache_chat_id=os.getenv("MEME_CACHE_CHAT_ID", "").strip(),
             storage_chunk_size_mib=_env_number("STORAGE_CHUNK_SIZE_MIB", 15, int),
             storage_connect_timeout=_env_number("STORAGE_CONNECT_TIMEOUT", 10.0, float),
             storage_read_timeout=_env_number("STORAGE_READ_TIMEOUT", 120.0, float),

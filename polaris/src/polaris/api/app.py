@@ -222,6 +222,14 @@ try:
 except Exception:  # noqa: BLE001
     logging.getLogger(__name__).exception("Storage management API отключён: ошибка импорта")
 
+# Polaris Meme (библиотека изображений поверх Storage): не должен ронять сервис, если с ним что-то не так
+try:
+    from polaris.modules.meme.api import router as meme_router
+
+    app.include_router(meme_router)
+except Exception:  # noqa: BLE001
+    logging.getLogger(__name__).exception("Meme API отключён: ошибка импорта")
+
 # S3-совместимый API поверх Storage (выключен по умолчанию, S3_ENABLED=true). Как и Athena, не должен ронять сервис.
 s3_app = None
 try:

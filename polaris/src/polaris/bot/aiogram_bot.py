@@ -19,11 +19,13 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InlineQuery,
     Message,
     WebAppInfo,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from polaris.bot.meme_inline import MemeInline
 from polaris.bot.notify import build_attention_message, build_open_link
 from polaris.infra.config_store import write_env_value
 from polaris.infra.migrations import migrate
@@ -152,10 +154,16 @@ class PolarisBot:
         self._attention_notified: dict[tuple[int, str], float] = {}
         self._attention_task: asyncio.Task | None = None
         self._mail_daemon: MailDaemon | None = None
+        self._meme_inline = MemeInline(self.bot, settings)
         self._setup_routes()
 
     def _setup_routes(self) -> None:
         router = Router(name="polaris")
+
+        @router.inline_query()
+        async def on_inline_query(query: InlineQuery) -> None:
+            """Polaris Meme: поиск по личной библиотеке изображений (@бот запрос)."""
+            await self._meme_inline.handle(query)
 
         @router.message(Command("start"))
         async def cmd_start(message: Message) -> None:
