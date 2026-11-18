@@ -329,9 +329,9 @@ window.StorageModule = (() => {
         ${tile('Объекты (логические)', s.objects, `${fmtSize(s.logical_bytes)} суммарно`)}
         ${tile('Blobs (физические)', s.blobs, `${fmtSize(s.physical_bytes)} в хранилище`)}
         ${tile('Незавершённые multipart', s.multipart_uploads, `частей: ${s.multipart_parts} · ${fmtSize(s.multipart_bytes)}`)}
-      </div>
-      <p class="st-item-sub sg-note" id="sg-stats-note"${S.statsInfo ? '' : ' hidden'}>Цифры точные (суммы из базы, не оценки). Логические объекты и физические blobs считаются раздельно: при дедупликации blobs меньше объектов${dedup ? ` — экономия ${escapeHTML(fmtSize(dedup))}` : ''}. В физический объём входят и части незавершённых multipart-загрузок. Сообщений в Telegram: ${s.chunks}.</p>`
+      </div>`
       : `<p class="st-empty">Статистика недоступна: Storage не запущен.</p>`;
+    const note = s ? `<span class="sg-note" id="sg-stats-note" role="note"${S.statsInfo ? '' : ' hidden'}>Цифры точные (суммы из базы, не оценки). Логические объекты и физические blobs считаются раздельно: при дедупликации blobs меньше объектов${dedup ? ` — экономия ${escapeHTML(fmtSize(dedup))}` : ''}. В физический объём входят и части незавершённых multipart-загрузок. Сообщений в Telegram: ${s.chunks}.</span>` : '';
     const problems = st.storage.state !== 'ready' ? `
       <div class="card sg-banner is-warn" role="status">
         <b>Storage ${escapeHTML(STATUS_TEXT[st.storage.state]?.[0] || st.storage.state)}.</b>
@@ -348,7 +348,7 @@ window.StorageModule = (() => {
       <div class="sg-grid">${components}</div>
       <div class="sg-toolbar sg-stats-head">
         <h3 class="st-subtitle">Статистика</h3>
-        ${s ? `<button type="button" class="sg-info${S.statsInfo ? ' is-open' : ''}" data-sg="toggle-stats-info" aria-expanded="${S.statsInfo ? 'true' : 'false'}" aria-controls="sg-stats-note" aria-label="О цифрах статистики" title="О цифрах статистики">i</button>` : ''}
+        ${s ? `<button type="button" class="sg-info${S.statsInfo ? ' is-open' : ''}" data-sg="toggle-stats-info" aria-expanded="${S.statsInfo ? 'true' : 'false'}" aria-controls="sg-stats-note" aria-label="О цифрах статистики" title="О цифрах статистики">i</button>${note}` : ''}
       </div>${stats}`;
   }
 
