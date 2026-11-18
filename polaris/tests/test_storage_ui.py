@@ -133,6 +133,20 @@ class NavigationAndOverviewTests(UiTestCase):
         page.wait_for_selector("#settings-container")
         self.assertEqual(page.locator("#storage-container").count(), 0)
 
+    def test_tabs_show_icons_instead_of_labels_when_narrow(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 800})
+        self.open_storage()
+        page.wait_for_selector(".sg-tabs")
+        self.assertTrue(page.locator(".sg-tabs .st-tab:not(.is-active) .sg-tab-label").first.is_visible())
+        self.assertTrue(page.locator(".sg-tabs .sg-tab-icon").first.is_hidden())  # на широком экране — только подписи
+        page.set_viewport_size({"width": 360, "height": 800})
+        page.wait_for_function("getComputedStyle(document.querySelector('.sg-tabs .st-tab:not(.is-active) .sg-tab-label')).display === 'none'")
+        self.assertTrue(page.locator(".sg-tabs .st-tab:not(.is-active) .sg-tab-icon").first.is_visible())
+        self.assertTrue(page.locator(".sg-tabs .st-tab.is-active .sg-tab-label").is_visible())  # у активной подпись остаётся
+        names = page.eval_on_selector_all(".sg-tabs .st-tab", "els => els.map(e => e.getAttribute('aria-label'))")
+        self.assertEqual(names, ["Обзор", "Бакеты", "Ключи доступа", "Диагностика", "Конфигурация"])  # иконки подписаны для скринридеров
+
     def test_overview_shows_real_checked_statuses_and_exact_stats(self):
         self.core.put_object("files", "a.bin", b"x" * 1000)
         self.open_storage()
@@ -365,6 +379,7 @@ class AccessKeyUiTests(UiTestCase):
         self.page.click('button.drawer-item[data-view="storage"]')
         self.tab("keys")
         self.page.wait_for_selector(".sg-key-card")
+        self.assertTrue(self.page.locator(".sg-keys-block .sg-key-card").count())  # ключи лежат внутри блока
         with_secret = [u for u in seen if secret in u]
         self.assertEqual(len(with_secret), 1)  # только ответ на создание
         self.assertTrue(with_secret[0].startswith(f"{self.server.url}/api/storage/credentials "))
@@ -490,7 +505,8 @@ class AccessKeyUiTests(UiTestCase):
         self.open_storage("keys")
         self.page.wait_for_selector('[data-empty="keys"]')
         self.assertIn("Ключей пока нет", self.text('[data-empty="keys"]'))
-        self.assertIn("не хранится", self.text(".sg-note"))
+        self.assertIn("не хранится", self.page.text_content(".sg-keys-head .sg-tip-pop"))  # пояснение — в плашке
+        self.assertEqual(self.page.locator(".sg-keys-block").count(), 1)
 
 
 try:
@@ -553,7 +569,7 @@ class ConfigurationUiTests(UiTestCase):
         endpoint = self.page.inner_text("#sg-endpoint")
         self.assertEqual(endpoint, f"{self.server.url}/s3")
         self.assertIn("path-style", self.text("[data-endpoint]"))
-        self.assertIn("Host", self.text("[data-endpoint]"))
+        self.assertIn("Host", self.page.text_content("[data-endpoint]"))  # пояснение лежит в скрытой плашке
 
     def test_preview_cancel_apply_and_restart_notice(self):
         before = self.env.read_text(encoding="utf-8")
@@ -631,26 +647,52 @@ class ConfigurationUiTests(UiTestCase):
         self.wait_modal_closed()
         self.assertNotIn("T" * 35, self.env.read_text(encoding="utf-8"))
 
-    def test_telegram_check_uses_saved_configuration_and_shows_result(self):
+    def test_layout_save_bar_and_chat_id_in_telegram_group(self):
+        self.open_storage("config")
+        page = self.page
+        page.wait_for_selector("#cfg-telegram_chat_id")
+        self.assertEqual(page.inner_text('[data-field-key="telegram_chat_id"] .st-item-title'), "ID чата хранения")
+        self.assertEqual(page.evaluate("document.querySelector('[data-field-key=telegram_chat_id]').previousElementSibling.dataset.fieldKey"),
+                         "telegram_bot_token")
+        self.assertEqual(page.inner_text('[data-sg="cfg-preview"]'), "Сохранить")
+        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.sg-save')).position"), "sticky")
+        self.assertEqual(page.locator('[data-sg="copy-endpoint"]').inner_text().strip(), "")  # только значок
+        self.assertEqual(page.locator('[data-sg="test-saved-telegram"]').count(), 0)  # без правок Telegram кнопки проверки нет
+
+    def test_telegram_check_appears_after_saving_telegram_settings(self):
         tg = MockTelegram().start()
         self.addCleanup(tg.stop)
         self.settings.telegram_api_base = tg.api_base
         self.settings.storage_read_timeout = 2
         from tests.storage_helpers import CHAT, TOKEN as MOCK_TOKEN
-        self.env.write_text(f"STORAGE_TELEGRAM_BOT_TOKEN={MOCK_TOKEN}\nCLOUD_STORAGE_CHAT_ID={CHAT}\n", encoding="utf-8")
+        self.env.write_text(f"STORAGE_TELEGRAM_BOT_TOKEN={MOCK_TOKEN}\nCLOUD_STORAGE_CHAT_ID=-100777\n", encoding="utf-8")
         self.open_storage("config")
-        self.page.wait_for_selector('[data-sg="test-saved-telegram"]')
-        self.page.click('[data-sg="test-saved-telegram"] >> nth=0')
-        self.page.wait_for_selector("[data-test-result]")
+        page = self.page
+        page.wait_for_selector("#cfg-telegram_chat_id")
+        page.fill("#cfg-s3_region", "eu-west-1")  # правка не про Telegram: кнопки проверки не будет
+        page.click('[data-sg="cfg-preview"]')
+        page.wait_for_selector(".sg-diff")
+        self.click_modal("apply")
+        self.wait_modal_closed()
+        page.wait_for_selector("[data-applied]")
+        self.assertEqual(page.locator('[data-sg="test-saved-telegram"]').count(), 0)
+        page.fill("#cfg-telegram_chat_id", str(CHAT))
+        page.click('[data-sg="cfg-preview"]')
+        page.wait_for_selector(".sg-diff")
+        self.click_modal("apply")
+        self.wait_modal_closed()
+        page.wait_for_selector('[data-sg="test-saved-telegram"]')
+        page.click('[data-sg="test-saved-telegram"] >> nth=0')
+        page.wait_for_selector("[data-test-result]")
         result = self.text("[data-test-result]")
         self.assertIn("polaris_test_bot", result)
         self.assertIn("не применена", result)
-        self.assertNotIn(MOCK_TOKEN, self.page.content())
+        self.assertNotIn(MOCK_TOKEN, page.content())
         self.env.write_text(f"STORAGE_TELEGRAM_BOT_TOKEN=123456:{'Z' * 35}\nCLOUD_STORAGE_CHAT_ID={CHAT}\n", encoding="utf-8")
-        self.page.click('[data-sg="test-saved-telegram"] >> nth=0')
-        self.page.wait_for_function("!document.querySelector('[data-test-result]').classList.contains('is-ok')")
-        self.assertIn("is-error", self.page.get_attribute("[data-test-result]", "class"))
-        self.assertNotIn("Z" * 35, self.page.content())
+        page.click('[data-sg="test-saved-telegram"] >> nth=0')
+        page.wait_for_function("!document.querySelector('[data-test-result]').classList.contains('is-ok')")
+        self.assertIn("is-error", page.get_attribute("[data-test-result]", "class"))
+        self.assertNotIn("Z" * 35, page.content())
 
 
 class DiagnosticsUiTests(UiTestCase):
@@ -674,7 +716,11 @@ class DiagnosticsUiTests(UiTestCase):
         page.wait_for_selector("#sg-tests [data-test-table]")
         steps = page.eval_on_selector_all("[data-step-row]", "els => els.map(e => [e.dataset.stepRow, e.querySelector('.st-badge').dataset.status])")
         self.assertEqual(steps, [[s, "ok"] for s in ("config", "telegram", "write", "read", "hash", "delete", "s3")])
-        self.assertIn("Все шаги пройдены", self.text("#sg-tests"))
+        self.assertIn("Все шаги пройдены", self.text(".sg-tests-head"))  # статус — в шапке блока
+        self.assertRegex(self.text(".sg-tests-head"), r"завершено \d{2}\.\d{2}\.\d{4}")
+        self.assertNotIn("Все шаги пройдены", self.text("#sg-tests"))
+        page.click(".sg-tests-head .sg-info")
+        self.assertIn("синтетические данные", page.inner_text(".sg-tests-head .sg-tip-pop"))
         self.assertEqual(self.db.connection().execute("SELECT COUNT(*) FROM storage_objects").fetchone()[0], 0)
         self.assertEqual(self.driver.blobs, {})
         page.click('[data-sg="run-step"][data-step="hash"]')
@@ -689,7 +735,7 @@ class DiagnosticsUiTests(UiTestCase):
         self.page.wait_for_selector("[data-test-table]")
         statuses = self.page.eval_on_selector_all("[data-step-row]", "els => Object.fromEntries(els.map(e => [e.dataset.stepRow, e.querySelector('.st-badge').dataset.status]))")
         self.assertEqual(statuses["read"], "error")
-        self.assertIn("Есть ошибки", self.text("#sg-tests"))
+        self.assertIn("Есть ошибки", self.text(".sg-tests-head"))
         self.driver.download = original
         self.assertEqual(self.db.connection().execute("SELECT COUNT(*) FROM storage_objects").fetchone()[0], 0)
 
@@ -712,7 +758,9 @@ class DiagnosticsUiTests(UiTestCase):
         page.click(f'tr[data-upload="{up.id}"] [data-sg="abort-upload"]')
         self.click_modal("confirm")
         self.wait_modal_closed()
-        page.wait_for_selector('[data-empty="multipart"]')
+        page.wait_for_function("!document.querySelector('[data-upload]')")
+        self.assertNotIn("Multipart Uploads", self.text())  # когда загрузок нет, блока нет вообще
+        self.assertNotIn("Незавершённых загрузок нет", self.page.text_content("#storage-container"))
         self.assertEqual(self.core.multipart.list_all(), [])
         self.assertEqual(self.driver.blobs, {})
 
@@ -729,7 +777,8 @@ class DiagnosticsUiTests(UiTestCase):
         text = self.text()
         self.assertIn("Recovery", text)
         self.assertIn("db_write_lost", text)
-        self.assertIn("Только просмотр", text)
+        self.assertIn("Только просмотр", self.page.text_content("#storage-container"))  # пояснение лежит в скрытой плашке
+        self.assertNotIn("Только просмотр", text)
         self.assertEqual(self.page.locator("button", has_text="Delete message").count(), 0)
 
 

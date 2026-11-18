@@ -90,7 +90,7 @@ FIELDS: list[Field] = [
           "Telegram Bot Token (для Storage)", "secret", _token,
           "Отдельный бот хранилища. Пусто — используется основной TELEGRAM_BOT_TOKEN Polaris (его отсюда менять нельзя: "
           "им проверяется вход в Mini App).", secret=True),
-    Field("telegram_chat_id", "CLOUD_STORAGE_CHAT_ID", "cloud_storage_chat_id", "s3", "Chat ID хранилища (куда сохраняются файлы)", "text",
+    Field("telegram_chat_id", "CLOUD_STORAGE_CHAT_ID", "cloud_storage_chat_id", "telegram", "ID чата хранения", "text",
           _chat),
     Field("s3_enabled", "S3_ENABLED", "s3_enabled", "s3", "S3 API включён", "bool", _bool),
     Field("s3_path_prefix", "S3_PATH_PREFIX", "s3_path_prefix", "s3", "Путь endpoint", "text", _prefix),

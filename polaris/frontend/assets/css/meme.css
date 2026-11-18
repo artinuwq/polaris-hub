@@ -33,3 +33,14 @@ span.mm-chip { cursor: default; }
 @media (max-width: 600px) {
   .mm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 }
+/* модалка настроек: заголовок по центру, строка «Inline-кэш — Обновить», подсказки «i» */
+.mm-head-center { text-align: center; }
+.mm-label-row { position: relative; display: flex; align-items: center; gap: 8px; }
+.mm-tip-below .sg-tip-pop { top: calc(100% + 6px); bottom: auto; }
+.mm-row { position: relative; flex-direction: row; align-items: center; gap: 8px; }
+.mm-cache-state { margin-left: auto; color: var(--text-secondary); font-size: 0.8rem; white-space: nowrap; }
+.mm-refresh { padding: 7px 12px; font-size: 0.8rem; flex: 0 0 auto; }
+.mm-check { display: flex; flex-direction: column; gap: 8px; }
+.mm-check-q { text-align: center; }
+.st-hint.is-warn { color: var(--warning, #f5b942); }
+#mmm-sync:empty { display: none; }

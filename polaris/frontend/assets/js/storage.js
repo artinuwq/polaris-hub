@@ -10,6 +10,14 @@ window.StorageModule = (() => {
     ['overview', 'Обзор'], ['buckets', 'Бакеты'], ['keys', 'Ключи доступа'],
     ['diagnostics', 'Диагностика'], ['config', 'Конфигурация'],
   ];
+  const tabIcon = (paths) => `<svg class="sg-tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  const TAB_ICONS = {  // показываются вместо подписей, когда места мало (см. storage.css)
+    overview: tabIcon('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
+    buckets: tabIcon('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6l2 13a2 2 0 0 0 2 1.7h8a2 2 0 0 0 2-1.7L20 6"/>'),
+    keys: tabIcon('<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M16 7l3 3M14 9l2 2"/>'),
+    diagnostics: tabIcon('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
+    config: tabIcon('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>'),
+  };
   const PERM_INFO = {
     ListBucket: 'список объектов и проверка bucket',
     ReadObject: 'чтение и HEAD объектов',
@@ -44,7 +52,7 @@ window.StorageModule = (() => {
 
   const S = {             // данные разделов (только то, что отдал сервер)
     status: null, statusError: '', checking: false,
-    config: null, configError: '', draft: {}, secretMode: {}, preview: null, applied: null, testResult: null,
+    config: null, configError: '', draft: {}, secretMode: {}, preview: null, applied: null, appliedTelegram: false, testResult: null,
     buckets: null, bucketsError: '',
     bucket: null, objects: [], objectsMore: null, objectsPrefix: '', objectsError: '',
     creds: null, credsError: '',
@@ -289,7 +297,7 @@ window.StorageModule = (() => {
   function renderShell() {
     const active = section === 'bucket' ? 'buckets' : section;
     const tabs = SECTIONS.map(([id, label]) =>
-      `<button type="button" class="st-tab${active === id ? ' is-active' : ''}" data-sg="section" data-section="${id}">${label}</button>`).join('');
+      `<button type="button" class="st-tab${active === id ? ' is-active' : ''}" data-sg="section" data-section="${id}" aria-label="${label}" title="${label}"${active === id ? ' aria-current="page"' : ''}>${TAB_ICONS[id] || ''}<span class="sg-tab-label">${label}</span></button>`).join('');
     container.innerHTML = `
       <div class="st-tabs sg-tabs" role="tablist">${tabs}</div>
       <div id="sg-msg" class="st-msg" hidden></div>
@@ -407,7 +415,7 @@ window.StorageModule = (() => {
     } else {
       control = `<input class="st-input" id="cfg-${f.key}" data-cfg="${f.key}" type="${f.kind === 'int' ? 'number' : 'text'}" value="${escapeHTML(fieldValue(f))}" autocomplete="off" />`;
     }
-    return `<div class="st-item sg-field" data-field-key="${f.key}"><div class="st-item-head"><span class="sg-title">${`<span class="st-item-title">${escapeHTML(f.label)}</span>`}${help}</div>${pending}</div>${control}${err}</div>`;
+    return `<div class="st-item sg-field" data-field-key="${f.key}"><div class="st-item-head"><span class="sg-title"><span class="st-item-title">${escapeHTML(f.label)}</span>${help}</span>${pending}</div><div class="sg-control">${control}</div>${err}</div>`;
   }
 
   function viewConfig() {
@@ -421,23 +429,24 @@ window.StorageModule = (() => {
     const endpoint = `
       <div class="st-item" data-endpoint>
         <div class="st-item-head"><span class="sg-title"><span class="st-item-title">Endpoint</span>${tip('Адрес с учётом настройки «Путь endpoint» и адреса, по которому открыт Polaris. Addressing style — path (фиксирован: virtual-hosted не поддерживается). Host и параметры reverse proxy задаются инфраструктурой, не интерфейсом.')}</span><span class="st-badge">path-style</span></div>
-        <code class="st-code" id="sg-endpoint">${escapeHTML(origin + c.s3.path_prefix)}</code>
-        <div class="st-item-actions"><button type="button" class="st-btn" data-sg="copy-endpoint">Копировать endpoint</button></div>
+        <div class="sg-copyrow">
+          <code class="st-code" id="sg-endpoint">${escapeHTML(origin + c.s3.path_prefix)}</code>
+          <button type="button" class="sg-icon-btn" data-sg="copy-endpoint" aria-label="Копировать endpoint" title="Копировать endpoint"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>
+        </div>
       </div>`;
     const envWarn = c.env_file.writable ? '' : '<p class="st-error">Файл .env недоступен для записи — сохранить настройки не получится.</p>';
     const applied = S.applied ? `
       <div class="card sg-banner ${S.applied.applied ? 'is-ok' : ''}" data-applied role="status">${escapeHTML(S.applied.message)}
-        ${S.applied.applied ? '<button type="button" class="st-btn" data-sg="test-saved-telegram">Проверить соединение с Telegram</button>' : ''}</div>` : '';
+        ${S.applied.applied && S.appliedTelegram ? `<button type="button" class="st-btn" data-sg="test-saved-telegram" ${busy.tgtest ? 'disabled' : ''}>${busy.tgtest ? 'Проверяем…' : 'Проверить Telegram'}</button>` : ''}</div>` : '';
     const test = S.testResult ? `<div class="st-msg ${S.testResult.ok ? 'is-ok' : 'is-error'}" data-test-result>${S.testResult.steps.map((s) => `${escapeHTML(s.label)}: ${escapeHTML(s.message)}`).join('<br>')}</div>` : '';
     return `
       ${restartBanner(c.restart_required)}${envWarn}${applied}${test}
       ${group('general', 'Общее')}
       ${group('telegram', 'Telegram Backend')}
-      <div class="st-item-actions"><button type="button" class="st-btn" data-sg="test-saved-telegram" ${busy.tgtest ? 'disabled' : ''}>${busy.tgtest ? 'Проверяем…' : 'Проверить Telegram (сохранённые настройки)'}</button></div>
       ${group('s3', 'S3 API', endpoint)}
-      <div class="st-item-actions sg-save">
-        <button type="button" class="st-btn primary" data-sg="cfg-preview" ${busy.preview ? 'disabled' : ''}>Просмотреть изменения</button>
-        <button type="button" class="st-btn" data-sg="cfg-reset">Сбросить</button>
+      <div class="sg-save">
+        <button type="button" class="tk-btn primary sg-save-main" data-sg="cfg-preview" ${busy.preview ? 'disabled' : ''}>Сохранить</button>
+        <button type="button" class="tk-btn sg-reset" data-sg="cfg-reset" aria-label="Сбросить изменения" title="Сбросить изменения">↺</button>
       </div>`;
   }
 
@@ -511,6 +520,7 @@ window.StorageModule = (() => {
       btn.disabled = true;
       try {
         S.applied = await api('/api/storage/config', 'PUT', { changes, confirm: true });
+        S.appliedTelegram = ['telegram_bot_token', 'telegram_chat_id'].some((k) => k in changes);
         closeModal();
         S.draft = {}; S.secretMode = {};
         S.config = await api('/api/storage/config');
@@ -717,10 +727,11 @@ window.StorageModule = (() => {
     const databaseKeys = S.creds.credentials.filter((k) => !k.managed_in_env);
     const empty = databaseKeys.length ? '' : '<p class="st-empty" data-empty="keys">Ключей пока нет. Создайте ключ для сервиса и выдайте ему только нужные права.</p>';
     return `
-      <div class="sg-toolbar"><h3 class="st-subtitle">Access Keys</h3>
-        <button type="button" class="st-btn primary" data-sg="new-key">Create Access Key</button></div>
-      <p class="st-item-sub sg-note">Secret Access Key показывается один раз при создании или ротации и нигде не хранится. Права проверяются при каждом запросе, в том числе по presigned URL; отозванный ключ перестаёт работать сразу.</p>
-      <div class="st-list">${cards}</div>${empty}`;
+      <section class="card sg-keys-block" aria-label="Access Keys">
+        <div class="sg-toolbar sg-keys-head"><div class="sg-title"><h3 class="st-subtitle">Access Keys</h3>${tip('Secret Access Key показывается один раз при создании или ротации и нигде не хранится. Права проверяются при каждом запросе, в том числе по presigned URL; отозванный ключ перестаёт работать сразу.', 'О ключах доступа')}</div>
+          <button type="button" class="st-btn primary" data-sg="new-key">Create Access Key</button></div>
+        ${cards ? `<div class="st-list">${cards}</div>` : ''}${empty}
+      </section>`;
   }
 
   async function openCreateKey() {
@@ -875,31 +886,33 @@ window.StorageModule = (() => {
           <td>${c.checked_at ? escapeHTML(fmtDate(c.checked_at)) : '—'}</td>
           <td><button type="button" class="st-btn" data-sg="run-check" data-name="${name}" ${S.checking ? 'disabled' : ''}>Проверить</button></td></tr>`;
     }).join('');
-    const tests = d.last_tests ? renderTestResults(d.last_tests) : '<p class="st-empty">Тесты ещё не запускались.</p>';
+    const tests = d.last_tests ? renderTestResults(d.last_tests, false) : '<p class="st-empty">Тесты ещё не запускались.</p>';
     const stepButtons = TEST_STEPS.map(([id, label]) =>
       `<button type="button" class="st-btn" data-sg="run-step" data-step="${id}" ${busy.test ? 'disabled' : ''}>${label}</button>`).join('');
     return `
       <div class="sg-toolbar"><h3 class="st-subtitle">Health Checks</h3>
         <button type="button" class="st-btn primary" data-sg="run-all-checks" ${S.checking ? 'disabled' : ''}>${S.checking ? 'Проверяем…' : 'Run all checks'}</button></div>
       <div class="sg-scroll"><table class="sg-table"><thead><tr><th>Проверка</th><th>Результат</th><th>Описание</th><th>Время</th><th>Проверено</th><th></th></tr></thead><tbody>${checks}</tbody></table></div>
-      <div class="sg-toolbar"><h3 class="st-subtitle">Storage Tests</h3>
+      <div class="sg-toolbar sg-tests-head"><div class="sg-title"><h3 class="st-subtitle">Storage Tests</h3>${tip('Тесты используют только синтетические данные в служебном bucket и временный ключ; всё созданное удаляется даже при ошибке.', 'О тестах')}${d.last_tests ? testsStatus(d.last_tests) : ''}</div>
         <button type="button" class="st-btn primary" data-sg="run-tests" ${busy.test ? 'disabled' : ''}>${busy.test ? 'Выполняется…' : 'Run all tests'}</button></div>
-      <p class="st-item-sub sg-note">Тесты используют только синтетические данные в служебном bucket и временный ключ; всё созданное удаляется даже при ошибке.</p>
       <div class="st-item-actions">${stepButtons}</div>
       <div id="sg-tests">${tests}</div>
       ${viewMultipart(d.multipart)}
       ${viewRecovery(d)}`;
   }
 
-  function renderTestResults(t) {
+  const testsStatus = (t) => `<span class="sg-status${t.ok ? '' : ' is-error'}">${t.ok ? 'Все шаги пройдены' : 'Есть ошибки'} · завершено ${escapeHTML(fmtDate(t.finished_at))}</span>`;
+
+  function renderTestResults(t, withStatus = true) {
     const rows = t.steps.map((s) => `
       <tr data-step-row="${escapeHTML(s.step)}"><td>${escapeHTML(s.label)}</td><td>${badge(s.status)}</td>
         <td>${escapeHTML(s.message)}</td><td>${s.duration_ms} мс</td></tr>`).join('');
     return `<div class="sg-scroll"><table class="sg-table" data-test-table><thead><tr><th>Шаг</th><th>Результат</th><th>Сообщение</th><th>Время</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <p class="st-item-sub">${t.ok ? 'Все шаги пройдены' : 'Есть ошибки'} · завершено ${escapeHTML(fmtDate(t.finished_at))}</p>`;
+      ${withStatus ? `<p class="st-item-sub">${testsStatus(t)}</p>` : ''}`;
   }
 
   function viewMultipart(uploads) {
+    if (!uploads.length) return '';
     const rows = uploads.map((u) => `
       <tr data-upload="${escapeHTML(u.upload_id)}"><td>${escapeHTML(u.bucket)}</td><td class="sg-key">${escapeHTML(u.key)}</td>
         <td><code>${escapeHTML(u.upload_id.slice(0, 8))}…</code></td><td>${escapeHTML(fmtDate(u.created_at))}</td>
@@ -907,9 +920,8 @@ window.StorageModule = (() => {
         <td><button type="button" class="st-btn danger" data-sg="abort-upload" data-id="${escapeHTML(u.upload_id)}">Abort</button></td></tr>`).join('');
     return `
       <h3 class="st-subtitle">Multipart Uploads</h3>
-      ${uploads.length ? `<div class="sg-scroll"><table class="sg-table"><thead><tr><th>Bucket</th><th>Object Key</th><th>Upload</th><th>Создана</th><th>Части</th><th>Состояние</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-      <p class="st-item-sub">Загрузки не отменяются автоматически: решение за вами.</p>`
-        : '<p class="st-empty" data-empty="multipart">Незавершённых загрузок нет.</p>'}`;
+      <div class="sg-scroll"><table class="sg-table"><thead><tr><th>Bucket</th><th>Object Key</th><th>Upload</th><th>Создана</th><th>Части</th><th>Состояние</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="st-item-sub">Загрузки не отменяются автоматически: решение за вами.</p>`;
   }
 
   function viewRecovery(d) {
@@ -924,9 +936,7 @@ window.StorageModule = (() => {
     const orphanRows = r.orphans.map((o) => `<tr><td>${escapeHTML(o.kind)}</td><td>${escapeHTML(o.marker || '—')}</td><td>${o.has_reference ? 'да' : 'нет'}</td><td>${o.delete_attempts}</td><td>${escapeHTML(o.last_error || '')}</td><td>${escapeHTML(fmtDate(o.created_at))}</td></tr>`).join('');
     const failedRows = r.failed_deletions.map((f) => `<tr><td>${escapeHTML(f.status)}</td><td>${f.attempts}</td><td>${escapeHTML(f.last_error || '')}</td><td>${escapeHTML(fmtDate(f.last_attempt_at))}</td></tr>`).join('');
     return `
-      <h3 class="st-subtitle">Recovery</h3>
-      <p class="st-item-sub sg-note">Только просмотр. Данные, принадлежность которых к Storage не подтверждена, автоматически не удаляются; удаление сообщений в Telegram из интерфейса недоступно.
-        ${rec ? `Последняя сверка: ${escapeHTML(fmtDate(rec.at))} — ${escapeHTML(rec.summary)}.` : 'Фоновая сверка ещё не выполнялась.'}</p>
+      <div class="sg-toolbar sg-head"><h3 class="st-subtitle">Recovery</h3>${tip(`Только просмотр. Данные, принадлежность которых к Storage не подтверждена, автоматически не удаляются; удаление сообщений в Telegram из интерфейса недоступно. ${rec ? `Последняя сверка: ${escapeHTML(fmtDate(rec.at))} — ${escapeHTML(rec.summary)}.` : 'Фоновая сверка ещё не выполнялась.'}`, 'О разделе Recovery')}</div>
       <div class="sg-stats">${counters}</div>
       ${r.orphans.length ? `<div class="sg-scroll"><table class="sg-table"><thead><tr><th>Тип</th><th>Метка</th><th>Ссылка</th><th>Попыток</th><th>Ошибка</th><th>Создан</th></tr></thead><tbody>${orphanRows}</tbody></table></div>` : '<p class="st-empty" data-empty="orphans">Orphan-записей нет.</p>'}
       ${r.failed_deletions.length ? `<div class="sg-scroll"><table class="sg-table"><thead><tr><th>Статус</th><th>Попыток</th><th>Ошибка</th><th>Последняя попытка</th></tr></thead><tbody>${failedRows}</tbody></table></div>` : ''}`;
@@ -1046,7 +1056,7 @@ window.StorageModule = (() => {
     container = null;
     boundTo = null;
     loadToken += 1;
-    Object.assign(S, { status: null, config: null, draft: {}, secretMode: {}, preview: null, applied: null, testResult: null,
+    Object.assign(S, { status: null, config: null, draft: {}, secretMode: {}, preview: null, applied: null, appliedTelegram: false, testResult: null,
       buckets: null, bucket: null, objects: [], creds: null, diag: null });
     section = 'overview';
     bucketName = null;

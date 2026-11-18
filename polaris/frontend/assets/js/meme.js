@@ -84,6 +84,7 @@ window.MemeModule = (() => {
 
   /* ─── модальные окна ─── */
   function closeModal() {
+    closeCheck();
     if (!overlayEl) return;
     overlayEl.remove();
     overlayEl = null;
@@ -98,7 +99,10 @@ window.MemeModule = (() => {
     const openedAt = Date.now();
     overlayEl.addEventListener('click', (e) => {
       if (e.target === overlayEl && Date.now() - openedAt > 350) { closeModal(); return; }
+      const tipWrap = e.target.closest('.sg-tip');
+      e.currentTarget.querySelectorAll('.sg-tip').forEach((w) => { if (w !== tipWrap) setTip(w, false); });  // клик вне подсказки закрывает её
       const btn = e.target.closest('[data-mmm]');
+      if (btn && btn.dataset.mmm === 'tip') { e.preventDefault(); setTip(tipWrap, tipWrap.querySelector('.sg-tip-pop').hidden); return; }
       if (btn) { e.preventDefault(); onAction(btn.dataset.mmm, btn); }
     });
     document.body.appendChild(overlayEl);
@@ -241,6 +245,79 @@ window.MemeModule = (() => {
       </div></div>`, (action) => { if (action === 'close') closeModal(); });
   }
 
+  /* всплывающая подсказка «i» — те же классы, что в Storage (storage.css) */
+  let tipSeq = 0;
+  const tip = (text, label) => {
+    const id = `mm-tip-${++tipSeq}`;
+    return `<span class="sg-tip"><button type="button" class="sg-info" data-mmm="tip" aria-expanded="false" aria-controls="${id}" aria-label="${escapeHTML(label)}" title="${escapeHTML(label)}">i</button><span class="sg-tip-pop" id="${id}" role="note" hidden>${text}</span></span>`;
+  };
+  function setTip(wrap, open) {
+    const btn = wrap?.querySelector('.sg-info');
+    const pop = wrap?.querySelector('.sg-tip-pop');
+    if (!btn || !pop) return;
+    pop.hidden = !open;
+    btn.classList.toggle('is-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  /* отдельное окно проверки поверх настроек: проверяет чат, спрашивает подтверждение и только потом сохраняет */
+  let checkEl = null;
+  function closeCheck() {
+    if (!checkEl) return;
+    checkEl.remove();
+    checkEl = null;
+    window.PolarisBack?.pop('meme-check');
+  }
+
+  function openCheck(chat, onSaved) {
+    closeCheck();
+    checkEl = document.createElement('div');
+    checkEl.className = 'tk-overlay';
+    checkEl.innerHTML = `<div class="tk-modal mm-modal" role="dialog" aria-modal="true">
+      <div class="tk-head mm-head-center"><h3>Проверка чата</h3></div>
+      <div id="mmc-body" class="mm-check" aria-live="polite"><p class="tk-desc">Проверяем, что бот видит чат и может туда писать…</p></div>
+      <p id="mmc-error" class="st-modal-error" hidden></p>
+      <div class="tk-actions"><div class="tk-actions-row">
+        <button type="button" class="tk-btn primary" data-mmc="confirm" disabled>Сохранить</button>
+        <button type="button" class="tk-btn" data-mmc="cancel">Отмена</button>
+      </div></div></div>`;
+    const mine = checkEl;
+    const confirmBtn = mine.querySelector('[data-mmc="confirm"]');
+    const body = mine.querySelector('#mmc-body');
+    const fail = (text) => { const box = mine.querySelector('#mmc-error'); box.textContent = text || ''; box.hidden = !text; };
+    mine.addEventListener('click', async (e) => {
+      if (e.target === mine) return;  // клик по фону окно не закрывает: решение принимается кнопками
+      const action = e.target.closest('[data-mmc]')?.dataset.mmc;
+      if (action === 'cancel') { closeCheck(); return; }
+      if (action !== 'confirm' || confirmBtn.disabled) return;
+      confirmBtn.disabled = true;
+      fail('');
+      try {
+        await onSaved();
+        closeCheck();
+      } catch (err) {
+        if (checkEl === mine) { fail(errText(err)); confirmBtn.disabled = false; }
+      }
+    });
+    document.body.appendChild(mine);
+    window.PolarisBack?.push('meme-check', closeCheck);
+
+    const verdict = (kind, text, question, label) => {
+      if (checkEl !== mine) return;
+      body.innerHTML = `<p class="st-msg is-${kind}">${escapeHTML(text)}</p><p class="tk-desc mm-check-q">${escapeHTML(question)}</p>`;
+      confirmBtn.textContent = label;
+      confirmBtn.disabled = false;
+    };
+    if (!chat) {
+      verdict('ok', 'Поле пустое: сохранённый чат будет сброшен. Дальше используется MEME_CACHE_CHAT_ID из .env, а если его нет — копия приходит вам в личку.',
+        'Сбросить чат?', 'Сбросить');
+      return;
+    }
+    api('/api/meme/settings/test', 'POST', { cache_chat_id: chat })
+      .then((r) => verdict('ok', `Бот видит «${r.title}» и может туда писать.`, 'Настройки правильные? Сохранить?', 'Сохранить'))
+      .catch((e) => verdict('error', errText(e), 'Сохранить всё равно?', 'Всё равно сохранить'));
+  }
+
   /* ─── настройки (шестерёнка) ─── */
   function settingsBody(d) {
     let where;
@@ -249,28 +326,22 @@ window.MemeModule = (() => {
     else if (d.mode === 'admin_dm') where = 'Чат не задан: копия приходит вам в личку и сразу удаляется.';
     else where = 'Некуда отправлять: задайте чат или TELEGRAM_ADMIN_IDS.';
     const pct = d.total ? `${d.ready} из ${d.total}` : 'пока пусто';
+    const problem = !d.bot_configured || d.mode === 'none';
+    const chatTip = `Чтобы отправлять картинку в любой чат, Telegram нужен её file_id. Polaris получает его, один раз отправив копию в этот чат. Создайте закрытый чат или канал, добавьте туда бота (в канале — администратором с правом публикации) и впишите числовой id (обычно начинается с -100) либо @username публичного канала. Сообщения в нём остаются. ${escapeHTML(where)}`;
+    const cacheTip = `Готово к отправке из Telegram: ${escapeHTML(pct)}.${d.pending ? ` Без кэша: ${d.pending} — они заработают при первом поиске или сразу по кнопке «Обновить».` : ''}`;
     return `
       <div class="mm-set">
-        <h4>Чат для inline-кэша</h4>
-        <p class="tk-desc">Чтобы отправлять картинку в любой чат, Telegram нужен её file_id. Polaris получает его, один раз отправив
-          копию в этот чат. Создайте закрытый чат или канал, добавьте туда бота (в канале — администратором с правом публикации)
-          и впишите числовой id (обычно начинается с -100) либо @username публичного канала. Сообщения в нём остаются.</p>
-        <div class="tk-field"><label for="mmm-chat">ID чата или канала</label>
+        <div class="tk-field">
+          <div class="mm-label-row mm-tip-below"><label for="mmm-chat">ID чата для кэша</label>${tip(chatTip, 'О чате для кэша')}</div>
           <input id="mmm-chat" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-1001234567890" value="${escapeHTML(d.cache_chat_id)}" /></div>
-        <p class="st-hint">${escapeHTML(where)}</p>
-        <div class="tk-actions-row">
-          <button type="button" class="tk-btn primary" data-mmm="save-chat">Сохранить</button>
-          <button type="button" class="tk-btn" data-mmm="test-chat">Проверить</button>
-        </div>
+        ${problem ? `<p class="st-hint is-warn">${escapeHTML(where)}</p>` : ''}
       </div>
-      <div class="mm-set">
-        <h4>Inline-кэш</h4>
-        <p class="tk-desc">Готово к отправке из Telegram: ${escapeHTML(pct)}.${d.pending ? ` Без кэша: ${d.pending} — они заработают при первом поиске или сразу по кнопке ниже.` : ''}</p>
-        <div class="tk-actions-row">
-          <button type="button" class="tk-btn" data-mmm="sync" ${d.pending ? '' : 'disabled'}>Обновить кэш${d.pending ? ` (${d.pending})` : ''}</button>
-        </div>
-        <p id="mmm-sync" class="st-hint"></p>
+      <div class="mm-set mm-row">
+        <h4>Inline-кэш</h4>${tip(cacheTip, 'Об inline-кэше')}
+        <span class="mm-cache-state">${escapeHTML(pct)}</span>
+        <button type="button" class="tk-btn mm-refresh" data-mmm="sync" ${d.pending ? '' : 'disabled'}>Обновить${d.pending ? ` (${d.pending})` : ''}</button>
       </div>
+      <p id="mmm-sync" class="st-hint"></p>
       <p class="st-hint">Запасной путь по URL для JPEG ${d.fallback_url ? 'включён' : 'выключен: нужен публичный https в WEBAPP_URL'}.</p>`;
   }
 
@@ -284,32 +355,36 @@ window.MemeModule = (() => {
     const paint = () => {
       const body = overlayEl?.querySelector('#mmm-set-body');
       if (body && data) body.innerHTML = settingsBody(data);
+      const save = overlayEl?.querySelector('[data-mmm="save-chat"]');
+      if (save && data) save.disabled = false;
     };
     const chatValue = () => overlayEl.querySelector('#mmm-chat')?.value.trim() || '';
 
     openModal(`
-      <div class="tk-head"><h3>Настройки Polaris Meme</h3></div>
+      <div class="tk-head mm-head-center"><h3>Настройки Polaris Meme</h3></div>
       <div id="mmm-set-body"><p class="st-empty">Загрузка…</p></div>
       <div id="mmm-note" class="st-msg" hidden></div>
       <div class="tk-actions"><div class="tk-actions-row">
+        <button type="button" class="tk-btn primary" data-mmm="save-chat" disabled>Сохранить</button>
         <button type="button" class="tk-btn" data-mmm="close">Закрыть</button>
       </div></div>`, async (action, btn) => {
       if (action === 'close') { closeModal(); load(); return; }
+      if (action === 'save-chat') {
+        if (!data || busy) return;
+        note('', '');
+        openCheck(chatValue(), async () => {
+          data = await api('/api/meme/settings', 'PUT', { cache_chat_id: chatValue() });
+          paint();
+          note('ok', 'Сохранено');
+        });
+        return;
+      }
       if (!data || busy) return;
       busy = true;
       note('', '');
       const mine = overlayEl;
       try {
-        if (action === 'save-chat') {
-          data = await api('/api/meme/settings', 'PUT', { cache_chat_id: chatValue() });
-          paint();
-          note('ok', 'Сохранено');
-        } else if (action === 'test-chat') {
-          btn.disabled = true;
-          const r = await api('/api/meme/settings/test', 'POST', { cache_chat_id: chatValue() });
-          note('ok', `Бот видит «${r.title}» и может туда писать`);
-          btn.disabled = false;
-        } else if (action === 'sync') {
+        if (action === 'sync') {
           btn.disabled = true;
           const skip = [];
           let done = 0;
