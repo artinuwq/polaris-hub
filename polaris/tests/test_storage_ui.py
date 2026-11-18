@@ -126,7 +126,7 @@ class NavigationAndOverviewTests(UiTestCase):
         page.click('button.drawer-item[data-view="storage"]')
         page.wait_for_selector(".sg-tabs")
         labels = page.eval_on_selector_all(".sg-tabs .st-tab", "els => els.map(e => e.textContent.trim())")
-        self.assertEqual(labels, ["Overview", "Configuration", "Buckets", "Access Keys", "Diagnostics"])
+        self.assertEqual(labels, ["Обзор", "Бакеты", "Ключи доступа", "Диагностика", "Конфигурация"])
         # существующие разделы продолжают работать
         page.click("#drawer-toggle")
         page.click('button.drawer-item[data-view="settings"]')
@@ -153,12 +153,13 @@ class NavigationAndOverviewTests(UiTestCase):
         self.assertIn("1000 Б", tiles.replace("\xa0", " "))
         self.assertNotIn("Быстрые действия", self.text())
         self.assertEqual(page.locator(".sg-quick").count(), 0)
-        self.assertTrue(page.locator("#sg-stats-note").is_hidden())  # сводка скрыта по умолчанию
-        page.click('[data-sg="toggle-stats-info"]')
-        self.assertIn("точные", page.inner_text("#sg-stats-note"))
-        self.assertEqual(page.get_attribute('[data-sg="toggle-stats-info"]', "aria-expanded"), "true")
-        page.click('[data-sg="toggle-stats-info"]')
-        self.assertTrue(page.locator("#sg-stats-note").is_hidden())
+        pop = page.locator(".sg-stats-head .sg-tip-pop")
+        self.assertTrue(pop.is_hidden())  # сводка скрыта по умолчанию
+        page.click(".sg-stats-head .sg-info")
+        self.assertIn("точные", pop.inner_text())
+        self.assertEqual(page.get_attribute(".sg-stats-head .sg-info", "aria-expanded"), "true")
+        page.click("h3.st-subtitle >> text=Компоненты")  # клик вне подсказки закрывает её
+        self.assertTrue(pop.is_hidden())
 
     def test_nothing_is_online_when_checks_did_not_run(self):
         self.page.route("**/api/storage/diagnostics/run", lambda route: route.abort())

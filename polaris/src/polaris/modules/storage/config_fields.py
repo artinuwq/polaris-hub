@@ -85,18 +85,15 @@ class Field:
 
 
 FIELDS: list[Field] = [
-    Field("storage_enabled", "STORAGE_ENABLED", "storage_enabled", "general", "Storage включён", "bool", _bool,
-          "Выключено — Storage и S3 ничего не запускают."),
+    Field("storage_enabled", "STORAGE_ENABLED", "storage_enabled", "general", "Storage включён", "bool", _bool),
     Field("telegram_bot_token", "STORAGE_TELEGRAM_BOT_TOKEN", "storage_telegram_bot_token", "telegram",
           "Telegram Bot Token (для Storage)", "secret", _token,
           "Отдельный бот хранилища. Пусто — используется основной TELEGRAM_BOT_TOKEN Polaris (его отсюда менять нельзя: "
           "им проверяется вход в Mini App).", secret=True),
     Field("telegram_chat_id", "CLOUD_STORAGE_CHAT_ID", "cloud_storage_chat_id", "s3", "Chat ID хранилища (куда сохраняются файлы)", "text",
-          _chat, "Чат или канал, где бот — администратор (желательно с правом удалять сообщения)."),
-    Field("s3_enabled", "S3_ENABLED", "s3_enabled", "s3", "S3 API включён", "bool", _bool,
-          "Требует включённого Storage."),
-    Field("s3_path_prefix", "S3_PATH_PREFIX", "s3_path_prefix", "s3", "Путь endpoint", "text", _prefix,
-          "Endpoint = адрес Polaris + этот путь. Корень занят Mini App."),
+          _chat),
+    Field("s3_enabled", "S3_ENABLED", "s3_enabled", "s3", "S3 API включён", "bool", _bool),
+    Field("s3_path_prefix", "S3_PATH_PREFIX", "s3_path_prefix", "s3", "Путь endpoint", "text", _prefix),
     Field("s3_region", "S3_REGION", "s3_region", "s3", "Регион", "text", _region, "Регион в подписи клиента должен совпадать."),
     Field("s3_max_request_size_mib", "S3_MAX_REQUEST_SIZE_MIB", "s3_max_request_size_mib", "s3",
           "Максимальный размер запроса, MiB", "int", _int(1, 5120), "Лимит одного PutObject/UploadPart (S3: до 5120)."),

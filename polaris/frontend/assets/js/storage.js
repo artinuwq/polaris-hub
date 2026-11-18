@@ -7,8 +7,8 @@ window.StorageModule = (() => {
   'use strict';
 
   const SECTIONS = [
-    ['overview', 'Overview'], ['config', 'Configuration'], ['buckets', 'Buckets'],
-    ['keys', 'Access Keys'], ['diagnostics', 'Diagnostics'],
+    ['overview', 'Обзор'], ['buckets', 'Бакеты'], ['keys', 'Ключи доступа'],
+    ['diagnostics', 'Диагностика'], ['config', 'Конфигурация'],
   ];
   const PERM_INFO = {
     ListBucket: 'список объектов и проверка bucket',
@@ -43,7 +43,7 @@ window.StorageModule = (() => {
   let loadToken = 0;
 
   const S = {             // данные разделов (только то, что отдал сервер)
-    status: null, statusError: '', checking: false, statsInfo: false,
+    status: null, statusError: '', checking: false,
     config: null, configError: '', draft: {}, secretMode: {}, preview: null, applied: null, testResult: null,
     buckets: null, bucketsError: '',
     bucket: null, objects: [], objectsMore: null, objectsPrefix: '', objectsError: '',
@@ -305,6 +305,22 @@ window.StorageModule = (() => {
     body.innerHTML = (views[section] || viewOverview)();
   }
 
+  /* всплывающая подсказка: кнопка «i» + плашка, которая появляется поверх текста над строкой заголовка */
+  let tipSeq = 0;
+  const tip = (text, label = 'Пояснение') => {
+    const id = `sg-tip-${++tipSeq}`;
+    return `<span class="sg-tip"><button type="button" class="sg-info" data-sg="tip" aria-expanded="false" aria-controls="${id}" aria-label="${escapeHTML(label)}" title="${escapeHTML(label)}">i</button><span class="sg-tip-pop" id="${id}" role="note" hidden>${text}</span></span>`;
+  };
+  function setTip(wrap, open) {
+    const btn = wrap.querySelector('.sg-info');
+    const pop = wrap.querySelector('.sg-tip-pop');
+    if (!btn || !pop) return;
+    pop.hidden = !open;
+    btn.classList.toggle('is-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  const closeTips = (except = null) => container?.querySelectorAll('.sg-tip').forEach((w) => { if (w !== except) setTip(w, false); });
+
   const errorBlock = (text) => `<p class="st-error" role="alert">${escapeHTML(text)}</p>`;
 
   /* ─── Overview ─── */
@@ -331,7 +347,7 @@ window.StorageModule = (() => {
         ${tile('Незавершённые multipart', s.multipart_uploads, `частей: ${s.multipart_parts} · ${fmtSize(s.multipart_bytes)}`)}
       </div>`
       : `<p class="st-empty">Статистика недоступна: Storage не запущен.</p>`;
-    const note = s ? `<span class="sg-note" id="sg-stats-note" role="note"${S.statsInfo ? '' : ' hidden'}>Цифры точные (суммы из базы, не оценки). Логические объекты и физические blobs считаются раздельно: при дедупликации blobs меньше объектов${dedup ? ` — экономия ${escapeHTML(fmtSize(dedup))}` : ''}. В физический объём входят и части незавершённых multipart-загрузок. Сообщений в Telegram: ${s.chunks}.</span>` : '';
+    const note = s ? tip(`Цифры точные (суммы из базы, не оценки). Логические объекты и физические blobs считаются раздельно: при дедупликации blobs меньше объектов${dedup ? ` — экономия ${escapeHTML(fmtSize(dedup))}` : ''}. В физический объём входят и части незавершённых multipart-загрузок. Сообщений в Telegram: ${s.chunks}.`, 'О цифрах статистики') : '';
     const problems = st.storage.state !== 'ready' ? `
       <div class="card sg-banner is-warn" role="status">
         <b>Storage ${escapeHTML(STATUS_TEXT[st.storage.state]?.[0] || st.storage.state)}.</b>
@@ -348,7 +364,7 @@ window.StorageModule = (() => {
       <div class="sg-grid">${components}</div>
       <div class="sg-toolbar sg-stats-head">
         <h3 class="st-subtitle">Статистика</h3>
-        ${s ? `<button type="button" class="sg-info${S.statsInfo ? ' is-open' : ''}" data-sg="toggle-stats-info" aria-expanded="${S.statsInfo ? 'true' : 'false'}" aria-controls="sg-stats-note" aria-label="О цифрах статистики" title="О цифрах статистики">i</button>${note}` : ''}
+        ${note}
       </div>${stats}`;
   }
 
@@ -371,7 +387,7 @@ window.StorageModule = (() => {
 
   function renderField(f) {
     const pending = f.pending_restart ? '<span class="st-badge is-warn">ждёт перезапуска</span>' : '';
-    const help = f.help ? `<div class="st-item-sub">${escapeHTML(f.help)}</div>` : '';
+    const help = f.help ? tip(escapeHTML(f.help)) : '';
     const err = `<div class="st-modal-error" data-cfg-error="${f.key}" hidden></div>`;
     let control;
     if (f.kind === 'secret') {
@@ -391,7 +407,7 @@ window.StorageModule = (() => {
     } else {
       control = `<input class="st-input" id="cfg-${f.key}" data-cfg="${f.key}" type="${f.kind === 'int' ? 'number' : 'text'}" value="${escapeHTML(fieldValue(f))}" autocomplete="off" />`;
     }
-    return `<div class="st-item sg-field" data-field-key="${f.key}"><div class="st-item-head"><span class="st-item-title">${escapeHTML(f.label)}</span>${pending}</div>${control}${help}${err}</div>`;
+    return `<div class="st-item sg-field" data-field-key="${f.key}"><div class="st-item-head"><span class="sg-title">${`<span class="st-item-title">${escapeHTML(f.label)}</span>`}${help}</div>${pending}</div>${control}${err}</div>`;
   }
 
   function viewConfig() {
@@ -404,9 +420,8 @@ window.StorageModule = (() => {
     const origin = window.location.origin;
     const endpoint = `
       <div class="st-item" data-endpoint>
-        <div class="st-item-head"><span class="st-item-title">Endpoint</span><span class="st-badge">path-style</span></div>
+        <div class="st-item-head"><span class="sg-title"><span class="st-item-title">Endpoint</span>${tip('Адрес с учётом настройки «Путь endpoint» и адреса, по которому открыт Polaris. Addressing style — path (фиксирован: virtual-hosted не поддерживается). Host и параметры reverse proxy задаются инфраструктурой, не интерфейсом.')}</span><span class="st-badge">path-style</span></div>
         <code class="st-code" id="sg-endpoint">${escapeHTML(origin + c.s3.path_prefix)}</code>
-        <div class="st-item-sub">Адрес с учётом настройки «Путь endpoint» и адреса, по которому открыт Polaris. Addressing style — path (фиксирован: virtual-hosted не поддерживается). Host и параметры reverse proxy задаются инфраструктурой, не интерфейсом.</div>
         <div class="st-item-actions"><button type="button" class="st-btn" data-sg="copy-endpoint">Копировать endpoint</button></div>
       </div>`;
     const envWarn = c.env_file.writable ? '' : '<p class="st-error">Файл .env недоступен для записи — сохранить настройки не получится.</p>';
@@ -965,6 +980,7 @@ window.StorageModule = (() => {
   }
 
   async function onClick(event) {
+    closeTips(event.target.closest('.sg-tip'));  // клик вне подсказки закрывает открытые
     const el = event.target.closest('[data-sg]');
     if (!el || !container?.contains(el)) return;
     event.preventDefault();
@@ -978,12 +994,11 @@ window.StorageModule = (() => {
       case 'new-bucket': return openCreateBucket();
       case 'new-key': return openCreateKey();
       case 'run-tests': return runTests();
-      case 'toggle-stats-info': {
-        S.statsInfo = !S.statsInfo;
-        el.classList.toggle('is-open', S.statsInfo);
-        el.setAttribute('aria-expanded', S.statsInfo ? 'true' : 'false');
-        const note = container.querySelector('#sg-stats-note');
-        if (note) note.hidden = !S.statsInfo;
+      case 'tip': {
+        const wrap = el.closest('.sg-tip');
+        const open = wrap.querySelector('.sg-tip-pop').hidden;
+        closeTips(wrap);
+        setTip(wrap, open);
         return;
       }
       case 'run-step': return runTests([d.step]);
@@ -1018,6 +1033,7 @@ window.StorageModule = (() => {
     if (!el) return;
     if (boundTo !== el) {
       el.addEventListener('click', onClick);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTips(); });
       boundTo = el;
     }
     container = el;
