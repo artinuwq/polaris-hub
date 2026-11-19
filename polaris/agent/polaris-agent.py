@@ -10,6 +10,9 @@
   polaris-agent.py once        # напечатать метрики и выйти (без сети)
   polaris-agent.py apply-update  # служебная команда: root-шаг перед стартом сервиса (см. unit)
 
+Раз в 10 минут агент присылает в Hub список установленных systemd-сервисов — из него в интерфейсе
+выбирают, за какими следить (упал сервис — уведомление в Telegram).
+
 Настройки (сервисы, интервалы) приходят из Hub в ответе на heartbeat — это данные, не команды.
 По команде Hub «обновись» агент сам скачивает новую версию из репозитория (update_url в
 config.json), кладёт её в каталог состояния и перезапускается; файл подменяет root-шаг unit-а,
@@ -36,7 +39,7 @@ import time
 import urllib.error
 import urllib.request
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 DEFAULT_CONFIG = "/etc/polaris-agent/config.json"
 MIN_HEARTBEAT = 15  # нижние пороги: Hub не может попросить агента работать чаще
@@ -49,6 +52,10 @@ MAX_SOURCE_BYTES = 1024 * 1024
 MAX_UNCONFIRMED_STARTS = 2      # столько запусков даётся новой версии, чтобы выйти на связь с Hub
 MAX_INTERVAL = 3600
 RESULTS = ("updated", "current", "failed", "rollback")
+CATALOG_EVERY_SECONDS = 600     # как часто пересылать список установленных сервисов
+MAX_CATALOG = 500
+_CATALOG_STATES = ("enabled", "enabled-runtime", "linked", "linked-runtime", "disabled")
+_CATALOG_IF_RUNNING = ("static", "indirect", "generated")  # у самописного юнита без [Install] состояние static
 
 log = logging.getLogger("polaris-agent")
 
@@ -534,6 +541,66 @@ def collect_services(names):
             for i, n in enumerate(names)]
 
 
+def _systemctl(args):
+    """Вывод systemctl или None, если его нет / он не ответил."""
+    if not shutil.which("systemctl"):
+        return None
+    try:
+        res = subprocess.run(["systemctl"] + args + ["--no-legend", "--no-pager", "--plain"],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10)
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return res.stdout.decode("utf-8", "replace")
+
+
+def parse_running_units(text):
+    """`systemctl list-units --type=service --state=running` -> множество имён без .service."""
+    names = set()
+    for line in text.splitlines():
+        parts = [p for p in line.split() if p not in ("●", "*")]
+        if parts and parts[0].endswith(".service"):
+            names.add(parts[0][:-len(".service")])
+    return names
+
+
+def parse_unit_files(text, running=frozenset()):
+    """`systemctl list-unit-files --type=service` -> {имя: состояние} для сервисов, которые имеет смысл показывать:
+    включённые/выключенные и запущенные самописные. Шаблоны (name@), алиасы и masked отбрасываются."""
+    found = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) < 2 or not parts[0].endswith(".service"):
+            continue
+        name, state = parts[0][:-len(".service")], parts[1]
+        if name.endswith("@") or len(name) > 100 or name.startswith("-") or not _UNIT_RE.match(name):
+            continue
+        if state in _CATALOG_STATES or (state in _CATALOG_IF_RUNNING and name in running):
+            found[name] = state
+    return found
+
+
+def discover_services():
+    """Список установленных сервисов [{name, state, running}] или None, если systemd недоступен."""
+    files = _systemctl(["list-unit-files", "--type=service"])
+    if files is None:
+        return None
+    running = parse_running_units(_systemctl(["list-units", "--type=service", "--state=running"]) or "")
+    items = [{"name": n, "state": st, "running": n in running} for n, st in parse_unit_files(files, running).items()]
+    # сначала запущенные и включённые — их выбирают чаще всего
+    items.sort(key=lambda x: (not x["running"], x["state"] not in ("enabled", "enabled-runtime"), x["name"]))
+    return items[:MAX_CATALOG]
+
+
+def metrics_payload(cfg, ctx, now):
+    """Метрики + (раз в CATALOG_EVERY_SECONDS) список установленных сервисов."""
+    data = collect_all(cfg["services"])
+    if now >= ctx.get("catalog_at", 0):
+        catalog = _safe("catalog", discover_services, None)
+        if catalog is not None:
+            data["available_services"] = catalog
+    return data
+
+
 def _safe(name, fn, default):
     try:
         return fn()
@@ -606,7 +673,7 @@ def cmd_run(args):
     config_version, remote = load_remote(state_dir)  # настройки, которые раньше прислал Hub
     cfg.update(remote)
     ctx = {"config_version": config_version, "result": read_result(state_dir),
-           "confirmed": False, "exit_code": 0}
+           "confirmed": False, "exit_code": 0, "catalog_at": 0}
 
     hub = Hub(cfg)
     stop = threading.Event()
@@ -660,10 +727,15 @@ def cmd_run(args):
                 log.debug("не удалось записать confirmed", exc_info=True)
         handle_directive(directive)
 
+    def metrics_job():
+        data = metrics_payload(cfg, ctx, time.monotonic())
+        hub.metrics(data)
+        if "available_services" in data:  # список ушёл — следующий через CATALOG_EVERY_SECONDS
+            ctx["catalog_at"] = time.monotonic() + CATALOG_EVERY_SECONDS
+
     now = time.monotonic()
     jobs = {"heartbeat": [now, 0, hb_every, heartbeat_job],
-            "metrics": [now + 2, 0, mt_every,
-                        lambda: hub.metrics(collect_all(cfg["services"]))]}  # [next, fails, every, fn]
+            "metrics": [now + 2, 0, mt_every, metrics_job]}  # [next, fails, every, fn]
     while not stop.is_set():
         now = time.monotonic()
         for name, job in jobs.items():

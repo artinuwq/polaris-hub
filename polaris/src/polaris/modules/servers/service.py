@@ -71,7 +71,7 @@ def get_server(server_id: str) -> ServerResponse | None:
     if not row:
         return None
     row = _ensure_current_status(row)
-    return _dump_server(row)
+    return _dump_server(row, detail=True)
 
 
 def create_server(name: str, address: str = "") -> tuple[ServerResponse, RegistrationTokenResponse]:
@@ -85,18 +85,18 @@ def update_server(server_id: str, data: dict[str, Any]) -> ServerResponse | None
     row = repo.update_server(server_id, payload)
     if not row:
         return None
-    return _dump_server(_ensure_current_status(row))
+    return _dump_server(_ensure_current_status(row), detail=True)
 
 
 def delete_server(server_id: str) -> bool:
     return repo.delete_server(server_id)
 
 
-def _dump_server(row: dict[str, Any]) -> ServerResponse:
+def _dump_server(row: dict[str, Any], detail: bool = False) -> ServerResponse:
     services = repo.get_services_for_server(row["id"])
     latest_metric = repo.get_latest_metric(row["id"])
     return ServerResponse.from_db_row(
-        row, services=services, latest_metric=latest_metric, agent_extra=_agent_extra(row)
+        row, services=services, latest_metric=latest_metric, agent_extra=_agent_extra(row, detail)
     )
 
 
@@ -133,10 +133,15 @@ def _update_pending(settings: dict[str, Any]) -> bool:
     return (datetime.now(timezone.utc) - at).total_seconds() < UPDATE_REQUEST_TTL_SECONDS
 
 
-def _agent_extra(row: dict[str, Any]) -> dict[str, Any]:
+def _agent_extra(row: dict[str, Any], detail: bool = False) -> dict[str, Any]:
     settings = repo.get_agent_settings(row["id"])
     latest = agent_bundled_version()
+    extra: dict[str, Any] = {}
+    if detail:
+        catalog, catalog_at = repo.get_service_catalog(row["id"])
+        extra = {"available_services": catalog, "available_services_at": catalog_at}
     return {
+        **extra,
         "agent_config": settings["config"],
         "agent_config_version": settings["config_version"],
         "update_pending": _update_pending(settings),
@@ -176,8 +181,10 @@ def update_agent_settings(server_id: str, data: dict[str, Any]) -> ServerRespons
     row = repo.get_server_by_id(server_id)
     if not row:
         return None
-    repo.save_agent_config(server_id, normalize_agent_config(data))
-    return _dump_server(_ensure_current_status(row))
+    config = normalize_agent_config(data)
+    repo.save_agent_config(server_id, config)
+    repo.prune_services(server_id, config["services"])  # убранные сервисы больше не светятся и не тревожат
+    return _dump_server(_ensure_current_status(row), detail=True)
 
 
 def request_agent_update(server_id: str) -> ServerResponse | None:
@@ -187,7 +194,7 @@ def request_agent_update(server_id: str) -> ServerResponse | None:
     if not row.get("agent_id"):
         raise SettingsError("Агент на этом сервере ещё не зарегистрирован")
     repo.request_agent_update([server_id])
-    return _dump_server(_ensure_current_status(row))
+    return _dump_server(_ensure_current_status(row), detail=True)
 
 
 def request_agent_update_all() -> int:
@@ -397,6 +404,13 @@ def ingest_metrics(server_id: str, payload: AgentMetricsRequest) -> None:
         for disk in disk_dicts
     ]
     service_states = [(svc.name, svc.status.value) for svc in payload.services]
+    catalog = None
+    if payload.available_services is not None:
+        catalog = [
+            {"name": item.name, "state": item.state, "running": item.running}
+            for item in payload.available_services
+            if _UNIT_RE.match(item.name) and not item.name.startswith("-")
+        ]
 
     repo.ingest_metrics_sample(
         server_id,
@@ -409,6 +423,7 @@ def ingest_metrics(server_id: str, payload: AgentMetricsRequest) -> None:
         disk_critical_threshold=DISK_CRITICAL_THRESHOLD,
         disk_event_dedup_seconds=DISK_EVENT_DEDUP_SECONDS,
         service_event_dedup_seconds=SERVICE_EVENT_DEDUP_SECONDS,
+        catalog=catalog,
     )
 
     # Заведомо НЕ создаём событие по одиночному замеру CPU/RAM. Sustained-паттерны
@@ -480,14 +495,22 @@ def get_attention_candidates() -> list[dict[str, Any]]:
         if ev.get("type") == "agent_offline":
             continue  # уже отражено выше через статус сервера
         server = repo.get_server_by_id(ev["server_id"])
-        candidates.append({
+        try:
+            payload = json.loads(ev.get("payload") or "{}")
+        except ValueError:
+            payload = {}
+        candidate = {
             "source": "servers",
             "type": ev["type"],
             "server_id": ev["server_id"],
             "server_name": server["name"] if server else "",
             "severity": ev.get("severity", "info"),
             "created_at": ev.get("created_at"),
-        })
+        }
+        if ev["type"] == "service_down" and payload.get("service"):
+            candidate["service"] = payload["service"]  # без него все упавшие сервисы сервера сливаются в один
+            candidate["status"] = payload.get("status", "")
+        candidates.append(candidate)
 
     return candidates
 

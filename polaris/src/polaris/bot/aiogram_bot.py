@@ -35,6 +35,7 @@ from polaris.modules.finance import reminders as payment_reminders
 from polaris.modules.finance import repository as finance_repo
 from polaris.update.manager import UpdateManager
 from polaris.modules.attention import service as attention_service
+from polaris.modules.servers import alerts as service_alerts
 from polaris.modules.attention.models import UserAction, UserActionRequest
 from polaris.modules.mail.daemon import MailDaemon
 
@@ -138,6 +139,7 @@ def is_admin(user_id: int | None, settings: Settings) -> bool:
 
 
 PAYMENT_TYPES = {"payment", "subscription", "payment_due", "payment_overdue"}
+SERVICE_TYPES = {"service_down", "service_failed"}  # о сервисах сообщает отдельный цикл (_check_service_alerts)
 
 
 class PolarisBot:
@@ -438,6 +440,10 @@ class PolarisBot:
                     await self._check_payment_reminders()
                 except Exception as exc:  # noqa: BLE001 — сбой напоминаний не должен убивать цикл
                     logger.exception("Payment reminders error: %s", exc)
+                try:
+                    await self._check_service_alerts()
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Service alerts error: %s", exc)
                 if tick % 5 == 0:
                     await self._check_and_notify_attention()
         except asyncio.CancelledError:
@@ -499,6 +505,21 @@ class PolarisBot:
                 await asyncio.to_thread(payment_reminders.mark_sent, key)
         await asyncio.to_thread(payment_reminders.prune)
 
+    async def _check_service_alerts(self) -> None:
+        """Упал / снова работает отслеживаемый сервис. Раз в минуту; каждое событие уходит один раз."""
+        admin_ids = list(self.settings.telegram_admin_ids)
+        if not admin_ids:
+            return
+        deliveries = await asyncio.to_thread(service_alerts.plan, admin_ids)
+        for delivery in deliveries:
+            item = service_alerts.as_item(delivery.alert)
+            try:
+                await self._send_open_message(delivery.admin_id, build_attention_message(item), item.url)
+            except Exception as exc:  # noqa: BLE001 — не отметили → попробуем на следующей минуте
+                logger.warning("Не удалось отправить уведомление о сервисе %s: %s", delivery.key, exc)
+                continue
+            await asyncio.to_thread(service_alerts.confirm, delivery)
+
     async def _bot_username(self) -> str | None:
         """Имя бота для ссылок t.me/<бот>/<приложение>; запоминаем после первого запроса."""
         cached = getattr(self, "_cached_bot_username", None)
@@ -524,6 +545,8 @@ class PolarisBot:
                         continue
                     if item.type.value in PAYMENT_TYPES:
                         continue  # платежи приходят только по расписанию (_check_payment_reminders)
+                    if item.type.value in SERVICE_TYPES:
+                        continue  # сервисы — отдельно и без повторов раз в час (_check_service_alerts)
                     key = (admin_id, item.id)
                     last_notified = self._attention_notified.get(key, 0)
                     # notify at most once per hour per item

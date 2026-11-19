@@ -346,6 +346,31 @@ def record_agent_heartbeat(
         _resolve_events_in_transaction(conn, server_id, "agent_offline", None, now_text)
 
 
+def _tracked_services_in_transaction(conn, server_id: str) -> set[str] | None:
+    """Сервисы, заданные в настройках Hub; None — Hub составом не управляет (работает локальный конфиг агента)."""
+    row = conn.execute(
+        "SELECT config_json, config_version FROM server_agent_settings WHERE server_id = ?", (server_id,)
+    ).fetchone()
+    if not row or not row["config_version"]:
+        return None
+    try:
+        config = json.loads(row["config_json"] or "{}")
+    except ValueError:
+        return None
+    services = config.get("services") if isinstance(config, dict) else None
+    return {str(name) for name in services} if isinstance(services, list) else None
+
+
+def _save_service_catalog_in_transaction(conn, server_id: str, services: list[dict[str, Any]], now_text: str) -> None:
+    conn.execute(
+        """INSERT INTO server_service_catalog (server_id, services_json, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(server_id) DO UPDATE SET
+               services_json = excluded.services_json, updated_at = excluded.updated_at""",
+        (server_id, json.dumps(services, ensure_ascii=False), now_text),
+    )
+
+
 def ingest_metrics_sample(
     server_id: str,
     metric: dict[str, Any],
@@ -358,11 +383,20 @@ def ingest_metrics_sample(
     disk_critical_threshold: float,
     disk_event_dedup_seconds: int,
     service_event_dedup_seconds: int,
+    catalog: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Сохраняет метрики, состояние сервера и события одним транзакционным пакетом."""
+    """Сохраняет метрики, состояние сервера и события одним транзакционным пакетом.
+
+    catalog — список установленных сервисов (агент шлёт его раз в 10 минут). Если состав отслеживаемых
+    сервисов задан в Hub, чужие замеры (агент ещё не применил настройки) отбрасываются."""
     now_dt = datetime.now(timezone.utc)
     now_text = now_iso()
     with get_db() as conn:
+        tracked = _tracked_services_in_transaction(conn, server_id)
+        if tracked is not None:
+            service_states = [(name, status) for name, status in service_states if name in tracked]
+        if catalog is not None:
+            _save_service_catalog_in_transaction(conn, server_id, catalog, now_text)
         _record_gap_in_transaction(
             conn, server_id, now_dt, now_text, offline_threshold_seconds
         )
@@ -515,6 +549,59 @@ def record_update_result(server_id: str, result: str, detail: str) -> None:
                    updated_at = excluded.updated_at""",
             (server_id, result, detail, now, now),
         )
+
+
+# ─────────────────────────── Каталог сервисов и отслеживание ───────────────────────────
+
+def save_service_catalog(server_id: str, services: list[dict[str, Any]]) -> None:
+    with get_db() as conn:
+        _save_service_catalog_in_transaction(conn, server_id, services, now_iso())
+
+
+def get_service_catalog(server_id: str) -> tuple[list[dict[str, Any]], str | None]:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT services_json, updated_at FROM server_service_catalog WHERE server_id = ?", (server_id,)
+        ).fetchone()
+    if not row:
+        return [], None
+    try:
+        items = json.loads(row["services_json"] or "[]")
+    except ValueError:
+        items = []
+    return (items if isinstance(items, list) else []), row["updated_at"]
+
+
+def prune_services(server_id: str, keep: list[str]) -> None:
+    """Сервис убрали из отслеживаемых: забываем его статус и закрываем его открытые события."""
+    now = now_iso()
+    with get_db() as conn:
+        names = [r["service_name"] for r in conn.execute(
+            "SELECT service_name FROM server_services_status WHERE server_id = ?", (server_id,)).fetchall()]
+        stale = {n for n in names if n not in keep}
+        for event in conn.execute(
+            "SELECT payload FROM server_events WHERE server_id = ? AND type = 'service_down' AND resolved_at IS NULL",
+            (server_id,),
+        ).fetchall():
+            try:
+                stale.add(json.loads(event["payload"] or "{}").get("_dedup_key") or "")
+            except ValueError:
+                continue
+        for name in stale:
+            if not name or name in keep:
+                continue
+            conn.execute("DELETE FROM server_services_status WHERE server_id = ? AND service_name = ?", (server_id, name))
+            _resolve_events_in_transaction(conn, server_id, "service_down", name, now)
+
+
+def get_resolved_events_since(type_: str, since_iso: str) -> list[dict[str, Any]]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM server_events WHERE type = ? AND resolved_at IS NOT NULL AND resolved_at >= ? "
+            "ORDER BY resolved_at DESC",
+            (type_, since_iso),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 # ─────────────────────────── Registration tokens ───────────────────────────

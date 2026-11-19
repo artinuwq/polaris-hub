@@ -171,11 +171,12 @@ def _servers_to_items(user_id: str) -> list[AttentionItem]:
         else:
             continue
 
+        service_name = cand.get("service")
         item = AttentionItem(
-            id=f"srv-{cand['server_id']}-{cand['type']}",
+            id=f"srv-{cand['server_id']}-{cand['type']}" + (f"-{service_name}" if service_name else ""),
             source=AttentionSource.SERVERS,
             type=atype,
-            title=f"{cand['server_name']}: {cand['type']}",
+            title=f"{cand['server_name']}: {service_name or cand['type']}",
             description="",
             urgency=urgency,
             payload=cand,

@@ -624,15 +624,45 @@ window.ServersModule = (() => {
     window.PolarisBack?.push('servers-modal', closeModal);
   }
 
+  const UNIT_NAME_RE = /^[A-Za-z0-9@_.:\-]+$/;
+
   function openAgentSettings() {
     const s = selectedServer;
     if (!s) return;
     const cfg = s.agent_config_version > 0 ? s.agent_config : {};
-    const services = cfg.services ?? (s.services || []).map((x) => x.name);
+    const catalog = Array.isArray(s.available_services) ? s.available_services : [];
+    const known = new Set(catalog.map((c) => c.name));
+    const selected = new Set(cfg.services ?? (s.services || []).map((x) => x.name));
+    const extra = [...selected].filter((name) => !known.has(name));  // вписанные вручную или уже удалённые с сервера
+    let filter = '';
+
+    const noCatalog = '<p class="metric-subtext sv-empty">Список установленных сервисов ещё не пришёл. Его присылает агент 0.4.0 и новее раз в 10 минут — обновите агент и подождите минуту. Пока можно добавить сервис вручную.</p>';
+    const listHtml = () => {
+      const q = filter.trim().toLowerCase();
+      const items = [...catalog, ...extra.map((name) => ({ name, manual: true }))]
+        .filter((c) => !q || c.name.toLowerCase().includes(q));
+      const hint = catalog.length ? '' : noCatalog;
+      if (!items.length) return catalog.length ? '<p class="metric-subtext sv-empty">Ничего не найдено.</p>' : hint;
+      return hint + items.map((c) => {
+        const meta = c.manual ? 'нет в списке сервера' : (c.running ? 'работает' : 'не запущен');
+        return `<label class="sv-service-row"><input type="checkbox" data-sv-name="${escapeHTML(c.name)}" ${selected.has(c.name) ? 'checked' : ''} /><span class="sv-service-name">${escapeHTML(c.name)}</span><span class="sv-service-meta${c.running ? ' is-running' : ''}">${meta}</span></label>`;
+      }).join('');
+    };
+    const refresh = () => {
+      modalEl.querySelector('#sv-list').innerHTML = listHtml();
+      modalEl.querySelector('#sv-count').textContent = selected.size ? `выбрано: ${selected.size}` : 'ничего не выбрано';
+    };
+
     openModal(`
       <div class="tk-head"><h3>Настройки агента</h3></div>
-      <div class="tk-field"><label for="sv-services">Сервисы systemd</label>
-        <input id="sv-services" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="nginx, docker" value="${escapeHTML(services.join(', '))}" /></div>
+      <div class="tk-field"><label for="sv-search">Следить за сервисами · <span id="sv-count"></span></label>
+        <input id="sv-search" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Поиск среди установленных" /></div>
+      <div id="sv-list" class="sv-list" role="group" aria-label="Установленные сервисы"></div>
+      <div class="sv-manual">
+        <div class="tk-field"><input id="sv-manual" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Другой сервис, например caddy" aria-label="Добавить сервис вручную" /></div>
+        <button type="button" class="tk-btn" data-sv="add-manual">Добавить</button>
+      </div>
+      <p class="metric-subtext">Если выбранный сервис остановится или упадёт, в Telegram придёт уведомление, а затем — что он снова работает.</p>
       <div class="tk-field"><label for="sv-hb">Heartbeat, секунд (15–3600)</label>
         <input id="sv-hb" type="number" inputmode="numeric" min="15" max="3600" value="${escapeHTML(cfg.heartbeat_interval ?? 30)}" /></div>
       <div class="tk-field"><label for="sv-mt">Метрики, секунд (30–3600)</label>
@@ -643,11 +673,12 @@ window.ServersModule = (() => {
         <button type="button" class="tk-btn primary" data-sv="save">Сохранить</button>
         <button type="button" class="tk-btn" data-sv="close">Отмена</button>
       </div></div>`, async (action, btn) => {
-      if (action === 'close') { closeModal(); return; }
-      if (action !== 'save') return;
       const box = modalEl.querySelector('#sv-error');
+      if (action === 'close') { closeModal(); return; }
+      if (action === 'add-manual') { addManual(); return; }
+      if (action !== 'save') return;
       const body = {
-        services: modalEl.querySelector('#sv-services').value.split(/[\s,]+/).filter(Boolean),
+        services: [...selected],
         heartbeat_interval: Number(modalEl.querySelector('#sv-hb').value),
         metrics_interval: Number(modalEl.querySelector('#sv-mt').value),
       };
@@ -663,15 +694,55 @@ window.ServersModule = (() => {
         btn.disabled = false;
       }
     });
+
+    function addManual() {
+      const input = modalEl.querySelector('#sv-manual');
+      const box = modalEl.querySelector('#sv-error');
+      const name = input.value.trim().replace(/\.service$/, '');
+      box.hidden = true;
+      if (!name) return;
+      if (!UNIT_NAME_RE.test(name) || name.startsWith('-') || name.length > 100) {
+        box.textContent = 'Имя сервиса: латиница, цифры и символы @ _ . : -';
+        box.hidden = false;
+        return;
+      }
+      selected.add(name);
+      if (!known.has(name) && !extra.includes(name)) extra.push(name);
+      input.value = '';
+      filter = '';
+      modalEl.querySelector('#sv-search').value = '';
+      refresh();
+    }
+
+    modalEl.addEventListener('change', (e) => {
+      const name = e.target.dataset?.svName;
+      if (name === undefined) return;
+      if (e.target.checked) selected.add(name); else selected.delete(name);
+      modalEl.querySelector('#sv-count').textContent = selected.size ? `выбрано: ${selected.size}` : 'ничего не выбрано';
+    });
+    modalEl.addEventListener('input', (e) => {
+      if (e.target.id !== 'sv-search') return;
+      filter = e.target.value;
+      refresh();
+    });
+    modalEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.id === 'sv-manual') { e.preventDefault(); addManual(); }
+    });
+    refresh();
   }
 
   function renderServicesCard(s) {
-    if (!s.services || !s.services.length) return '';
+    const canEdit = Boolean(s.agent_id);
+    if (!canEdit && !(s.services || []).length) return '';
+    const head = `<div class="servers-services-head"><h3 class="finance-section-title">Services</h3>${canEdit ? `<button class="small-button ghost" type="button" data-action="agent-settings">${(s.services || []).length ? 'Изменить' : 'Выбрать'}</button>` : ''}</div>`;
+    if (!(s.services || []).length) {
+      return `<div class="card servers-card span-12" data-services-card>${head}<p class="metric-subtext">Ни за одним сервисом не следим. Выберите из установленных — если сервис упадёт, в Telegram придёт уведомление.</p></div>`;
+    }
     const rows = s.services.map((svc) => {
       const dot = svc.status === 'running' ? '🟢' : svc.status === 'failed' ? '🔴' : svc.status === 'stopped' ? '🟠' : '⚪';
       return `<div class="servers-service-row"><span>${escapeHTML(svc.name)}</span><span>${dot} ${SERVICE_LABELS[svc.status] || svc.status}</span></div>`;
     }).join('');
-    return `<div class="card servers-card span-12"><h3 class="finance-section-title">Services</h3>${rows}</div>`;
+    return `<div class="card servers-card span-12" data-services-card>${head}${rows}</div>`;
   }
 
   function renderMetricsHistoryCard() {

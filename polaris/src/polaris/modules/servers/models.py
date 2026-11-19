@@ -82,6 +82,9 @@ class ServerResponse(BaseModel):
     update_result_at: str | None = None
     latest_agent_version: str = ""
     update_available: bool = False
+    # только в карточке сервера (в списке не нужен): что установлено и когда агент об этом сообщил
+    available_services: list[dict[str, Any]] = Field(default_factory=list)
+    available_services_at: str | None = None
 
     @classmethod
     def from_db_row(
@@ -259,6 +262,12 @@ class AgentMetricsNetwork(BaseModel):
     tx_bytes: int | None = None
 
 
+class AgentAvailableService(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    state: str = Field("", max_length=30)
+    running: bool = False
+
+
 class AgentMetricsRequest(BaseModel):
     cpu: AgentMetricsCpu = Field(default_factory=AgentMetricsCpu)
     memory: AgentMetricsMemory = Field(default_factory=AgentMetricsMemory)
@@ -266,6 +275,8 @@ class AgentMetricsRequest(BaseModel):
     network: AgentMetricsNetwork = Field(default_factory=AgentMetricsNetwork)
     system: AgentSystemInfo = Field(default_factory=AgentSystemInfo)
     services: list[AgentServiceStatus] = Field(default_factory=list)
+    # список установленных сервисов (агент шлёт раз в 10 минут); None — в этом замере его нет
+    available_services: list[AgentAvailableService] | None = Field(default=None, max_length=600)
 
 
 class AgentEventRequest(BaseModel):

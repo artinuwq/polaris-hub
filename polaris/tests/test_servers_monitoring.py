@@ -10,6 +10,11 @@ from pathlib import Path
 from polaris.modules.servers import repository as repo
 
 MIGRATION = Path(__file__).resolve().parents[1] / "database" / "migrations" / "004_create_servers.sql"
+# метрики теперь сверяются с настройками агента и сохраняют каталог сервисов
+EXTRA_MIGRATIONS = [
+    Path(__file__).resolve().parents[1] / "database" / "migrations" / name
+    for name in ("014_create_server_agent_settings.sql", "015_create_server_service_catalog.sql")
+]
 OPTIMIZATION_MIGRATION = (
     Path(__file__).resolve().parents[1]
     / "database"
@@ -27,6 +32,8 @@ def server_db(tmp_path, monkeypatch):
     conn = sqlite3.connect(db_file)
     conn.executescript(MIGRATION.read_text(encoding="utf-8"))
     conn.executescript(OPTIMIZATION_MIGRATION.read_text(encoding="utf-8"))
+    for extra in EXTRA_MIGRATIONS:
+        conn.executescript(extra.read_text(encoding="utf-8"))
     conn.close()
     yield db_file
 

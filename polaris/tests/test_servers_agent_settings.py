@@ -63,19 +63,20 @@ def test_invalid_settings_are_rejected_and_not_saved(db, payload):
 
 
 def test_update_request_lifecycle(db):
-    sid = _server(agent_version="0.2.0")
+    sid = _server(agent_version="0.1.0")
+    latest = service.agent_bundled_version()
     assert service.get_server(sid).update_available is True  # в клоне Hub лежит более новая версия
 
     server = service.request_agent_update(sid)
     assert server.update_pending is True
-    assert service.record_heartbeat(sid, agent_version="0.2.0")["update"] is True  # команда доставляется с heartbeat
+    assert service.record_heartbeat(sid, agent_version="0.1.0")["update"] is True  # команда доставляется с heartbeat
 
     # агент сообщил итог: флаг снят уже в ответе на тот же heartbeat
-    directive = service.record_heartbeat(sid, agent_version="0.3.0", update_result="updated", update_detail="0.2.0 → 0.3.0")
+    directive = service.record_heartbeat(sid, agent_version=latest, update_result="updated", update_detail=f"0.1.0 → {latest}")
     assert directive["update"] is False
     server = service.get_server(sid)
-    assert (server.update_pending, server.update_result, server.update_detail) == (False, "updated", "0.2.0 → 0.3.0")
-    assert server.agent_version == "0.3.0" and server.update_available is False
+    assert (server.update_pending, server.update_result, server.update_detail) == (False, "updated", f"0.1.0 → {latest}")
+    assert server.agent_version == latest and server.update_available is False
 
 
 def test_update_request_expires_if_agent_never_answers(db):

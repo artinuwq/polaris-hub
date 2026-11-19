@@ -254,3 +254,51 @@ def test_update_is_not_attempted_while_the_previous_result_is_undelivered(agent,
     # Hub не принял heartbeat -> итог ещё не доставлен: новую попытку не начинаем, итог не теряем
     code, _hub, state = _run(agent, tmp_path, monkeypatch, {"config_version": 0, "update": True}, status=422, preset=preset)
     assert code == 0 and calls == [] and (state / "result.json").exists()
+
+
+# ───────────────────────── список установленных сервисов ─────────────────────────
+
+UNIT_FILES = """xray.service                  enabled   enabled
+telemt.service                disabled  enabled
+fail2ban.service              enabled   enabled
+getty@.service                enabled   enabled
+dbus.service                  static    -
+custom-app.service            static    -
+masked-thing.service          masked    enabled
+weird name.service            enabled   enabled
+-evil.service                 enabled   enabled
+"""
+RUNNING = "  xray.service loaded active running Xray\n● custom-app.service loaded active running App\n  dbus.service loaded active running D-Bus\n"
+
+
+def test_parse_unit_files_keeps_only_meaningful_services(agent):
+    running = agent.parse_running_units(RUNNING)
+    assert running == {"xray", "custom-app", "dbus"}
+    found = agent.parse_unit_files(UNIT_FILES, running)
+    # шаблоны, masked, кривые имена отброшены; static берём, только если сервис запущен (самописный юнит без [Install])
+    assert found == {"xray": "enabled", "telemt": "disabled", "fail2ban": "enabled", "dbus": "static", "custom-app": "static"}
+    assert "dbus" not in agent.parse_unit_files(UNIT_FILES, set())
+
+
+def test_discover_services_sorts_running_first(agent, monkeypatch):
+    def fake(args):
+        return UNIT_FILES if args[0] == "list-unit-files" else RUNNING
+    monkeypatch.setattr(agent, "_systemctl", fake)
+    items = agent.discover_services()
+    assert [i["name"] for i in items][:2] == ["custom-app", "xray"] or items[0]["running"]
+    assert all(i["running"] for i in items[:3])
+    assert {i["name"]: i["running"] for i in items}["telemt"] is False
+    monkeypatch.setattr(agent, "_systemctl", lambda args: None)
+    assert agent.discover_services() is None  # нет systemd — списка нет
+
+
+def test_catalog_is_attached_to_metrics_only_when_due(agent, monkeypatch):
+    monkeypatch.setattr(agent, "collect_all", lambda services: {"services": []})
+    monkeypatch.setattr(agent, "discover_services", lambda: [{"name": "xray", "state": "enabled", "running": True}])
+    ctx = {"catalog_at": 0}
+    assert agent.metrics_payload({"services": []}, ctx, now=1)["available_services"][0]["name"] == "xray"
+    ctx["catalog_at"] = 100                                   # список только что ушёл — до срока не шлём
+    assert "available_services" not in agent.metrics_payload({"services": []}, ctx, now=50)
+    assert "available_services" in agent.metrics_payload({"services": []}, ctx, now=100)
+    monkeypatch.setattr(agent, "discover_services", lambda: None)  # systemd недоступен: метрики идут без списка
+    assert "available_services" not in agent.metrics_payload({"services": []}, {"catalog_at": 0}, now=1)

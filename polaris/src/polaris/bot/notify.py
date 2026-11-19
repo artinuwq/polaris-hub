@@ -30,6 +30,7 @@ TYPE_STYLE = {
     "disk_critical": ("💾", "Диск почти заполнен"),
     "service_down": ("⚙️", "Сервис не работает"),
     "service_failed": ("⚙️", "Сбой сервиса"),
+    "service_recovered": ("✅", "Сервис снова работает"),
 }
 
 _MONEY_RE = re.compile(r"([\d][\d\s.,]*)\s*([A-Za-z₽€$£]+)")
@@ -101,7 +102,7 @@ def clean_title(item: Any) -> str:
     title = getattr(item, "title", "") or ""
     payload = getattr(item, "payload", None) or {}
     kind = _val(getattr(item, "type", ""))
-    if kind in ("server_offline", "disk_warning", "disk_critical", "service_down", "service_failed"):
+    if kind in ("server_offline", "disk_warning", "disk_critical", "service_down", "service_failed", "service_recovered"):
         name = payload.get("server_name") or title.split(":")[0]
         service = payload.get("service")
         return f"{name} · {service}" if service else str(name)

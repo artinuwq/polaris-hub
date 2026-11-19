@@ -366,3 +366,17 @@
 .servers-agent-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .servers-update-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .servers-update-banner p { margin: 0; flex: 1 1 200px; }
+
+/* Services: выбор отслеживаемых сервисов */
+.servers-services-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.servers-services-head .finance-section-title { margin: 0; }
+.sv-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; border: 1px solid var(--border-soft); border-radius: var(--radius-md); }
+.sv-empty { margin: 0; padding: 10px 12px; }
+.sv-service-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--border-soft); }
+.sv-service-row:last-child { border-bottom: 0; }
+.sv-service-row input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
+.sv-service-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.sv-service-meta { flex: 0 0 auto; font-size: 0.75rem; color: var(--text-muted); }
+.sv-service-meta.is-running { color: var(--success); }
+.sv-manual { display: flex; align-items: center; gap: 8px; }
+.sv-manual .tk-field { flex: 1 1 auto; }
