@@ -9,6 +9,11 @@ window.FilesModule = (() => {
   const ICON_FOLDER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path></svg>';
   const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10"></path><path d="m8 10 4 4 4-4"></path><path d="M5 19h14"></path></svg>';
   const ICON_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path><path d="M10 11v6M14 11v6"></path></svg>';
+  const ICON_PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>';
+  const ICON_UPLOAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5"></path><path d="m8 9 4-4 4 4"></path><path d="M5 19h14"></path></svg>';
+  const ICON_FILE_PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M14 3v5h5"></path><path d="M12 12v6M9 15h6"></path></svg>';
+  const ICON_FOLDER_PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path><path d="M12 11v5M9.5 13.5h5"></path></svg>';
+  const ICON_REFRESH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-4.5L4 9"></path><path d="M4 4v5h5"></path><path d="M4 13a8 8 0 0 0 14 4.5l2-2.5"></path><path d="M20 20v-5h-5"></path></svg>';
   const ICON_FILE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M14 3v5h5"></path></svg>';
 
   let container = null;
@@ -305,6 +310,35 @@ window.FilesModule = (() => {
       </div>`;
   }
 
+  /* Круглая кнопка справа снизу: по нажатию раскрывает круглые кнопки действий над собой */
+  function fabHTML() {
+    const item = (action, icon, label, disabled = false) => `
+        <div class="fm-fab-item">
+          <span class="fm-fab-label">${label}</span>
+          <button type="button" class="fm-fab-btn" data-fm="${action}" aria-label="${label}" title="${label}" tabindex="-1" ${disabled ? 'disabled' : ''}>${icon}</button>
+        </div>`;
+    return `
+      <div class="fm-fab-backdrop" data-fm="fab-close"></div>
+      <div class="fm-fab" id="fm-fab">
+        <div class="fm-fab-menu" role="menu">
+          ${item('pick', ICON_UPLOAD, 'Загрузить файл', uploading)}
+          ${item('new-file', ICON_FILE_PLUS, 'Создать файл')}
+          ${item('new-folder', ICON_FOLDER_PLUS, 'Новая папка')}
+          ${item('reload', ICON_REFRESH, 'Обновить')}
+        </div>
+        <button type="button" class="fm-fab-main" data-fm="fab-toggle" aria-label="Действия" aria-haspopup="true" aria-expanded="false">${ICON_PLUS}</button>
+      </div>`;
+  }
+
+  function setFab(open) {
+    const fab = container?.querySelector('#fm-fab');
+    if (!fab) return;
+    fab.classList.toggle('is-open', open);
+    container.querySelector('.fm-fab-backdrop')?.classList.toggle('is-open', open);
+    fab.querySelector('.fm-fab-main')?.setAttribute('aria-expanded', String(open));
+    fab.querySelectorAll('.fm-fab-btn').forEach((b) => { b.tabIndex = open ? 0 : -1; });
+  }
+
   function viewFolder() {
     const byName = (a, b) => a.name.localeCompare(b.name, 'ru', { numeric: true });
     const rows = [...S.folders].sort(byName).map(folderRow).join('') + [...S.objects].sort(byName).map(fileRow).join('');
@@ -316,12 +350,8 @@ window.FilesModule = (() => {
     const more = S.cursor ? `<button type="button" class="st-btn" data-fm="more" ${S.loading ? 'disabled' : ''}>Показать ещё</button>` : '';
     return `
       ${crumbs()}
-      <div class="fm-toolbar">
-        <button type="button" class="st-btn primary" data-fm="pick" ${uploading ? 'disabled' : ''}>Загрузить файлы</button>
-        <button type="button" class="st-btn" data-fm="new-folder">Новая папка</button>
-        <button type="button" class="st-btn" data-fm="reload">Обновить</button>
-        <input id="fm-file" type="file" multiple hidden />
-      </div>
+      ${fabHTML()}
+      <input id="fm-file" type="file" multiple hidden />
       <div id="fm-uploads" class="fm-uploads"></div>
       <div id="fm-drop" class="fm-dropzone">${body}${more}</div>`;
   }
@@ -495,11 +525,14 @@ window.FilesModule = (() => {
       case 'open-bucket': return go(d.bucket, '');
       case 'open-folder': return go(S.bucket, d.prefix);
       case 'go': return go(d.bucket, d.prefix);
-      case 'reload': return reload();
+      case 'fab-toggle': return setFab(!container.querySelector('#fm-fab')?.classList.contains('is-open'));
+      case 'fab-close': return setFab(false);
+      case 'new-file': setFab(false); return setNotice('ok', 'Создание файла пока не реализовано');
+      case 'reload': setFab(false); return reload();
       case 'more': return loadFolder({ append: true });
       case 'new-bucket': return openNewBucket();
-      case 'new-folder': return openNewFolder();
-      case 'pick': return container.querySelector('#fm-file')?.click();
+      case 'new-folder': setFab(false); return openNewFolder();
+      case 'pick': setFab(false); return container.querySelector('#fm-file')?.click();
       case 'download': return downloadFile(d.id, d.name);
       case 'delete-file': return confirmDeleteFile(d.id, d.name);
       case 'delete-folder': return confirmDeleteFolder(d.prefix, d.name);
@@ -541,6 +574,7 @@ window.FilesModule = (() => {
     if (boundTo !== el) {
       el.addEventListener('click', onClick);
       el.addEventListener('change', onChange);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Escape') setFab(false); });
       el.addEventListener('dragover', onDragOver);
       el.addEventListener('dragleave', onDragLeave);
       el.addEventListener('drop', onDrop);
