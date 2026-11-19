@@ -22,6 +22,7 @@ from polaris.modules.servers.models import (
     AgentHeartbeatRequest,
     AgentMetricsRequest,
     AgentRegisterRequest,
+    AgentSettingsUpdate,
     ServerCreate,
     ServerUpdate,
 )
@@ -98,6 +99,33 @@ def delete_server(server_id: str, _user: TelegramWebAppUser | None = Depends(req
     return {"success": True, "message": "Server deleted"}
 
 
+@admin_router.put("/{server_id}/agent-settings")
+def set_agent_settings(server_id: str, body: AgentSettingsUpdate, _user: TelegramWebAppUser | None = Depends(require_admin)):
+    try:
+        server = service.update_agent_settings(server_id, body.model_dump())
+    except service.SettingsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    return {"success": True, "data": server.model_dump()}
+
+
+@admin_router.post("/agent-update-all")
+def request_update_all(_user: TelegramWebAppUser | None = Depends(require_admin)):
+    return {"success": True, "data": {"requested": service.request_agent_update_all()}}
+
+
+@admin_router.post("/{server_id}/agent-update")
+def request_update(server_id: str, _user: TelegramWebAppUser | None = Depends(require_admin)):
+    try:
+        server = service.request_agent_update(server_id)
+    except service.SettingsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    return {"success": True, "data": server.model_dump()}
+
+
 @admin_router.post("/{server_id}/registration-token")
 def new_registration_token(server_id: str, _user: TelegramWebAppUser | None = Depends(require_admin)):
     server = service.get_server(server_id)
@@ -131,8 +159,14 @@ def agent_register(body: AgentRegisterRequest):
 
 @agent_router.post("/heartbeat")
 def agent_heartbeat(body: AgentHeartbeatRequest, server: dict = Depends(require_agent)):
-    service.record_heartbeat(server["id"], agent_version=body.agent_version)
-    return {"success": True}
+    directive = service.record_heartbeat(
+        server["id"],
+        agent_version=body.agent_version,
+        config_version=body.config_version,
+        update_result=body.update_result,
+        update_detail=body.update_detail,
+    )
+    return {"success": True, "data": directive}
 
 
 @agent_router.post("/metrics")

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from polaris.infra.settings import Settings
@@ -26,6 +28,18 @@ DISK_WARNING_THRESHOLD = 90.0
 DISK_CRITICAL_THRESHOLD = 95.0
 DISK_EVENT_DEDUP_SECONDS = 1800         # не спамить событием чаще, чем раз в 30 мин
 SERVICE_EVENT_DEDUP_SECONDS = 600
+UPDATE_REQUEST_TTL_SECONDS = 3600       # агент не ответил за час (старая версия?) — запрос считается устаревшим
+MAX_AGENT_SERVICES = 32
+MIN_AGENT_HEARTBEAT = 15                # те же нижние пороги, что и в самом агенте
+MIN_AGENT_METRICS = 30
+MAX_AGENT_INTERVAL = 3600
+_UNIT_RE = re.compile(r"^[A-Za-z0-9@_.:\-]+$")
+_AGENT_FILE = Path(__file__).resolve().parents[4] / "agent" / "polaris-agent.py"
+_VERSION_RE = re.compile(r'^__version__\s*=\s*["\']([0-9]+(?:\.[0-9]+){1,3})["\']', re.MULTILINE)
+
+
+class SettingsError(ValueError):
+    pass
 
 
 def _hub_public_url() -> str:
@@ -81,7 +95,107 @@ def delete_server(server_id: str) -> bool:
 def _dump_server(row: dict[str, Any]) -> ServerResponse:
     services = repo.get_services_for_server(row["id"])
     latest_metric = repo.get_latest_metric(row["id"])
-    return ServerResponse.from_db_row(row, services=services, latest_metric=latest_metric)
+    return ServerResponse.from_db_row(
+        row, services=services, latest_metric=latest_metric, agent_extra=_agent_extra(row)
+    )
+
+
+# ─────────────────────────── Настройки и обновление агента ───────────────────────────
+
+def agent_bundled_version() -> str:
+    """Версия агента в клоне репозитория, на котором стоит Hub (обновился Hub — это число выросло)."""
+    try:
+        match = _VERSION_RE.search(_AGENT_FILE.read_text(encoding="utf-8"))
+    except OSError:
+        return ""
+    return match.group(1) if match else ""
+
+
+def _version_tuple(value: str) -> tuple[int, ...] | None:
+    if not value or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", value):
+        return None
+    return tuple(int(part) for part in value.split("."))
+
+
+def _is_newer(candidate: str, current: str) -> bool:
+    a, b = _version_tuple(candidate), _version_tuple(current)
+    return bool(a and b and a > b)
+
+
+def _update_pending(settings: dict[str, Any]) -> bool:
+    requested = settings.get("update_requested_at")
+    if not requested:
+        return False
+    try:
+        at = datetime.fromisoformat(requested.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return (datetime.now(timezone.utc) - at).total_seconds() < UPDATE_REQUEST_TTL_SECONDS
+
+
+def _agent_extra(row: dict[str, Any]) -> dict[str, Any]:
+    settings = repo.get_agent_settings(row["id"])
+    latest = agent_bundled_version()
+    return {
+        "agent_config": settings["config"],
+        "agent_config_version": settings["config_version"],
+        "update_pending": _update_pending(settings),
+        "update_result": settings["update_result"],
+        "update_detail": settings["update_detail"],
+        "update_result_at": settings["update_result_at"],
+        "latest_agent_version": latest,
+        "update_available": bool(row.get("agent_id")) and _is_newer(latest, row.get("agent_version", "")),
+    }
+
+
+def normalize_agent_config(data: dict[str, Any]) -> dict[str, Any]:
+    services: list[str] = []
+    for raw in data.get("services") or []:
+        name = str(raw).strip()
+        if not name:
+            continue
+        if len(name) > 100 or name.startswith("-") or not _UNIT_RE.match(name):
+            raise SettingsError(f"Недопустимое имя сервиса: {name[:40]}")
+        if name not in services:
+            services.append(name)
+    if len(services) > MAX_AGENT_SERVICES:
+        raise SettingsError(f"Не больше {MAX_AGENT_SERVICES} сервисов")
+    try:
+        heartbeat = int(data.get("heartbeat_interval", 30))
+        metrics = int(data.get("metrics_interval", 60))
+    except (TypeError, ValueError) as exc:
+        raise SettingsError("Интервалы должны быть числами") from exc
+    if not MIN_AGENT_HEARTBEAT <= heartbeat <= MAX_AGENT_INTERVAL:
+        raise SettingsError(f"Heartbeat: от {MIN_AGENT_HEARTBEAT} до {MAX_AGENT_INTERVAL} секунд")
+    if not MIN_AGENT_METRICS <= metrics <= MAX_AGENT_INTERVAL:
+        raise SettingsError(f"Метрики: от {MIN_AGENT_METRICS} до {MAX_AGENT_INTERVAL} секунд")
+    return {"services": services, "heartbeat_interval": heartbeat, "metrics_interval": metrics}
+
+
+def update_agent_settings(server_id: str, data: dict[str, Any]) -> ServerResponse | None:
+    row = repo.get_server_by_id(server_id)
+    if not row:
+        return None
+    repo.save_agent_config(server_id, normalize_agent_config(data))
+    return _dump_server(_ensure_current_status(row))
+
+
+def request_agent_update(server_id: str) -> ServerResponse | None:
+    row = repo.get_server_by_id(server_id)
+    if not row:
+        return None
+    if not row.get("agent_id"):
+        raise SettingsError("Агент на этом сервере ещё не зарегистрирован")
+    repo.request_agent_update([server_id])
+    return _dump_server(_ensure_current_status(row))
+
+
+def request_agent_update_all() -> int:
+    """Просит обновиться все серверы с зарегистрированным агентом, которым это нужно."""
+    latest = agent_bundled_version()
+    ids = [r["id"] for r in repo.get_all_servers()
+           if r.get("agent_id") and _is_newer(latest, r.get("agent_version", ""))]
+    return repo.request_agent_update(ids) if ids else 0
 
 
 def _ensure_current_status(row: dict[str, Any]) -> dict[str, Any]:
@@ -222,13 +336,31 @@ def _parse_ts(value: str | None) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def record_heartbeat(server_id: str, agent_version: str = "") -> None:
+def record_heartbeat(
+    server_id: str,
+    agent_version: str = "",
+    config_version: int = 0,
+    update_result: str = "",
+    update_detail: str = "",
+) -> dict[str, Any]:
+    """Фиксирует heartbeat и возвращает агенту «директиву»: новые настройки и/или команду обновиться."""
     updates: dict[str, Any] = {"status": "online", "status_reason": None, "last_seen": _iso_now()}
     if agent_version:
         updates["agent_version"] = agent_version
     repo.record_agent_heartbeat(
         server_id, updates, offline_threshold_seconds=OFFLINE_THRESHOLD_SECONDS
     )
+    if update_result:  # результат приходит раньше, чем считается директива: флаг запроса уже снят
+        repo.record_update_result(server_id, update_result[:20], update_detail[:300])
+
+    settings = repo.get_agent_settings(server_id)
+    directive: dict[str, Any] = {
+        "config_version": settings["config_version"],
+        "update": _update_pending(settings),
+    }
+    if settings["config_version"] and settings["config_version"] != config_version:
+        directive["config"] = settings["config"]
+    return directive
 
 
 def ingest_metrics(server_id: str, payload: AgentMetricsRequest) -> None:

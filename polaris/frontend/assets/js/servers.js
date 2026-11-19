@@ -47,6 +47,8 @@ window.ServersModule = (() => {
   let selectedEvents = [];
   let selectedMetricsHistory = [];
 
+  let agentMsg = '';           // итог действия над агентом (обновить / настройки) на карточке сервера
+  let modalEl = null;
   let listPollTimer = null;
   let countdownTimer = null;
 
@@ -351,6 +353,7 @@ window.ServersModule = (() => {
       <div class="servers-wrapper">
         ${renderHeader(false)}
         ${renderStats()}
+        ${renderUpdateBanner()}
         ${renderProblems()}
         <div class="servers-grid">${cards}</div>
       </div>
@@ -492,6 +495,8 @@ window.ServersModule = (() => {
           </div>
         </div>
 
+        ${renderAgentCard(s)}
+
         ${renderServicesCard(s)}
 
         <div class="card servers-card span-12">
@@ -532,6 +537,134 @@ window.ServersModule = (() => {
     `;
   }
 
+  /* ─── Agent: версия, обновление, настройки ─── */
+  const UPDATE_RESULTS = {
+    updated: ['✅ Обновлён', ''],
+    current: ['Уже последняя версия', ''],
+    failed: ['⚠️ Не удалось обновить', 'is-error'],
+    rollback: ['↩️ Откат на прошлую версию', 'is-error'],
+  };
+
+  function renderAgentCard(s) {
+    if (!s.agent_id) return '';
+    const version = s.agent_version || '—';
+    const state = s.update_available ? `доступна ${escapeHTML(s.latest_agent_version)}` : 'актуальна';
+    const [resultLabel, resultClass] = UPDATE_RESULTS[s.update_result] || ['', ''];
+    const resultLine = resultLabel
+      ? `<p class="servers-agent-line ${resultClass}">${resultLabel}${s.update_detail ? `: ${escapeHTML(s.update_detail)}` : ''}${s.update_result_at ? ` · ${escapeHTML(s.update_result_at.slice(0, 16).replace('T', ' '))}` : ''}</p>`
+      : '';
+    const pendingLine = s.update_pending
+      ? '<p class="servers-agent-line">Команда отправлена: агент получит её при ближайшем heartbeat, скачает версию из репозитория и перезапустится.</p>'
+      : '';
+    const updateLabel = s.update_pending ? 'Ждём агента…' : (s.update_available ? 'Обновить агент' : 'Проверить обновление');
+    return `
+      <div class="card servers-card span-12" data-agent-card>
+        <h3 class="finance-section-title">Agent</h3>
+        <p class="metric-subtext">Версия ${escapeHTML(version)} · ${state}</p>
+        ${pendingLine}${resultLine}
+        ${agentMsg ? `<p class="servers-agent-line is-error">${escapeHTML(agentMsg)}</p>` : ''}
+        <div class="servers-agent-actions">
+          <button class="small-button primary" type="button" data-action="update-agent" ${s.update_pending ? 'disabled' : ''}>${updateLabel}</button>
+          <button class="small-button ghost" type="button" data-action="agent-settings">Настройки агента</button>
+        </div>
+      </div>`;
+  }
+
+  function renderUpdateBanner() {
+    const outdated = servers.filter((s) => s.update_available && !s.update_pending);
+    if (!outdated.length) return '';
+    const word = outdated.length === 1 ? 'сервера' : 'серверов';
+    return `
+      <div class="card servers-card span-12 servers-update-banner" data-update-banner>
+        <p class="metric-subtext">Доступна новая версия агента (${escapeHTML(outdated[0].latest_agent_version)}) для ${outdated.length} ${word}.</p>
+        <button class="small-button primary" type="button" data-action="update-all-agents">Обновить все</button>
+      </div>`;
+  }
+
+  async function requestAgentUpdate() {
+    if (!selectedServerId) return;
+    agentMsg = '';
+    try {
+      selectedServer = (await apiRequest(`/api/v1/servers/${selectedServerId}/agent-update`, 'POST')).data;
+    } catch (e) {
+      agentMsg = e.message;
+    }
+    render();
+  }
+
+  async function requestAllAgentUpdates() {
+    try {
+      await apiRequest('/api/v1/servers/agent-update-all', 'POST');
+    } catch (e) {
+      error = e.message;
+    }
+    loadServers({ silent: true });
+  }
+
+  /* модалка живёт в <body>, поэтому периодическое обновление страницы её не перерисовывает */
+  function closeModal() {
+    if (!modalEl) return;
+    modalEl.remove();
+    modalEl = null;
+    window.PolarisBack?.pop('servers-modal');
+  }
+
+  function openModal(html, onAction) {
+    closeModal();
+    modalEl = document.createElement('div');
+    modalEl.className = 'tk-overlay';
+    modalEl.innerHTML = `<div class="tk-modal" role="dialog" aria-modal="true">${html}</div>`;
+    const openedAt = Date.now();
+    modalEl.addEventListener('click', (e) => {
+      if (e.target === modalEl && Date.now() - openedAt > 350) { closeModal(); return; }
+      const btn = e.target.closest('[data-sv]');
+      if (btn) { e.preventDefault(); onAction(btn.dataset.sv, btn); }
+    });
+    document.body.appendChild(modalEl);
+    window.PolarisBack?.push('servers-modal', closeModal);
+  }
+
+  function openAgentSettings() {
+    const s = selectedServer;
+    if (!s) return;
+    const cfg = s.agent_config_version > 0 ? s.agent_config : {};
+    const services = cfg.services ?? (s.services || []).map((x) => x.name);
+    openModal(`
+      <div class="tk-head"><h3>Настройки агента</h3></div>
+      <div class="tk-field"><label for="sv-services">Сервисы systemd</label>
+        <input id="sv-services" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="nginx, docker" value="${escapeHTML(services.join(', '))}" /></div>
+      <div class="tk-field"><label for="sv-hb">Heartbeat, секунд (15–3600)</label>
+        <input id="sv-hb" type="number" inputmode="numeric" min="15" max="3600" value="${escapeHTML(cfg.heartbeat_interval ?? 30)}" /></div>
+      <div class="tk-field"><label for="sv-mt">Метрики, секунд (30–3600)</label>
+        <input id="sv-mt" type="number" inputmode="numeric" min="30" max="3600" value="${escapeHTML(cfg.metrics_interval ?? 60)}" /></div>
+      <p class="metric-subtext">Агент применит настройки при ближайшем heartbeat, перезапуск не нужен.</p>
+      <p id="sv-error" class="st-modal-error" hidden></p>
+      <div class="tk-actions"><div class="tk-actions-row">
+        <button type="button" class="tk-btn primary" data-sv="save">Сохранить</button>
+        <button type="button" class="tk-btn" data-sv="close">Отмена</button>
+      </div></div>`, async (action, btn) => {
+      if (action === 'close') { closeModal(); return; }
+      if (action !== 'save') return;
+      const box = modalEl.querySelector('#sv-error');
+      const body = {
+        services: modalEl.querySelector('#sv-services').value.split(/[\s,]+/).filter(Boolean),
+        heartbeat_interval: Number(modalEl.querySelector('#sv-hb').value),
+        metrics_interval: Number(modalEl.querySelector('#sv-mt').value),
+      };
+      btn.disabled = true;
+      box.hidden = true;
+      try {
+        selectedServer = (await apiRequest(`/api/v1/servers/${selectedServerId}/agent-settings`, 'PUT', body)).data;
+        closeModal();
+        render();
+      } catch (e) {
+        box.textContent = e.message;
+        box.hidden = false;
+        btn.disabled = false;
+      }
+    });
+  }
+
   function renderServicesCard(s) {
     if (!s.services || !s.services.length) return '';
     const rows = s.services.map((svc) => {
@@ -567,6 +700,8 @@ window.ServersModule = (() => {
   /* ─── Handlers ─── */
   function goToList() {
     stopPolling();
+    closeModal();
+    agentMsg = '';
     view = 'list';
     tokenInfo = null;
     addForm = { name: '', address: '' };
@@ -643,6 +778,8 @@ window.ServersModule = (() => {
 
   function openServer(serverId) {
     stopPolling();
+    closeModal();
+    agentMsg = '';
     view = 'detail';
     selectedServerId = serverId;
     selectedServer = null;
@@ -692,6 +829,9 @@ window.ServersModule = (() => {
       if (action === 'regenerate-token') { event.preventDefault(); regenerateTokenFor(tokenInfo.server_id); return; }
       if (action === 'regenerate-token-for') { event.preventDefault(); regenerateTokenFor(btn.dataset.serverId); return; }
       if (action === 'delete-server') { event.preventDefault(); deleteServer(); return; }
+      if (action === 'update-agent') { event.preventDefault(); requestAgentUpdate(); return; }
+      if (action === 'update-all-agents') { event.preventDefault(); requestAllAgentUpdates(); return; }
+      if (action === 'agent-settings') { event.preventDefault(); openAgentSettings(); return; }
 
       const card = event.target.closest('[data-action="open-server"]');
       if (card) { event.preventDefault(); openServer(card.dataset.serverId); return; }

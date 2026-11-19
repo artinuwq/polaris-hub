@@ -96,9 +96,9 @@ stop_unit "$SERVICE_NAME"
 stop_unit "$AGENT_SERVICE"
 
 # Лёгкий агент: один файл + конфиг + системный пользователь.
-if [[ -d /opt/polaris-agent || -d /etc/polaris-agent ]]; then
-  echo "→ Удаляю Polaris Agent (/opt/polaris-agent, /etc/polaris-agent)"
-  rm -rf /opt/polaris-agent /etc/polaris-agent
+if [[ -d /opt/polaris-agent || -d /etc/polaris-agent || -d /var/lib/polaris-agent ]]; then
+  echo "→ Удаляю Polaris Agent (/opt/polaris-agent, /etc/polaris-agent, /var/lib/polaris-agent)"
+  rm -rf /opt/polaris-agent /etc/polaris-agent /var/lib/polaris-agent
 fi
 if id -u polaris-agent >/dev/null 2>&1; then
   userdel polaris-agent >/dev/null 2>&1 || true

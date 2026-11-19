@@ -138,6 +138,7 @@ echo
 AGENT_BIN_DIR="/opt/polaris-agent"
 AGENT_BIN="$AGENT_BIN_DIR/polaris-agent.py"
 AGENT_CONFIG_DIR="/etc/polaris-agent"
+AGENT_STATE_DIR="/var/lib/polaris-agent"   # скачанные обновления и настройки из Hub (unit: StateDirectory=)
 AGENT_CONFIG="$AGENT_CONFIG_DIR/config.json"
 AGENT_UNIT="polaris-agent-monitor"
 AGENT_USER="polaris-agent"
@@ -217,6 +218,9 @@ PY
     exit 1
   fi
 
+  # Откуда агент будет брать обновления по команде Hub: записывается в его config.json, Hub это поменять не может.
+  local update_url="${AGENT_URL:-$(agent_default_url)}"
+
   echo "→ Скачиваю агент (один файл)"
   mkdir -p "$AGENT_BIN_DIR"
   local tmp="$AGENT_BIN_DIR/.polaris-agent.new"
@@ -251,6 +255,7 @@ PY
   mkdir -p "$AGENT_CONFIG_DIR"
   local register_args=(register --hub "$AGENT_HUB_URL" --token "$AGENT_TOKEN" --config "$AGENT_CONFIG")
   [[ -n "$AGENT_SERVICES" ]] && register_args+=(--services "$AGENT_SERVICES")
+  [[ -n "$update_url" ]] && register_args+=(--update-url "$update_url")
   if ! PYTHONDONTWRITEBYTECODE=1 python3 "$AGENT_BIN" "${register_args[@]}"; then
     echo "✗ Не удалось зарегистрировать Agent. Проверьте:" >&2
     echo "  - URL Hub ($AGENT_HUB_URL)" >&2
@@ -279,6 +284,11 @@ Type=simple
 User=$AGENT_USER
 Group=$AGENT_USER
 Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# Обновление по команде Hub: агент кладёт скачанный файл в каталог состояния, а подменяет его этот
+# root-шаг (агент свой код менять не может). Не вышла на связь новая версия — откат на .prev.
+StateDirectory=polaris-agent
+StateDirectoryMode=0750
+ExecStartPre=+$py $AGENT_BIN apply-update --state-dir $AGENT_STATE_DIR
 ExecStart=$py $AGENT_BIN run --config $AGENT_CONFIG
 Restart=on-failure
 RestartSec=30

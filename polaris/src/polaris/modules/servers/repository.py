@@ -436,6 +436,87 @@ def delete_server(server_id: str) -> bool:
         return cursor.rowcount > 0
 
 
+# ─────────────────────────── Настройки и обновление агента ───────────────────────────
+
+def _settings_from_row(row: Any) -> dict[str, Any]:
+    try:
+        config = json.loads(row["config_json"] or "{}")
+    except ValueError:
+        config = {}
+    return {
+        "config": config if isinstance(config, dict) else {},
+        "config_version": int(row["config_version"] or 0),
+        "update_requested_at": row["update_requested_at"],
+        "update_result": row["update_result"] or "",
+        "update_detail": row["update_detail"] or "",
+        "update_result_at": row["update_result_at"],
+    }
+
+
+def get_agent_settings(server_id: str) -> dict[str, Any]:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM server_agent_settings WHERE server_id = ?", (server_id,)
+        ).fetchone()
+    if row:
+        return _settings_from_row(row)
+    return {"config": {}, "config_version": 0, "update_requested_at": None,
+            "update_result": "", "update_detail": "", "update_result_at": None}
+
+
+def save_agent_config(server_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    """Сохраняет настройки и увеличивает config_version — агент заметит это по heartbeat."""
+    now = now_iso()
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO server_agent_settings (server_id, config_json, config_version, updated_at)
+               VALUES (?, ?, 1, ?)
+               ON CONFLICT(server_id) DO UPDATE SET
+                   config_json = excluded.config_json,
+                   config_version = server_agent_settings.config_version + 1,
+                   updated_at = excluded.updated_at""",
+            (server_id, json.dumps(config, ensure_ascii=False), now),
+        )
+        row = conn.execute(
+            "SELECT * FROM server_agent_settings WHERE server_id = ?", (server_id,)
+        ).fetchone()
+    return _settings_from_row(row)
+
+
+def request_agent_update(server_ids: list[str]) -> int:
+    """Ставит флаг «обновись» — агент получит его в ответе на ближайший heartbeat."""
+    now = now_iso()
+    with get_db() as conn:
+        for server_id in server_ids:
+            conn.execute(
+                """INSERT INTO server_agent_settings (server_id, update_requested_at, updated_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(server_id) DO UPDATE SET
+                       update_requested_at = excluded.update_requested_at,
+                       updated_at = excluded.updated_at""",
+                (server_id, now, now),
+            )
+    return len(server_ids)
+
+
+def record_update_result(server_id: str, result: str, detail: str) -> None:
+    """Результат попытки обновления от агента; заодно снимает флаг запроса."""
+    now = now_iso()
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO server_agent_settings
+                   (server_id, update_result, update_detail, update_result_at, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(server_id) DO UPDATE SET
+                   update_requested_at = NULL,
+                   update_result = excluded.update_result,
+                   update_detail = excluded.update_detail,
+                   update_result_at = excluded.update_result_at,
+                   updated_at = excluded.updated_at""",
+            (server_id, result, detail, now, now),
+        )
+
+
 # ─────────────────────────── Registration tokens ───────────────────────────
 
 def create_registration_token(server_id: str, ttl_seconds: int) -> tuple[str, str, str]:

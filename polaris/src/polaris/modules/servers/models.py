@@ -33,6 +33,13 @@ class ServerCreate(BaseModel):
     address: str = ""
 
 
+class AgentSettingsUpdate(BaseModel):
+    """Настройки, которые Hub раздаёт агенту. Это данные, а не команды: агент проверяет их сам."""
+    services: list[str] = Field(default_factory=list)
+    heartbeat_interval: int = Field(30, ge=15, le=3600)
+    metrics_interval: int = Field(60, ge=30, le=3600)
+
+
 class ServerUpdate(BaseModel):
     name: str | None = None
     address: str | None = None
@@ -66,6 +73,15 @@ class ServerResponse(BaseModel):
     services: list[ServiceStatusOut] = Field(default_factory=list)
     created_at: str
     updated_at: str
+    # удалённое управление агентом
+    agent_config: dict[str, Any] = Field(default_factory=dict)
+    agent_config_version: int = 0
+    update_pending: bool = False
+    update_result: str = ""
+    update_detail: str = ""
+    update_result_at: str | None = None
+    latest_agent_version: str = ""
+    update_available: bool = False
 
     @classmethod
     def from_db_row(
@@ -73,6 +89,7 @@ class ServerResponse(BaseModel):
         row: dict[str, Any],
         services: list[dict[str, Any]] | None = None,
         latest_metric: dict[str, Any] | None = None,
+        agent_extra: dict[str, Any] | None = None,
     ) -> "ServerResponse":
         from datetime import datetime, timezone
 
@@ -121,6 +138,7 @@ class ServerResponse(BaseModel):
             services=[ServiceStatusOut(**s) for s in (services or [])],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            **(agent_extra or {}),
         )
 
 
@@ -196,6 +214,9 @@ class AgentRegisterResponse(BaseModel):
 class AgentHeartbeatRequest(BaseModel):
     agent_version: str = ""
     status: str = "online"
+    config_version: int = 0      # какую версию настроек агент сейчас применяет
+    update_result: str = ""      # updated | current | failed | rollback — итог последней попытки обновления
+    update_detail: str = ""
 
 
 class AgentServiceStatus(BaseModel):

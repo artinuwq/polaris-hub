@@ -359,3 +359,10 @@
 .servers-problem-row.is-warn { border-left-color: #f5b942; }
 .servers-problem-name { font-weight: 600; font-size: 0.9rem; }
 .servers-problem-text { color: var(--text-secondary); font-size: 0.8rem; }
+
+/* Agent: обновление и настройки */
+.servers-agent-line { margin: 6px 0 0; font-size: 0.85rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.servers-agent-line.is-error { color: var(--error); }
+.servers-agent-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.servers-update-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.servers-update-banner p { margin: 0; flex: 1 1 200px; }
