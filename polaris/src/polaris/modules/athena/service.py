@@ -8,8 +8,10 @@ from typing import Any
 from polaris.modules.athena import logic
 from polaris.modules.calendar import repository as calendar_repo
 from polaris.modules.finance import repository as finance_repo
+from polaris.modules.events import service as events
+from polaris.modules.events.models import EventCreate, EventUpdate
 from polaris.modules.todo import service as todo
-from polaris.modules.todo.models import TaskCreate
+from polaris.modules.todo.models import TaskCreate, TaskUpdate
 
 
 def _out(task: Any) -> dict[str, Any]:
@@ -60,6 +62,96 @@ def create_task(payload: dict[str, Any]) -> dict[str, Any]:
     normalized = logic.build_create_payload(payload, projects)
     created = todo.create_task(TaskCreate(**normalized))
     return _out(created)
+
+
+def _projects() -> list[dict[str, Any]]:
+    return [p.model_dump() for p in todo.get_full_task_list().projects]
+
+
+def update_task(task_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Частичное изменение. None — задачи нет. Статус `done` выставляет и время завершения (как в приложении)."""
+    if todo.get_task(task_id) is None:
+        return None
+    normalized = logic.build_update_payload(payload, _projects())
+    updated = todo.update_task(task_id, TaskUpdate(**normalized))
+    return _out(updated) if updated else None
+
+
+def complete_task(task_id: str) -> dict[str, Any] | None:
+    """Отметить выполненной (повторно — безопасно: время завершения не затирается)."""
+    return update_task(task_id, {"status": "done"})
+
+
+def delete_task(task_id: str) -> bool:
+    return todo.delete_task(task_id)
+
+
+# ─── напоминания задачи ───
+
+
+def _reminder_out(row: dict[str, Any]) -> dict[str, Any]:
+    return {"id": row["id"], "remind_at": row["remind_at"], "created_at": row["created_at"]}
+
+
+def list_reminders(task_id: str) -> list[dict[str, Any]] | None:
+    rows = todo.list_reminders(task_id)
+    return None if rows is None else [_reminder_out(r) for r in rows]
+
+
+def add_reminder(task_id: str, remind_at: str) -> dict[str, Any] | None:
+    """Добавить напоминание (время без пояса — время сервера). None — задачи нет."""
+    existing = todo.list_reminders(task_id)
+    if existing is None:
+        return None
+    when = logic.normalize_remind_at(remind_at)
+    if len(existing) >= logic.MAX_REMINDERS:
+        raise logic.ValidationFailed(f"у задачи уже {logic.MAX_REMINDERS} напоминаний — это предел")
+    created = todo.add_reminder(task_id, when)
+    return _reminder_out(created) if created else None
+
+
+def delete_reminder(task_id: str, reminder_id: str) -> bool:
+    return todo.delete_reminder(task_id, reminder_id)
+
+
+# ─── события календаря ───
+
+
+def _event_out(ev: Any) -> dict[str, Any]:
+    data = ev.model_dump() if hasattr(ev, "model_dump") else dict(ev)
+    data.pop("project_color", None)
+    return data
+
+
+def list_events(*, date_from: str | None = None, date_to: str | None = None, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    """События (только «настоящие», без задач и платежей), по дате и времени; записи без времени — после остальных."""
+    start, end = logic.validate_date(date_from or "", "date_from"), logic.validate_date(date_to or "", "date_to")
+    items = [_event_out(e) for e in events.get_all_events()]
+    items = [e for e in items if (not start or e["date"] >= start) and (not end or e["date"] <= end)]
+    items.sort(key=lambda e: (e["date"], e["time"] == "", e["time"], e["title"].lower()))
+    return {"items": logic.paginate(items, limit, offset), "total": len(items), "limit": limit, "offset": offset}
+
+
+def get_event(event_id: str) -> dict[str, Any] | None:
+    ev = events.get_event(event_id)
+    return _event_out(ev) if ev else None
+
+
+def create_event(payload: dict[str, Any]) -> dict[str, Any]:
+    return _event_out(events.create_event(EventCreate(**logic.build_event_payload(payload, _projects()))))
+
+
+def update_event(event_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    existing = events.get_event(event_id)
+    if existing is None:
+        return None
+    normalized = logic.build_event_update(payload, _projects(), existing.model_dump())
+    updated = events.update_event(event_id, EventUpdate(**normalized))
+    return _event_out(updated) if updated else None
+
+
+def delete_event(event_id: str) -> bool:
+    return events.delete_event(event_id)
 
 
 # ───────────────────────── Календарь ─────────────────────────

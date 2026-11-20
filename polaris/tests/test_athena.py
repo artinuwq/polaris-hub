@@ -377,3 +377,86 @@ def test_calendar_requires_token_and_validates(client):
     assert client.get("/api/athena/calendar/day?date=31.10.2026").status_code == 422
     assert client.get("/api/athena/calendar/day?date=2026-11-01&types=meeting").status_code == 422
     assert client.get("/api/athena/calendar/upcoming?days=91").status_code == 422
+
+
+# ───────────── изменение задач, напоминания, события (HTTP) ─────────────
+
+
+def test_edit_complete_and_delete_task(client):
+    created = client.post("/api/athena/tasks", json={"title": "Отчёт", "date": "2026-11-01", "priority": "normal"}).json()
+    tid = created["id"]
+
+    r = client.patch(f"/api/athena/tasks/{tid}", json={"title": "Квартальный отчёт", "priority": "fire", "date": ""})
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["title"], body["priority"], body["date"], body["important"]) == ("Квартальный отчёт", "fire", "", True)
+
+    assert client.patch(f"/api/athena/tasks/{tid}", json={}).status_code == 422
+    assert client.patch(f"/api/athena/tasks/{tid}", json={"priority": "urgent"}).status_code == 422
+    assert client.patch("/api/athena/tasks/нет", json={"title": "x"}).status_code == 404
+
+    done = client.post(f"/api/athena/tasks/{tid}/complete").json()
+    assert done["status"] == "done" and done["done_at"] and done["important"] is False
+
+    assert client.delete(f"/api/athena/tasks/{tid}").json() == {"deleted": True, "id": tid}
+    assert client.get(f"/api/athena/tasks/{tid}").status_code == 404
+    assert client.delete(f"/api/athena/tasks/{tid}").status_code == 404
+
+
+def test_task_reminders(client):
+    tid = client.post("/api/athena/tasks", json={"title": "Позвонить"}).json()["id"]
+    r = client.post(f"/api/athena/tasks/{tid}/reminders", json={"remind_at": "2099-03-04T09:15"})
+    assert r.status_code == 201
+    reminder = r.json()
+    assert set(reminder) == {"id", "remind_at", "created_at"}
+
+    listing = client.get(f"/api/athena/tasks/{tid}/reminders").json()
+    assert listing["total"] == 1 and listing["items"][0]["id"] == reminder["id"]
+
+    day = client.get("/api/athena/calendar/day", params={"date": "2099-03-04", "types": "reminder"}).json()
+    assert [e["time"] for e in day["events"]] == ["09:15"]
+
+    assert client.post(f"/api/athena/tasks/{tid}/reminders", json={"remind_at": "завтра"}).status_code == 422
+    assert client.post("/api/athena/tasks/нет/reminders", json={"remind_at": "2099-03-04T09:15"}).status_code == 404
+    assert client.delete(f"/api/athena/tasks/{tid}/reminders/{reminder['id']}").json()["deleted"] is True
+    assert client.delete(f"/api/athena/tasks/{tid}/reminders/{reminder['id']}").status_code == 404
+
+
+def test_events_crud(client):
+    r = client.post("/api/athena/events", json={"title": "Созвон", "date": "2099-05-05", "time": "10:00", "end_time": "11:00"})
+    assert r.status_code == 201
+    ev = r.json()
+    assert (ev["title"], ev["time"], ev["end_time"]) == ("Созвон", "10:00", "11:00")
+
+    day = client.get("/api/athena/calendar/day", params={"date": "2099-05-05"}).json()
+    assert [e["source_id"] for e in day["events"] if e["type"] == "event"] == [ev["id"]]
+
+    assert client.post("/api/athena/events", json={"title": "x", "date": "2099-05-05", "end_time": "10:00"}).status_code == 422
+    assert client.post("/api/athena/events", json={"title": "x"}).status_code == 422
+
+    upd = client.patch(f"/api/athena/events/{ev['id']}", json={"title": "Созвон команды", "time": "", "end_time": ""}).json()
+    assert (upd["title"], upd["time"], upd["end_time"]) == ("Созвон команды", "", "")
+    assert client.patch(f"/api/athena/events/{ev['id']}", json={}).status_code == 422
+    assert client.patch("/api/athena/events/нет", json={"title": "x"}).status_code == 404
+
+    page = client.get("/api/athena/events", params={"date_from": "2099-05-01", "date_to": "2099-05-31"}).json()
+    assert page["total"] == 1 and page["items"][0]["id"] == ev["id"]
+    assert client.get("/api/athena/events", params={"date_from": "вчера"}).status_code == 422
+
+    assert client.delete(f"/api/athena/events/{ev['id']}").json() == {"deleted": True, "id": ev["id"]}
+    assert client.get(f"/api/athena/events/{ev['id']}").status_code == 404
+
+
+def test_new_write_routes_require_token(client):
+    anon = {"Authorization": ""}
+    calls = [
+        ("PATCH", "/api/athena/tasks/x", {"title": "a"}), ("POST", "/api/athena/tasks/x/complete", None),
+        ("DELETE", "/api/athena/tasks/x", None), ("GET", "/api/athena/tasks/x/reminders", None),
+        ("POST", "/api/athena/tasks/x/reminders", {"remind_at": "2099-01-01T10:00"}),
+        ("DELETE", "/api/athena/tasks/x/reminders/y", None), ("GET", "/api/athena/events", None),
+        ("GET", "/api/athena/events/x", None), ("POST", "/api/athena/events", {"title": "a", "date": "2099-01-01"}),
+        ("PATCH", "/api/athena/events/x", {"title": "a"}), ("DELETE", "/api/athena/events/x", None),
+    ]
+    for method, url, payload in calls:
+        r = client.request(method, url, json=payload, headers=anon)
+        assert r.status_code == 401, (method, url)

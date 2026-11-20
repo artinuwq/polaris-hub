@@ -25,6 +25,24 @@ class AthenaTaskCreate(BaseModel):
     checklist: list[str] = Field(default_factory=list, description="Пункты чеклиста текстом")
 
 
+class AthenaTaskUpdate(BaseModel):
+    """Изменение задачи: передайте только то, что меняется. null — не менять, "" — очистить (дата, время, проект…)."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    description: str | None = None
+    date: str | None = Field(default=None, description="YYYY-MM-DD или \"\" — убрать срок")
+    time: str | None = Field(default=None, description="HH:MM или \"\"")
+    priority: str | None = Field(default=None, description="fire | important | normal | someday")
+    energy: str | None = Field(default=None, description="quick | medium | large")
+    repeat: str | None = Field(default=None, description="never | daily | weekly | monthly | yearly | custom")
+    status: str | None = Field(default=None, description="todo | in-progress | waiting | done")
+    tags: list[str] | None = Field(default=None, description="Полный новый список тегов")
+    project: str | None = Field(default=None, description="Название проекта или \"\" — убрать")
+    checklist: list[str | AthenaChecklistItem] | None = Field(
+        default=None, description="Полный новый чеклист: строки или {text, done} (как в ответе API)"
+    )
+
+
 class AthenaTask(BaseModel):
     id: str
     title: str
@@ -96,3 +114,67 @@ class AthenaCalendarNext(BaseModel):
     total: int
     events: list[AthenaCalendarEvent]
 
+
+
+class AthenaReminderCreate(BaseModel):
+    remind_at: str = Field(..., description="Дата и время: 2026-11-05T09:00 (время сервера) или с поясом: 2026-11-05T09:00+03:00")
+
+
+class AthenaReminder(BaseModel):
+    id: str
+    remind_at: str = Field(description="ISO со временем сервера")
+    created_at: str
+
+
+class AthenaReminderList(BaseModel):
+    items: list[AthenaReminder]
+    total: int
+
+
+class AthenaDeleted(BaseModel):
+    deleted: bool = True
+    id: str
+
+
+class AthenaEventCreate(BaseModel):
+    """Создание события: обязательны title и date. Без time событие считается «на весь день»."""
+
+    title: str = Field(..., min_length=1, max_length=500)
+    date: str = Field(..., description="YYYY-MM-DD")
+    time: str = Field(default="", description="Начало, HH:MM")
+    end_time: str = Field(default="", description="Конец, HH:MM (позже начала; нужен time)")
+    description: str = ""
+    project: str = Field(default="", description="Название проекта (цвет подставится, если проект есть)")
+    tags: list[str] = Field(default_factory=list, description="Теги без #")
+
+
+class AthenaEventUpdate(BaseModel):
+    """Изменение события: передайте только то, что меняется. null — не менять, "" — очистить (время, конец, проект)."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    date: str | None = None
+    time: str | None = None
+    end_time: str | None = None
+    description: str | None = None
+    project: str | None = None
+    tags: list[str] | None = None
+
+
+class AthenaEvent(BaseModel):
+    id: str
+    title: str
+    description: str
+    date: str
+    time: str
+    end_time: str
+    project: str
+    tags: list[str]
+    created_at: str
+    updated_at: str
+
+
+class AthenaEventList(BaseModel):
+    items: list[AthenaEvent]
+    total: int
+    limit: int
+    offset: int

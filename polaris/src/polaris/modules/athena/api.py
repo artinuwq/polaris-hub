@@ -12,9 +12,18 @@ from polaris.modules.athena.models import (
     AthenaCalendarDayResponse,
     AthenaCalendarNext,
     AthenaCalendarPeriod,
+    AthenaDeleted,
+    AthenaEvent,
+    AthenaEventCreate,
+    AthenaEventList,
+    AthenaEventUpdate,
+    AthenaReminder,
+    AthenaReminderCreate,
+    AthenaReminderList,
     AthenaTask,
     AthenaTaskCreate,
     AthenaTaskList,
+    AthenaTaskUpdate,
 )
 from polaris.shared.auth import require_admin
 
@@ -98,6 +107,96 @@ def create_task(body: AthenaTaskCreate, _: None = Depends(require_agent)):
         return service.create_task(body.model_dump())
     except logic.ValidationFailed as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _validated(call, *args, **kwargs):
+    """Ошибки проверки — 422 с понятным текстом для агента."""
+    try:
+        return call(*args, **kwargs)
+    except logic.ValidationFailed as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _found(value, what: str = "Task"):
+    if value is None:
+        raise HTTPException(status_code=404, detail=f"{what} not found")
+    return value
+
+
+@router.patch("/tasks/{task_id}", response_model=AthenaTask)
+def update_task(task_id: str, body: AthenaTaskUpdate, _: None = Depends(require_agent)):
+    """Изменить задачу: передайте только изменяемые поля. status=done завершает задачу."""
+    return _found(_validated(service.update_task, task_id, body.model_dump(exclude_unset=True)))
+
+
+@router.post("/tasks/{task_id}/complete", response_model=AthenaTask)
+def complete_task(task_id: str, _: None = Depends(require_agent)):
+    """Отметить задачу выполненной."""
+    return _found(service.complete_task(task_id))
+
+
+@router.delete("/tasks/{task_id}", response_model=AthenaDeleted)
+def delete_task(task_id: str, _: None = Depends(require_agent)):
+    if not service.delete_task(task_id):
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"deleted": True, "id": task_id}
+
+
+@router.get("/tasks/{task_id}/reminders", response_model=AthenaReminderList)
+def list_task_reminders(task_id: str, _: None = Depends(require_agent)):
+    items = _found(service.list_reminders(task_id))
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/tasks/{task_id}/reminders", response_model=AthenaReminder, status_code=201)
+def add_task_reminder(task_id: str, body: AthenaReminderCreate, _: None = Depends(require_agent)):
+    """Добавить напоминание: remind_at — дата и время (без пояса — время сервера)."""
+    return _found(_validated(service.add_reminder, task_id, body.remind_at))
+
+
+@router.delete("/tasks/{task_id}/reminders/{reminder_id}", response_model=AthenaDeleted)
+def delete_task_reminder(task_id: str, reminder_id: str, _: None = Depends(require_agent)):
+    if not service.delete_reminder(task_id, reminder_id):
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return {"deleted": True, "id": reminder_id}
+
+
+# ─── события календаря (чтение и изменение) ───
+
+
+@router.get("/events", response_model=AthenaEventList)
+def list_events(
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _: None = Depends(require_agent),
+):
+    """Только события (без задач и платежей), по дате и времени."""
+    return _validated(service.list_events, date_from=date_from, date_to=date_to, limit=limit, offset=offset)
+
+
+@router.get("/events/{event_id}", response_model=AthenaEvent)
+def get_event(event_id: str, _: None = Depends(require_agent)):
+    return _found(service.get_event(event_id), "Event")
+
+
+@router.post("/events", response_model=AthenaEvent, status_code=201)
+def create_event(body: AthenaEventCreate, _: None = Depends(require_agent)):
+    """Создать событие: обязательны title и date; time/end_time — по желанию (без времени — на весь день)."""
+    return _validated(service.create_event, body.model_dump())
+
+
+@router.patch("/events/{event_id}", response_model=AthenaEvent)
+def update_event(event_id: str, body: AthenaEventUpdate, _: None = Depends(require_agent)):
+    return _found(_validated(service.update_event, event_id, body.model_dump(exclude_unset=True)), "Event")
+
+
+@router.delete("/events/{event_id}", response_model=AthenaDeleted)
+def delete_event(event_id: str, _: None = Depends(require_agent)):
+    if not service.delete_event(event_id):
+        raise HTTPException(status_code=404, detail="Event not found")
+    return {"deleted": True, "id": event_id}
 
 
 # ─── календарь (только чтение) ───
