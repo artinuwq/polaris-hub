@@ -54,6 +54,22 @@ class FileManagerTests(AdminTestCase):
         self.assertEqual(self.names(self.admin.bucket_browse("files", "photos/2026/")), ([], []))
         self.admin.folder_create("files", "photos/2026/")  # повторное создание безвредно
 
+    def test_empty_file_can_be_created_and_is_listed(self):
+        """«Создать файл» в интерфейсе — это загрузка пустого тела по ключу."""
+        info = self.admin.object_upload("files", "docs/new.txt", io.BytesIO(b""))
+        self.assertEqual((info["key"], info["size"]), ("docs/new.txt", 0))
+        inside = self.admin.bucket_browse("files", "docs/")
+        self.assertIn(("new.txt", 0), [(o["name"], o["size"]) for o in inside["objects"]])
+
+    def test_exact_key_probe_finds_the_file_before_longer_names(self):
+        """Перед созданием интерфейс проверяет, нет ли уже такого файла: тот же запрос, что у списка объектов."""
+        for key in ("docs/n.txt.bak", "docs/n.txt"):
+            self.core.put_object("files", key, b"x")
+        found = self.admin.bucket_objects("files", prefix="docs/n.txt", limit=1)["objects"]
+        self.assertEqual([o["key"] for o in found], ["docs/n.txt"])  # точное имя идёт раньше «n.txt.bak»
+        missing = self.admin.bucket_objects("files", prefix="docs/none.txt", limit=1)["objects"]
+        self.assertEqual(missing, [])
+
     def test_folder_delete_removes_only_that_folder(self):
         self.admin.folder_create("files", "docs/empty/")
         result = self.admin.folder_delete("files", "docs/")

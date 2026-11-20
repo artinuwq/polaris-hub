@@ -1,6 +1,8 @@
 /* Files — файловый менеджер поверх Polaris Storage.
    Корень — список bucket-ов, дальше «папки» (общие префиксы ключей по «/»). Можно заходить в папки, создавать их,
    загружать файлы (кнопкой или перетаскиванием, с прогрессом), скачивать и удалять файлы и папки целиком.
+   Новые bucket, папка и пустой файл создаются прямо в списке, как в проводнике: появляется строка с полем имени,
+   справа — ✓ (создать) и ✕ (отмена); Enter и Esc делают то же самое.
    Ходит в те же /api/storage/* (только админ): browse, folders, upload, objects/{id}. */
 window.FilesModule = (() => {
   'use strict';
@@ -14,6 +16,8 @@ window.FilesModule = (() => {
   const ICON_FILE_PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M14 3v5h5"></path><path d="M12 12v6M9 15h6"></path></svg>';
   const ICON_FOLDER_PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path><path d="M12 11v5M9.5 13.5h5"></path></svg>';
   const ICON_REFRESH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-4.5L4 9"></path><path d="M4 4v5h5"></path><path d="M4 13a8 8 0 0 0 14 4.5l2-2.5"></path><path d="M20 20v-5h-5"></path></svg>';
+  const ICON_CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg>';
+  const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>';
   const ICON_FILE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M14 3v5h5"></path></svg>';
 
   let container = null;
@@ -29,6 +33,7 @@ window.FilesModule = (() => {
     folders: [], objects: [], cursor: null,
     loading: false, error: '',
     uploads: [],              // [{name, size, pct, state: wait|run|ok|error, error}]
+    draft: null,              // новая строка со вводом имени: {kind: bucket|folder|file, value, error, busy}
   };
 
   /* ─── утилиты ─── */
@@ -210,34 +215,6 @@ window.FilesModule = (() => {
     if (box) { box.textContent = text || ''; box.hidden = !text; }
   }
 
-  function promptModal({ title, label, placeholder, hint, confirmLabel, onSubmit }) {
-    openModal(`
-      <div class="tk-head"><h3>${escapeHTML(title)}</h3></div>
-      <div class="tk-field"><label for="fmm-input">${escapeHTML(label)}</label>
-        <input id="fmm-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${escapeHTML(placeholder || '')}" /></div>
-      ${hint ? `<p class="tk-desc">${escapeHTML(hint)}</p>` : ''}
-      <p id="fmm-error" class="st-modal-error" hidden></p>
-      <div class="tk-actions"><div class="tk-actions-row">
-        <button type="button" class="tk-btn primary" data-fmm="submit">${escapeHTML(confirmLabel)}</button>
-        <button type="button" class="tk-btn" data-fmm="close">Отмена</button>
-      </div></div>`, async (action, btn) => {
-      if (action === 'close') { closeModal(); return; }
-      if (action !== 'submit') return;
-      const input = overlayEl.querySelector('#fmm-input');
-      const submit = overlayEl.querySelector('[data-fmm="submit"]');
-      submit.disabled = true;
-      try {
-        await onSubmit(input.value.trim());
-        closeModal();
-      } catch (e) {
-        const first = Object.values(e.errors || {})[0];
-        modalError(first || errText(e));
-        submit.disabled = false;
-      }
-    });
-    overlayEl.querySelector('#fmm-input')?.focus();
-  }
-
   function confirmModal({ title, text, confirmLabel, onConfirm }) {
     openModal(`
       <div class="tk-head"><h3>${escapeHTML(title)}</h3></div>
@@ -273,10 +250,39 @@ window.FilesModule = (() => {
     return `<nav class="fm-crumbs" aria-label="Путь">${items.join('<span class="fm-sep">/</span>')}</nav>`;
   }
 
+  const DRAFT = {
+    bucket: { icon: ICON_FOLDER, label: 'Имя bucket', placeholder: 'my-files',
+      hint: '3–63 символа: строчные латинские буквы, цифры, «-» и «.»' },
+    folder: { icon: ICON_FOLDER, label: 'Имя папки', placeholder: 'photos',
+      hint: 'Можно сразу вложенную: photos/2026' },
+    file: { icon: ICON_FILE, label: 'Имя файла', placeholder: 'notes.txt',
+      hint: 'Будет создан пустой файл' },
+  };
+
+  /* Новая строка: вместо названия — поле ввода, вместо «скачать/удалить» — ✓ и ✕ */
+  function draftRow() {
+    const d = S.draft;
+    if (!d) return '';
+    const cfg = DRAFT[d.kind];
+    const off = d.busy ? 'disabled' : '';
+    return `
+      <div class="fm-row is-draft">
+        <span class="fm-icon">${cfg.icon}</span>
+        <span class="fm-main">
+          <input id="fm-draft" class="fm-draft-input" type="text" value="${escapeHTML(d.value)}" placeholder="${escapeHTML(cfg.placeholder)}" aria-label="${escapeHTML(cfg.label)}" aria-describedby="fm-draft-hint" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="255" ${off} />
+          <span id="fm-draft-hint" class="fm-meta${d.error ? ' is-error' : ''}"${d.error ? ' role="alert"' : ''}>${escapeHTML(d.error || cfg.hint)}</span>
+        </span>
+        <span class="fm-actions">
+          <button type="button" class="fm-ibtn is-confirm" data-fm="draft-ok" aria-label="Создать" title="Создать" ${off}>${ICON_CHECK}</button>
+          <button type="button" class="fm-ibtn" data-fm="draft-cancel" aria-label="Отмена" title="Отмена" ${off}>${ICON_CLOSE}</button>
+        </span>
+      </div>`;
+  }
+
   function viewBuckets() {
     if (S.error) return `<p class="st-error">${escapeHTML(S.error)}</p><button type="button" class="st-btn" data-fm="reload">Повторить</button>`;
     if (!S.buckets) return '<p class="st-empty">Загрузка…</p>';
-    const rows = S.buckets.map((b) => `
+    const rows = draftRow() + S.buckets.map((b) => `
       <div class="fm-row is-folder" data-fm="open-bucket" data-bucket="${escapeHTML(b.name)}">
         <span class="fm-icon">${ICON_FOLDER}</span>
         <span class="fm-main"><span class="fm-name">${escapeHTML(b.name)}</span>
@@ -341,7 +347,7 @@ window.FilesModule = (() => {
 
   function viewFolder() {
     const byName = (a, b) => a.name.localeCompare(b.name, 'ru', { numeric: true });
-    const rows = [...S.folders].sort(byName).map(folderRow).join('') + [...S.objects].sort(byName).map(fileRow).join('');
+    const rows = draftRow() + [...S.folders].sort(byName).map(folderRow).join('') + [...S.objects].sort(byName).map(fileRow).join('');
     let body;
     if (S.error) body = `<p class="st-error">${escapeHTML(S.error)}</p><button type="button" class="st-btn" data-fm="reload">Повторить</button>`;
     else if (S.loading && !rows) body = '<p class="st-empty">Загрузка…</p>';
@@ -358,9 +364,15 @@ window.FilesModule = (() => {
 
   function render() {
     if (!container) return;
+    const field = container.querySelector('#fm-draft');
+    const caret = field && document.activeElement === field ? [field.selectionStart, field.selectionEnd] : null;
     container.innerHTML = `<div id="fm-msg" class="st-msg" hidden></div>${S.bucket ? viewFolder() : viewBuckets()}`;
     renderNotice();
     renderUploads();
+    if (caret) {  // перерисовка (загрузка списка, прогресс) не должна выбивать из ввода имени
+      const again = container.querySelector('#fm-draft');
+      if (again && !again.disabled) { again.focus({ preventScroll: true }); again.setSelectionRange(...caret); }
+    }
   }
 
   function renderUploads() {
@@ -420,35 +432,113 @@ window.FilesModule = (() => {
     S.bucket = bucket;
     S.prefix = prefix;
     S.error = '';
+    S.draft = null;
     notice = null;
     if (bucket) loadFolder(); else { S.buckets = null; render(); loadBuckets(); }
   }
 
   /* ─── действия ─── */
-  function openNewBucket() {
-    promptModal({
-      title: 'Новый bucket', label: 'Имя bucket', placeholder: 'my-files', confirmLabel: 'Создать',
-      hint: '3–63 символа: строчные латинские буквы, цифры, «-» и «.».',
-      onSubmit: async (name) => {
-        await api('/api/storage/buckets', 'POST', { name });
-        await loadBuckets();
-        setNotice('ok', `Bucket «${name}» создан`);
-      },
-    });
+  /* ─── создание прямо в списке ─── */
+  function focusDraft() {
+    const field = container?.querySelector('#fm-draft');
+    if (!field || field.disabled) return;
+    field.focus({ preventScroll: true });
+    field.setSelectionRange(field.value.length, field.value.length);
+    field.closest('.fm-row')?.scrollIntoView?.({ block: 'nearest' });
   }
 
-  function openNewFolder() {
-    promptModal({
-      title: 'Новая папка', label: 'Имя папки', placeholder: 'photos', confirmLabel: 'Создать',
-      hint: 'Можно сразу вложенную: «photos/2026». Пустая папка хранится как маркер и видна в этом списке и в S3.',
-      onSubmit: async (name) => {
-        const clean = name.split('/').map((p) => p.trim()).filter(Boolean).join('/');
-        if (!clean) throw new ApiError('Введите имя папки', 422);
-        await api(`/api/storage/buckets/${enc(S.bucket)}/folders`, 'POST', { prefix: `${S.prefix}${clean}/` });
-        await loadFolder();
-        setNotice('ok', `Папка «${clean}» создана`);
-      },
-    });
+  function startDraft(kind) {
+    setFab(false);
+    notice = null;
+    S.draft = { kind, value: '', error: '', busy: false };
+    render();
+    focusDraft();  // в том же обработчике нажатия — иначе мобильная клавиатура не откроется
+  }
+
+  function cancelDraft() {
+    if (!S.draft) return;
+    S.draft = null;
+    render();
+  }
+
+  function onInput(e) {
+    if (e.target.id !== 'fm-draft' || !S.draft) return;
+    S.draft.value = e.target.value;
+    if (S.draft.error) {  // ошибка относилась к прежнему тексту
+      S.draft.error = '';
+      const hint = container.querySelector('#fm-draft-hint');
+      if (hint) { hint.textContent = DRAFT[S.draft.kind].hint; hint.classList.remove('is-error'); hint.removeAttribute('role'); }
+    }
+  }
+
+  /* Проверка до обращения к серверу: мгновенный ответ и без лишних запросов. Окончательно решает сервер. */
+  function checkDraft(kind, raw) {
+    const name = raw.trim();
+    if (!name) return { error: 'Введите имя' };
+    if (kind === 'bucket') {
+      if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(name) || /^\d+\.\d+\.\d+\.\d+$/.test(name)) {
+        return { error: 'Имя bucket: 3–63 символа, строчные латинские буквы, цифры, «-» и «.»; начало и конец — буква или цифра' };
+      }
+      if ((S.buckets || []).some((b) => b.name === name)) return { error: 'Bucket с таким именем уже есть' };
+      return { name };
+    }
+    if (kind === 'folder') {
+      const clean = name.split('/').map((p) => p.trim()).filter(Boolean).join('/');
+      if (!clean) return { error: 'Введите имя папки' };
+      if (clean.split('/').some((p) => p === '.' || p === '..')) return { error: 'Сегменты «.» и «..» запрещены' };
+      if (!clean.includes('/') && S.folders.some((f) => f.name.replace(/\/$/, '') === clean)) return { error: 'Папка с таким именем уже есть' };
+      return { name: clean };
+    }
+    if (name.includes('/')) return { error: 'В имени файла нельзя использовать «/»' };
+    if (name === '.' || name === '..') return { error: 'Недопустимое имя файла' };
+    if (S.objects.some((o) => o.name === name)) return { error: 'Файл с таким именем уже есть' };
+    return { name };
+  }
+
+  function showDraftError(text) {
+    if (!S.draft) return;
+    S.draft.error = text;
+    const hint = container?.querySelector('#fm-draft-hint');
+    if (hint) { hint.textContent = text; hint.classList.add('is-error'); hint.setAttribute('role', 'alert'); }
+    container?.querySelector('#fm-draft')?.focus({ preventScroll: true });
+  }
+
+  async function submitDraft() {
+    const d = S.draft;
+    if (!d || d.busy) return;
+    const field = container?.querySelector('#fm-draft');
+    if (field) d.value = field.value;
+    const check = checkDraft(d.kind, d.value);
+    if (check.error) { showDraftError(check.error); return; }
+
+    d.busy = true;
+    render();  // строка блокируется, пока идёт запрос
+    const { bucket, prefix } = S;
+    try {
+      if (d.kind === 'bucket') {
+        await api('/api/storage/buckets', 'POST', { name: check.name });
+      } else if (d.kind === 'folder') {
+        await api(`/api/storage/buckets/${enc(bucket)}/folders`, 'POST', { prefix: `${prefix}${check.name}/` });
+      } else {
+        const key = `${prefix}${check.name}`;
+        // список мог быть загружен не целиком, а загрузка по существующему ключу молча перезаписывает файл
+        const probe = await api(`/api/storage/buckets/${enc(bucket)}/objects?prefix=${enc(key)}&limit=1`);
+        if ((probe.objects || [])[0]?.key === key) throw new ApiError('Файл с таким именем уже есть', 409);
+        await xhrUpload(bucket, key, new File([], check.name), () => {});
+      }
+    } catch (e) {
+      if (S.draft !== d || !container) return;
+      d.busy = false;
+      d.error = Object.values(e.errors || {})[0] || errText(e);
+      render();
+      focusDraft();
+      return;
+    }
+    if (S.draft !== d || !container) return;  // пока ждали ответа, ушли в другое место
+    S.draft = null;
+    if (d.kind === 'bucket') await loadBuckets(); else await loadFolder();
+    const done = { bucket: `Bucket «${check.name}» создан`, folder: `Папка «${check.name}» создана`, file: `Файл «${check.name}» создан` };
+    setNotice('ok', done[d.kind]);
   }
 
   function confirmDeleteFile(id, name) {
@@ -527,11 +617,13 @@ window.FilesModule = (() => {
       case 'go': return go(d.bucket, d.prefix);
       case 'fab-toggle': return setFab(!container.querySelector('#fm-fab')?.classList.contains('is-open'));
       case 'fab-close': return setFab(false);
-      case 'new-file': setFab(false); return setNotice('ok', 'Создание файла пока не реализовано');
+      case 'new-file': return startDraft('file');
       case 'reload': setFab(false); return reload();
       case 'more': return loadFolder({ append: true });
-      case 'new-bucket': return openNewBucket();
-      case 'new-folder': setFab(false); return openNewFolder();
+      case 'new-bucket': return startDraft('bucket');
+      case 'new-folder': return startDraft('folder');
+      case 'draft-ok': return submitDraft();
+      case 'draft-cancel': return cancelDraft();
       case 'pick': setFab(false); return container.querySelector('#fm-file')?.click();
       case 'download': return downloadFile(d.id, d.name);
       case 'delete-file': return confirmDeleteFile(d.id, d.name);
@@ -574,7 +666,15 @@ window.FilesModule = (() => {
     if (boundTo !== el) {
       el.addEventListener('click', onClick);
       el.addEventListener('change', onChange);
-      el.addEventListener('keydown', (e) => { if (e.key === 'Escape') setFab(false); });
+      el.addEventListener('input', onInput);
+      el.addEventListener('keydown', (e) => {
+        if (e.target.id === 'fm-draft') {
+          if (e.isComposing) return;  // подтверждение ввода в IME — не Enter для формы
+          if (e.key === 'Enter') { e.preventDefault(); submitDraft(); } else if (e.key === 'Escape') { e.preventDefault(); cancelDraft(); }
+          return;
+        }
+        if (e.key === 'Escape') setFab(false);
+      });
       el.addEventListener('dragover', onDragOver);
       el.addEventListener('dragleave', onDragLeave);
       el.addEventListener('drop', onDrop);
@@ -590,7 +690,7 @@ window.FilesModule = (() => {
     container = null;
     boundTo = null;
     loadToken += 1;
-    Object.assign(S, { buckets: null, bucket: '', prefix: '', folders: [], objects: [], cursor: null, loading: false, error: '' });
+    Object.assign(S, { buckets: null, bucket: '', prefix: '', folders: [], objects: [], cursor: null, loading: false, error: '', draft: null });
     notice = null;
   }
 
