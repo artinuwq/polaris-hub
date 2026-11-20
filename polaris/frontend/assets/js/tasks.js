@@ -891,7 +891,7 @@ window.TasksModule = (() => {
       </div>`).join('');
     updateOverlay(OV_REMIND_LIST, `
       <div class="tk-head"><h3>Напоминания</h3></div>
-      ${rows ? `<div class="tk-remind-list">${rows}</div>` : '<p class="tk-desc">Напоминаний пока нет.</p>'}
+      ${rows ? `<div class="tk-remind-list">${rows}</div>` : '<p class="tk-desc">Напоминаний пока нет</p>'}
       <div class="tk-actions"><div class="tk-actions-row">
         <button class="tk-btn primary" type="button" data-action="tk-rl-add">+ Добавить</button>
         <button class="tk-btn" type="button" data-action="tk-rl-close">Закрыть</button>

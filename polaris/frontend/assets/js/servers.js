@@ -15,8 +15,8 @@ window.ServersModule = (() => {
 
   const STATUS_LABELS = {
     pending: 'Ждёт агента',
-    online: 'Online',
-    offline: 'Offline',
+    online: 'В сети',
+    offline: 'Не в сети',
     error: 'Ошибка',
   };
 
@@ -29,7 +29,7 @@ window.ServersModule = (() => {
   };
   const statusDot = (kind) => `<span class="dot dot-${kind || 'off'}" aria-hidden="true"></span>`;
 
-  const SERVICE_LABELS = { running: 'running', stopped: 'stopped', failed: 'failed', unknown: 'unknown' };
+  const SERVICE_LABELS = { running: 'работает', stopped: 'остановлен', failed: 'сбой', unknown: 'неизвестно' };
 
   /* ─── State ─── */
   let view = 'list'; // "list" | "add" | "detail"
@@ -87,7 +87,7 @@ window.ServersModule = (() => {
     const items = [
       ['CPU', 'cpu', s.cpu_usage],
       ['RAM', 'ram', s.mem_percent],
-      ['Disk', 'disk', s.disk_percent],
+      ['Диск', 'disk', s.disk_percent],
     ];
     return items
       .map(([label, kind, value]) => `<span class="servers-metric is-${metricLevel(kind, value)}"><span class="servers-metric-label">${label}</span><span class="servers-metric-value">${pct(value)}</span></span>`)
@@ -153,7 +153,7 @@ window.ServersModule = (() => {
 
   function formatEventType(type) {
     const map = {
-      agent_offline: 'Agent offline',
+      agent_offline: 'Агент не в сети',
       disk_threshold: 'Диск почти заполнен',
       service_down: 'Сервис не работает',
     };
@@ -299,7 +299,7 @@ window.ServersModule = (() => {
       if (s.status === 'offline') {
         out.push({ id: s.id, name: s.name, text: 'Не в сети', level: 'bad' });
       } else if (s.status === 'online') {
-        [['CPU', 'cpu', s.cpu_usage], ['RAM', 'ram', s.mem_percent], ['Disk', 'disk', s.disk_percent]].forEach(([label, kind, value]) => {
+        [['CPU', 'cpu', s.cpu_usage], ['RAM', 'ram', s.mem_percent], ['Диск', 'disk', s.disk_percent]].forEach(([label, kind, value]) => {
           if (metricLevel(kind, value) === 'bad') {
             out.push({ id: s.id, name: s.name, text: `${label} ${pct(value)} — критическая нагрузка`, level: 'bad' });
           }
@@ -431,8 +431,8 @@ window.ServersModule = (() => {
         ${renderHeader(true)}
         <div class="card servers-card span-12">
           <h3 class="finance-section-title">${escapeHTML(tokenInfo.name || 'Новый сервер')}</h3>
-          <p class="servers-waiting-status">${statusDot('warn')}Waiting for agent</p>
-          <p class="metric-subtext">Установите Polaris Agent на сервере, чтобы он появился здесь online.</p>
+          <p class="servers-waiting-status">${statusDot('warn')}Ждём агента</p>
+          <p class="metric-subtext">Установите Polaris Agent на сервере, чтобы он появился здесь в сети</p>
 
           <div class="servers-install-box">
             <button class="servers-copy-button" type="button" data-action="copy-install-command" aria-label="Скопировать команду" title="Скопировать">
@@ -442,10 +442,10 @@ window.ServersModule = (() => {
           </div>
 
           <p class="servers-token-timer ${expired ? 'expired' : ''}">
-            ${expired ? `${statusDot('error')}Registration token expired` : `Token expires in ${formatCountdown(remaining)}`}
+            ${expired ? `${statusDot('error')}Токен регистрации истёк` : `Токен действует ещё ${formatCountdown(remaining)}`}
           </p>
 
-          ${expired ? `<button class="small-button primary" type="button" data-action="regenerate-token">Сгенерировать новый token</button>` : ''}
+          ${expired ? `<button class="small-button primary" type="button" data-action="regenerate-token">Сгенерировать новый токен</button>` : ''}
 
           <div class="create-modal-actions" style="justify-content:flex-end;margin-top:14px">
             <button class="small-button ghost" type="button" data-action="back-to-list">Готово</button>
@@ -460,7 +460,7 @@ window.ServersModule = (() => {
       return `<div class="servers-wrapper">${renderHeader(true)}<div class="card servers-card span-12"><p class="metric-subtext">Загружаю…</p></div></div>`;
     }
     if (!selectedServer) {
-      return `<div class="servers-wrapper">${renderHeader(true)}<div class="card servers-card span-12"><p class="metric-subtext">Сервер не найден.</p></div></div>`;
+      return `<div class="servers-wrapper">${renderHeader(true)}<div class="card servers-card span-12"><p class="metric-subtext">Сервер не найден</p></div></div>`;
     }
 
     const s = selectedServer;
@@ -489,11 +489,11 @@ window.ServersModule = (() => {
         </div>
 
         <div class="card servers-card span-12">
-          <h3 class="finance-section-title">Overview</h3>
+          <h3 class="finance-section-title">Обзор</h3>
           <div class="servers-overview-grid">
-            <div><span class="servers-overview-label">Uptime</span><span>${formatUptime(s.uptime_seconds)}</span></div>
-            <div><span class="servers-overview-label">Last heartbeat</span><span>${formatAgo(s.seconds_since_seen)}</span></div>
-            <div><span class="servers-overview-label">Agent version</span><span>${escapeHTML(s.agent_version || '—')}</span></div>
+            <div><span class="servers-overview-label">Время работы</span><span>${formatUptime(s.uptime_seconds)}</span></div>
+            <div><span class="servers-overview-label">Последний сигнал</span><span>${formatAgo(s.seconds_since_seen)}</span></div>
+            <div><span class="servers-overview-label">Версия агента</span><span>${escapeHTML(s.agent_version || '—')}</span></div>
           </div>
         </div>
 
@@ -502,12 +502,12 @@ window.ServersModule = (() => {
         ${renderServicesCard(s)}
 
         <div class="card servers-card span-12">
-          <h3 class="finance-section-title">System</h3>
+          <h3 class="finance-section-title">Система</h3>
           <div class="servers-overview-grid">
             <div><span class="servers-overview-label">OS</span><span>${escapeHTML(s.os || '—')}</span></div>
-            <div><span class="servers-overview-label">Kernel</span><span>${escapeHTML(s.kernel || '—')}</span></div>
-            <div><span class="servers-overview-label">Architecture</span><span>${escapeHTML(s.architecture || '—')}</span></div>
-            <div><span class="servers-overview-label">Hostname</span><span>${escapeHTML(s.hostname || '—')}</span></div>
+            <div><span class="servers-overview-label">Ядро</span><span>${escapeHTML(s.kernel || '—')}</span></div>
+            <div><span class="servers-overview-label">Архитектура</span><span>${escapeHTML(s.architecture || '—')}</span></div>
+            <div><span class="servers-overview-label">Имя хоста</span><span>${escapeHTML(s.hostname || '—')}</span></div>
           </div>
         </div>
 
@@ -529,10 +529,10 @@ window.ServersModule = (() => {
         ${renderHeader(true)}
         <div class="card servers-card span-12">
           <h3 class="finance-section-title">${escapeHTML(s.name)}</h3>
-          <p class="servers-waiting-status">${s.status === 'error' ? `${statusDot('error')}Registration token expired` : `${statusDot('warn')}Waiting for agent`}</p>
+          <p class="servers-waiting-status">${s.status === 'error' ? `${statusDot('error')}Токен регистрации истёк` : `${statusDot('warn')}Ждём агента`}</p>
           <p class="metric-subtext">${s.status === 'error' ? 'Сгенерируйте новый registration token, чтобы установить Agent.' : 'Установите Polaris Agent, чтобы сервер стал online.'}</p>
           <button class="small-button primary" type="button" data-action="regenerate-token-for" data-server-id="${escapeHTML(s.id)}">
-            ${s.status === 'error' ? 'Сгенерировать новый token' : 'Показать install-команду'}
+            ${s.status === 'error' ? 'Сгенерировать новый токен' : 'Показать install-команду'}
           </button>
         </div>
       </div>
@@ -556,12 +556,12 @@ window.ServersModule = (() => {
       ? `<p class="servers-agent-line ${resultClass}">${statusDot(resultDot)}${resultLabel}${s.update_detail ? `: ${escapeHTML(s.update_detail)}` : ''}${s.update_result_at ? ` · ${escapeHTML(s.update_result_at.slice(0, 16).replace('T', ' '))}` : ''}</p>`
       : '';
     const pendingLine = s.update_pending
-      ? '<p class="servers-agent-line">Команда отправлена: агент получит её при ближайшем heartbeat, скачает версию из репозитория и перезапустится.</p>'
+      ? '<p class="servers-agent-line">Команда отправлена: агент получит её при ближайшем heartbeat, скачает версию из репозитория и перезапустится</p>'
       : '';
     const updateLabel = s.update_pending ? 'Ждём агента…' : (s.update_available ? 'Обновить агент' : 'Проверить обновление');
     return `
       <div class="card servers-card span-12" data-agent-card>
-        <h3 class="finance-section-title">Agent</h3>
+        <h3 class="finance-section-title">Агент</h3>
         <p class="metric-subtext">Версия ${escapeHTML(version)} · ${state}</p>
         ${pendingLine}${resultLine}
         ${agentMsg ? `<p class="servers-agent-line is-error">${escapeHTML(agentMsg)}</p>` : ''}
@@ -644,7 +644,7 @@ window.ServersModule = (() => {
       const items = [...catalog, ...extra.map((name) => ({ name, manual: true }))]
         .filter((c) => !q || c.name.toLowerCase().includes(q));
       const hint = catalog.length ? '' : noCatalog;
-      if (!items.length) return catalog.length ? '<p class="metric-subtext sv-empty">Ничего не найдено.</p>' : hint;
+      if (!items.length) return catalog.length ? '<p class="metric-subtext sv-empty">Ничего не найдено</p>' : hint;
       return hint + items.map((c) => {
         const meta = c.manual ? 'нет в списке сервера' : (c.running ? 'работает' : 'не запущен');
         return `<label class="sv-service-row"><input type="checkbox" data-sv-name="${escapeHTML(c.name)}" ${selected.has(c.name) ? 'checked' : ''} /><span class="sv-service-name">${escapeHTML(c.name)}</span><span class="sv-service-meta${c.running ? ' is-running' : ''}">${meta}</span></label>`;
@@ -664,12 +664,12 @@ window.ServersModule = (() => {
         <div class="tk-field"><input id="sv-manual" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Другой сервис, например caddy" aria-label="Добавить сервис вручную" /></div>
         <button type="button" class="tk-btn" data-sv="add-manual">Добавить</button>
       </div>
-      <p class="metric-subtext">Если выбранный сервис остановится или упадёт, в Telegram придёт уведомление, а затем — что он снова работает.</p>
+      <p class="metric-subtext">Если выбранный сервис остановится или упадёт, в Telegram придёт уведомление, а затем — что он снова работает</p>
       <div class="tk-field"><label for="sv-hb">Heartbeat, секунд (15–3600)</label>
         <input id="sv-hb" type="number" inputmode="numeric" min="15" max="3600" value="${escapeHTML(cfg.heartbeat_interval ?? 30)}" /></div>
       <div class="tk-field"><label for="sv-mt">Метрики, секунд (30–3600)</label>
         <input id="sv-mt" type="number" inputmode="numeric" min="30" max="3600" value="${escapeHTML(cfg.metrics_interval ?? 60)}" /></div>
-      <p class="metric-subtext">Агент применит настройки при ближайшем heartbeat, перезапуск не нужен.</p>
+      <p class="metric-subtext">Агент применит настройки при ближайшем heartbeat, перезапуск не нужен</p>
       <p id="sv-error" class="st-modal-error" hidden></p>
       <div class="tk-actions"><div class="tk-actions-row">
         <button type="button" class="tk-btn primary" data-sv="save">Сохранить</button>
@@ -736,7 +736,7 @@ window.ServersModule = (() => {
   function renderServicesCard(s) {
     const canEdit = Boolean(s.agent_id);
     if (!canEdit && !(s.services || []).length) return '';
-    const head = `<div class="servers-services-head"><h3 class="finance-section-title">Services</h3>${canEdit ? `<button class="small-button ghost" type="button" data-action="agent-settings">${(s.services || []).length ? 'Изменить' : 'Выбрать'}</button>` : ''}</div>`;
+    const head = `<div class="servers-services-head"><h3 class="finance-section-title">Сервисы</h3>${canEdit ? `<button class="small-button ghost" type="button" data-action="agent-settings">${(s.services || []).length ? 'Изменить' : 'Выбрать'}</button>` : ''}</div>`;
     if (!(s.services || []).length) {
       return `<div class="card servers-card span-12" data-services-card>${head}<p class="metric-subtext">Ни за одним сервисом не следим. Выберите из установленных — если сервис упадёт, в Telegram придёт уведомление.</p></div>`;
     }
@@ -754,12 +754,12 @@ window.ServersModule = (() => {
       const time = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
       return `<div class="servers-metric-row"><span>${time}</span><span>CPU ${pct(p.cpu_usage)}</span><span>RAM ${pct(p.mem_percent)}</span></div>`;
     }).join('');
-    return `<div class="card servers-card span-12"><h3 class="finance-section-title">Metrics history</h3>${rows}</div>`;
+    return `<div class="card servers-card span-12"><h3 class="finance-section-title">История метрик</h3>${rows}</div>`;
   }
 
   function renderEventsCard() {
     if (!selectedEvents.length) {
-      return `<div class="card servers-card span-12"><h3 class="finance-section-title">Events</h3><p class="metric-subtext">Событий пока нет.</p></div>`;
+      return `<div class="card servers-card span-12"><h3 class="finance-section-title">События</h3><p class="metric-subtext">Событий пока нет</p></div>`;
     }
     const rows = selectedEvents.slice(0, 15).map((e) => `
       <div class="servers-event-row severity-${escapeHTML(e.severity)}">
@@ -767,7 +767,7 @@ window.ServersModule = (() => {
         <span class="servers-event-meta">${e.resolved_at ? 'resolved' : 'active'} · ${escapeHTML(e.created_at?.slice(0, 16).replace('T', ' ') || '')}</span>
       </div>
     `).join('');
-    return `<div class="card servers-card span-12"><h3 class="finance-section-title">Events</h3>${rows}</div>`;
+    return `<div class="card servers-card span-12"><h3 class="finance-section-title">События</h3>${rows}</div>`;
   }
 
   /* ─── Handlers ─── */

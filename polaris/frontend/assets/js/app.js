@@ -116,17 +116,17 @@
 
   const NAV_ITEMS = [
     { id: 'attention', label: 'Главная', subtitle: 'Сводка на сегодня', icon: 'star' },
-    { id: 'tasks', label: 'Tasks', subtitle: 'Дела и быстрые действия', icon: 'tasks' },
+    { id: 'tasks', label: 'Задачи', subtitle: 'Дела и быстрые действия', icon: 'tasks' },
     { id: 'calendar', label: 'Календарь', subtitle: 'Задачи, события и платежи', icon: 'calendar' },
-    { id: 'servers', label: 'Servers', subtitle: 'Инфраструктура', icon: 'servers' },
-    { id: 'finance', label: 'Finance', subtitle: 'То, что требует оплаты', icon: 'finance' },
-    { id: 'email', label: 'Email', subtitle: 'Почта из всех ящиков', icon: 'mail' },
+    { id: 'servers', label: 'Серверы', subtitle: 'Инфраструктура', icon: 'servers' },
+    { id: 'finance', label: 'Финансы', subtitle: 'То, что требует оплаты', icon: 'finance' },
+    { id: 'email', label: 'Почта', subtitle: 'Почта из всех ящиков', icon: 'mail' },
     { id: 'athena', label: 'Athena', subtitle: 'Интеллектуальный помощник', icon: 'athena' },
-    { id: 'home', label: 'Home', subtitle: 'Home Assistant', icon: 'home' },
+    { id: 'home', label: 'Умный дом', subtitle: 'Home Assistant', icon: 'home' },
     { id: 'meme', label: 'Polaris Meme', subtitle: 'Картинки для inline-поиска в Telegram', icon: 'image' },
-    { id: 'files', label: 'Files', subtitle: 'Папки и файлы Storage', icon: 'folder' },
-    { id: 'storage', label: 'Storage', subtitle: 'Файлы, S3 и ключи доступа', icon: 'database', footer: true },
-    { id: 'settings', label: 'Settings', subtitle: 'Почта и обновление', icon: 'settings', footer: true },
+    { id: 'files', label: 'Файлы', subtitle: 'Папки и файлы Storage', icon: 'folder' },
+    { id: 'storage', label: 'Хранилище', subtitle: 'Файлы, S3 и ключи доступа', icon: 'database', footer: true },
+    { id: 'settings', label: 'Настройки', subtitle: 'Почта и обновление', icon: 'settings', footer: true },
   ];
 
   const state = {
@@ -720,7 +720,7 @@
     return [
       ...NAV_ITEMS.map((item) => ({
         id: `view:${item.id}`,
-        kind: 'Section',
+        kind: 'Раздел',
         title: item.label,
         subtitle: item.subtitle,
         icon: item.icon,
@@ -730,7 +730,7 @@
       })),
       {
         id: 'action:check-update',
-        kind: 'Action',
+        kind: 'Действие',
         title: 'Проверить обновления',
         subtitle: '/status',
         icon: 'update',
@@ -740,7 +740,7 @@
       },
       {
         id: 'action:run-update',
-        kind: 'Action',
+        kind: 'Действие',
         title: 'Обновить Polaris',
         subtitle: '/update',
         icon: 'update',
@@ -750,7 +750,7 @@
       },
       {
         id: 'action:restart',
-        kind: 'Action',
+        kind: 'Действие',
         title: 'Перезапуск сервиса',
         subtitle: '/restart',
         icon: 'restart',
@@ -760,9 +760,9 @@
       },
       {
         id: 'action:open-search',
-        kind: 'Action',
+        kind: 'Действие',
         title: 'Глобальный поиск',
-        subtitle: 'Spotlight / Command palette',
+        subtitle: 'Разделы и действия',
         icon: 'search',
         keywords: ['search', 'command', 'palette', 'spotlight', 'raycast'],
         run: () => openSearch(),
@@ -770,7 +770,7 @@
       },
       {
         id: 'action:browser-help',
-        kind: 'Action',
+        kind: 'Действие',
         title: browserHelpTitle,
         subtitle: state.authMode === 'browser' ? 'Скопировать текущую ссылку.' : 'Подсказка для доступа с компьютера.',
         icon: state.authMode === 'browser' ? 'external' : 'monitor',
@@ -816,7 +816,7 @@
       elements.searchResults.innerHTML = `
         <div class="card list-card">
           <h3>Ничего не найдено</h3>
-          <p class="metric-subtext">Попробуйте Главная, update, browser, restart или WEBAPP_URL.</p>
+          <p class="metric-subtext">Попробуйте Главная, update, browser, restart или WEBAPP_URL</p>
         </div>
       `;
       hydrateIcons(elements.searchResults);

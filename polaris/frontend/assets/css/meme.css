@@ -7,14 +7,14 @@
 .mm-thumb { display: block; padding: 0; border: 0; background: var(--surface-raised); cursor: pointer; aspect-ratio: 1 / 1; width: 100%; }
 .mm-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mm-info { padding: 8px 12px 4px; display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
-.mm-title { margin: 0; font-size: 0.88rem; font-weight: 600; overflow-wrap: anywhere; }
+.mm-title { margin: 0; font-size: var(--fs-base); font-weight: 500; overflow-wrap: anywhere; }
 .mm-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.mm-chip { background: var(--surface-raised); border: 1px solid var(--border-soft); color: var(--text-secondary); border-radius: 999px; padding: 2px 8px; font: inherit; font-size: 0.72rem; cursor: pointer; }
+.mm-chip { background: var(--surface-raised); border: 1px solid var(--border-soft); color: var(--text-secondary); border-radius: var(--radius-xs); padding: 2px 8px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .mm-chip small { color: var(--text-muted); }
 .mm-chip.is-active { border-color: var(--primary); color: var(--text); }
 span.mm-chip { cursor: default; }
 .mm-filter { margin: 0 2px; }
-.mm-state { color: var(--text-muted); font-size: 0.7rem; }
+.mm-state { color: var(--text-muted); font-size: var(--fs-xs); }
 .mm-actions { display: flex; gap: 4px; justify-content: flex-end; padding: 4px 8px 8px; }
 .mm-ibtn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--surface-raised); color: var(--text-secondary); cursor: pointer; }
 .mm-ibtn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -22,7 +22,7 @@ span.mm-chip { cursor: default; }
 .mm-gear { width: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .mm-gear svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .mm-set { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border-soft); }
-.mm-set h4 { margin: 0; font-size: 0.92rem; }
+.mm-set h4 { margin: 0; font-size: var(--fs-base); }
 .mm-pick { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .mm-pick .st-hint { overflow-wrap: anywhere; min-height: 0; }
 .mm-more { align-self: center; }
@@ -38,8 +38,8 @@ span.mm-chip { cursor: default; }
 .mm-label-row { position: relative; display: flex; align-items: center; gap: 8px; }
 .mm-tip-below .sg-tip-pop { top: calc(100% + 6px); bottom: auto; }
 .mm-row { position: relative; flex-direction: row; align-items: center; gap: 8px; }
-.mm-cache-state { margin-left: auto; color: var(--text-secondary); font-size: 0.8rem; white-space: nowrap; }
-.mm-refresh { padding: 8px 12px; font-size: 0.8rem; flex: 0 0 auto; }
+.mm-cache-state { margin-left: auto; color: var(--text-secondary); font-size: var(--fs-sm); white-space: nowrap; }
+.mm-refresh { padding: 8px 12px; font-size: var(--fs-sm); flex: 0 0 auto; }
 .mm-check { display: flex; flex-direction: column; gap: 8px; }
 .mm-check-q { text-align: center; }
 .st-hint.is-warn { color: var(--warning, #f5b942); }

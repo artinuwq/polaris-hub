@@ -29,10 +29,10 @@
   border-radius: var(--radius-sm);
   background: var(--calendar-today-soft);
   color: var(--text);
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
-  transition: all 160ms ease;
+  transition: var(--transition-ui);
   white-space: nowrap;
 }
 
@@ -58,8 +58,7 @@
 
 .calendar-header h1 {
   margin: 0;
-  font-size: clamp(1.6rem, 3.5vw, 2.2rem);
-  letter-spacing: -0.04em;
+  font-size: clamp(1.75rem, 3.5vw, 2.25rem);
 }
 
 .calendar-view-toggle {
@@ -78,9 +77,9 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
-  transition: all 160ms ease;
+  transition: var(--transition-ui);
 }
 
 .calendar-view-button:hover {
@@ -90,7 +89,7 @@
 .calendar-view-button.active {
   background: var(--primary);
   color: #06111b;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .calendar-view-button:disabled {
@@ -104,9 +103,9 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   cursor: pointer;
-  transition: all 160ms ease;
+  transition: var(--transition-ui);
   margin-bottom: 8px;
 }
 
@@ -126,9 +125,8 @@
 
 .calendar-nav h2 {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: var(--fs-md);
+  font-weight: 500;
 }
 
 .calendar-nav .nav-button {
@@ -143,7 +141,7 @@
   background: var(--surface);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 160ms ease;
+  transition: var(--transition-ui);
 }
 
 .calendar-nav .nav-button:hover {
@@ -172,10 +170,8 @@
 .calendar-month .calendar-day-header {
   text-align: center;
   padding: 8px 4px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: var(--fs-xs);
+  font-weight: 500;
   color: var(--text-muted);
 }
 
@@ -188,7 +184,7 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
   cursor: pointer;
-  transition: all 160ms ease;
+  transition: var(--transition-ui);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -214,14 +210,14 @@
 }
 
 .calendar-month .calendar-day-number {
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .calendar-month .calendar-day.today .calendar-day-number {
   color: var(--calendar-today);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .calendar-month .calendar-day.today {
@@ -248,8 +244,8 @@
 }
 
 .calendar-day-marker-count {
-  font-size: 0.64rem;
-  font-weight: 600;
+  font-size: var(--fs-xs);
+  font-weight: 500;
   color: var(--text-muted);
 }
 
@@ -266,14 +262,13 @@
 
 .calendar-day-title {
   margin: 0;
-  font-size: clamp(1.4rem, 3vw, 1.9rem);
-  letter-spacing: -0.04em;
+  font-size: clamp(1.25rem, 3vw, 1.75rem);
 }
 
 .calendar-day-subtitle {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 0.88rem;
+  font-size: var(--fs-base);
 }
 
 .calendar-day-event-list {
@@ -292,7 +287,7 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
   cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 
 @media (hover: hover) {
@@ -306,23 +301,21 @@
   flex-shrink: 0;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 0.66rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: var(--fs-xs);
+  font-weight: 500;
   white-space: nowrap;
   border: 1px solid;
 }
 
 .calendar-event-title {
-  font-size: 0.88rem;
+  font-size: var(--fs-base);
   font-weight: 500;
   color: var(--text);
   margin-bottom: 2px;
 }
 
 .calendar-event-time {
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -347,7 +340,7 @@
   border-radius: 4px;
   background: rgba(248, 250, 252, 0.06);
   color: var(--text-secondary);
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
 }
 
 .calendar-day-empty {
@@ -364,7 +357,7 @@
 
 .calendar-day-empty p {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: var(--fs-base);
 }
 
 /* Type color badges */
@@ -419,7 +412,7 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
   cursor: pointer;
-  transition: all 160ms ease;
+  transition: var(--transition-ui);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -446,21 +439,19 @@
 }
 
 .calendar-week-day-name {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: var(--fs-xs);
   color: var(--text-muted);
 }
 
 .calendar-week-day-number {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: var(--fs-base);
+  font-weight: 500;
   color: var(--text-secondary);
 }
 
 .calendar-week-day.today .calendar-week-day-number {
   color: var(--calendar-today);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .calendar-week-day-events {
@@ -472,7 +463,7 @@
 
 .calendar-week-day-empty {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   opacity: 0.5;
 }
 
@@ -484,7 +475,7 @@
   border-left: 2px solid #5ab8ff;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.03);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   line-height: 1.25;
 }
 
@@ -494,7 +485,7 @@
 
 .calendar-week-event-time {
   color: var(--text-muted);
-  font-size: 0.64rem;
+  font-size: var(--fs-xs);
 }
 
 .calendar-week-event-title {
@@ -510,10 +501,10 @@
     padding: 3px;
   }
   .calendar-day-number {
-    font-size: 0.7rem;
+    font-size: var(--fs-xs);
   }
   .calendar-event-title {
-    font-size: 0.84rem;
+    font-size: var(--fs-sm);
   }
   .calendar-day-detail-card {
     padding: 12px;
@@ -554,14 +545,14 @@
 .calendar-today-chip {
   padding: 3px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   line-height: 1.4;
   cursor: pointer;
-  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 .calendar-today-chip:hover,
 .calendar-today-chip:active {
@@ -600,12 +591,12 @@
   overflow-wrap: anywhere;
 }
 .calendar-event-amount {
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   color: var(--text-secondary);
 }
 .calendar-event-body .calendar-event-meta {
   margin: 0;
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   color: var(--text-muted);
 }

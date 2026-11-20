@@ -202,12 +202,12 @@ window.EmailModule = (() => {
     if (!accounts.length) {
       return `<section class="card empty-card">
         <h3>Почта не подключена</h3>
-        <p class="metric-subtext">Добавьте ящик mail.ru или Google — письма появятся здесь и придут в Telegram.</p>
+        <p class="metric-subtext">Добавьте ящик mail.ru или Google — письма появятся здесь и придут в Telegram</p>
         <button type="button" class="small-button primary" data-view="settings">Настроить почту</button></section>`;
     }
     if (!messages.length) {
       return `<section class="card empty-card"><h3>Писем пока нет</h3>
-        <p class="metric-subtext">Новые письма появятся здесь в течение минуты после прихода.</p></section>`;
+        <p class="metric-subtext">Новые письма появятся здесь в течение минуты после прихода</p></section>`;
     }
     return `<div class="mail-list">${messages.map(renderItem).join('')}</div>
       ${hasMore ? `<div class="mail-more"><button type="button" class="small-button" data-mail-action="more" ${loading ? 'disabled' : ''}>

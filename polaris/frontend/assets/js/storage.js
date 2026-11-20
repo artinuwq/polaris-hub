@@ -349,12 +349,12 @@ window.StorageModule = (() => {
     const dedup = s && s.logical_bytes >= 0 ? Math.max(0, s.logical_bytes - (s.physical_bytes - s.multipart_bytes)) : null;
     const stats = s ? `
       <div class="sg-stats">
-        ${tile('Buckets', s.buckets)}
+        ${tile('Бакеты', s.buckets)}
         ${tile('Объекты (логические)', s.objects, `${fmtSize(s.logical_bytes)} суммарно`)}
         ${tile('Blobs (физические)', s.blobs, `${fmtSize(s.physical_bytes)} в хранилище`)}
         ${tile('Незавершённые multipart', s.multipart_uploads, `частей: ${s.multipart_parts} · ${fmtSize(s.multipart_bytes)}`)}
       </div>`
-      : `<p class="st-empty">Статистика недоступна: Storage не запущен.</p>`;
+      : `<p class="st-empty">Статистика недоступна: Storage не запущен</p>`;
     const note = s ? tip(`Цифры точные (суммы из базы, не оценки). Логические объекты и физические blobs считаются раздельно: при дедупликации blobs меньше объектов${dedup ? ` — экономия ${escapeHTML(fmtSize(dedup))}` : ''}. В физический объём входят и части незавершённых multipart-загрузок. Сообщений в Telegram: ${s.chunks}.`, 'О цифрах статистики') : '';
     const problems = st.storage.state !== 'ready' ? `
       <div class="card sg-banner is-warn" role="status">
@@ -562,21 +562,21 @@ window.StorageModule = (() => {
         <td><b>${escapeHTML(b.name)}</b></td><td>${escapeHTML(fmtDate(b.created_at))}</td>
         <td>${b.object_count}</td><td>${escapeHTML(fmtSize(b.total_size))}</td>
         <td class="sg-actions">
-          <button type="button" class="st-btn" data-sg="open-bucket" data-name="${escapeHTML(b.name)}">Open</button>
-          <button type="button" class="st-btn danger" data-sg="delete-bucket" data-name="${escapeHTML(b.name)}">Delete</button>
+          <button type="button" class="st-btn" data-sg="open-bucket" data-name="${escapeHTML(b.name)}">Открыть</button>
+          <button type="button" class="st-btn danger" data-sg="delete-bucket" data-name="${escapeHTML(b.name)}">Удалить</button>
         </td></tr>`).join('');
     const table = S.buckets.length ? `
-      <div class="sg-scroll"><table class="sg-table"><thead><tr><th>Bucket Name</th><th>Created At</th><th>Object Count</th><th>Total Size</th><th>Actions</th></tr></thead>
+      <div class="sg-scroll"><table class="sg-table"><thead><tr><th>Название</th><th>Создан</th><th>Объектов</th><th>Размер</th><th>Действия</th></tr></thead>
       <tbody>${rows}</tbody></table></div>`
       : '<p class="st-empty" data-empty="buckets">Buckets пока нет. Создайте первый — это логическое пространство имён внутри Polaris Storage.</p>';
     return `
-      <div class="sg-toolbar"><h3 class="st-subtitle">Buckets</h3>
-        <button type="button" class="st-btn primary" data-sg="new-bucket">Create Bucket</button></div>${table}`;
+      <div class="sg-toolbar"><h3 class="st-subtitle">Бакеты</h3>
+        <button type="button" class="st-btn primary" data-sg="new-bucket">Создать бакет</button></div>${table}`;
   }
 
   function openCreateBucket() {
     openModal(`
-      <div class="tk-head"><h3>Create Bucket</h3></div>
+      <div class="tk-head"><h3>Новый бакет</h3></div>
       <div class="tk-field"><label for="sm-name">Имя bucket</label>
         <input id="sm-name" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="my-bucket" maxlength="63" />
         <div class="st-modal-error" data-field-error="name" hidden></div></div>
@@ -625,19 +625,19 @@ window.StorageModule = (() => {
         <td><code>${escapeHTML(o.etag || '—')}</code></td>
         <td class="sg-actions">
           <button type="button" class="st-btn" data-sg="object-info" data-id="${escapeHTML(o.id)}">Метаданные</button>
-          <button type="button" class="st-btn" data-sg="object-download" data-id="${escapeHTML(o.id)}" data-key="${escapeHTML(o.key)}">Download</button>
-          <button type="button" class="st-btn" data-sg="object-copy-key" data-key="${escapeHTML(o.key)}">Copy Key</button>
-          <button type="button" class="st-btn danger" data-sg="object-delete" data-id="${escapeHTML(o.id)}" data-key="${escapeHTML(o.key)}">Delete</button>
+          <button type="button" class="st-btn" data-sg="object-download" data-id="${escapeHTML(o.id)}" data-key="${escapeHTML(o.key)}">Скачать</button>
+          <button type="button" class="st-btn" data-sg="object-copy-key" data-key="${escapeHTML(o.key)}">Копировать ключ</button>
+          <button type="button" class="st-btn danger" data-sg="object-delete" data-id="${escapeHTML(o.id)}" data-key="${escapeHTML(o.key)}">Удалить</button>
         </td></tr>`).join('');
     const list = S.objects.length ? `
-      <div class="sg-scroll"><table class="sg-table"><thead><tr><th>Object Key</th><th>Size</th><th>Content-Type</th><th>Last Modified</th><th>ETag</th><th>Actions</th></tr></thead>
+      <div class="sg-scroll"><table class="sg-table"><thead><tr><th>Ключ объекта</th><th>Размер</th><th>Content-Type</th><th>Изменён</th><th>ETag</th><th>Действия</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
       ${S.objectsMore ? `<button type="button" class="st-btn" data-sg="more-objects" ${busy.more ? 'disabled' : ''}>${busy.more ? 'Загрузка…' : 'Показать ещё'}</button>` : ''}`
       : `<p class="st-empty" data-empty="objects">${S.objectsPrefix ? 'Объектов с таким префиксом нет.' : 'В bucket пока нет объектов. Загрузите их через S3 API (boto3, aws cli, rclone).'}</p>`;
     return `
       <div class="sg-toolbar">
         <button type="button" class="st-btn" data-sg="back-buckets">← Buckets</button>
-        <button type="button" class="st-btn danger" data-sg="delete-bucket" data-name="${escapeHTML(b.name)}">Delete Bucket</button>
+        <button type="button" class="st-btn danger" data-sg="delete-bucket" data-name="${escapeHTML(b.name)}">Удалить бакет</button>
       </div>
       <div class="card sg-bucket-head"><h3 class="st-subtitle" data-bucket-title>${escapeHTML(b.name)}</h3>
         <div class="st-item-sub">Объектов: <b data-bucket-count>${b.object_count}</b> · объём: ${escapeHTML(fmtSize(b.total_size))} · создан ${escapeHTML(fmtDate(b.created_at))}</div></div>
@@ -656,16 +656,16 @@ window.StorageModule = (() => {
       openModal(`
         <div class="tk-head"><h3>Метаданные объекта</h3><span class="tk-sub">${escapeHTML(o.bucket)}</span></div>
         <table class="sg-table sg-kv">
-          <tr><td>Key</td><td data-meta="key">${escapeHTML(o.key)}</td></tr>
-          <tr><td>Size</td><td>${escapeHTML(fmtSize(o.size))} (${o.size} Б)</td></tr>
+          <tr><td>Ключ</td><td data-meta="key">${escapeHTML(o.key)}</td></tr>
+          <tr><td>Размер</td><td>${escapeHTML(fmtSize(o.size))} (${o.size} Б)</td></tr>
           <tr><td>Content-Type</td><td>${escapeHTML(o.content_type)}</td></tr>
-          <tr><td>Last Modified</td><td>${escapeHTML(fmtDate(o.last_modified))}</td></tr>
+          <tr><td>Изменён</td><td>${escapeHTML(fmtDate(o.last_modified))}</td></tr>
           <tr><td>ETag</td><td><code>${escapeHTML(o.etag || '—')}</code></td></tr>
         </table>
         <h4 class="sg-h4">Пользовательские метаданные (x-amz-meta-*)</h4><table class="sg-table sg-kv"><tbody>${kv(o.user_metadata)}</tbody></table>
         <h4 class="sg-h4">Заголовки</h4><table class="sg-table sg-kv"><tbody>${kv(o.headers)}</tbody></table>
         <div class="tk-actions"><div class="tk-actions-row">
-          <button type="button" class="tk-btn" data-sm="copy">Copy Key</button>
+          <button type="button" class="tk-btn" data-sm="copy">Копировать ключ</button>
           <button type="button" class="tk-btn" data-sm="close">Закрыть</button>
         </div></div>`, async (action) => {
         if (action === 'close') closeModal();
@@ -705,31 +705,31 @@ window.StorageModule = (() => {
       const buckets = k.all_buckets ? '<span class="st-badge is-warn">все buckets</span>' : k.buckets.map((b) => `<span class="st-badge">${escapeHTML(b)}</span>`).join(' ');
       const revoked = k.status === 'revoked';
       const actions = k.managed_in_env
-        ? '<div class="st-item-sub">Задан в .env (S3_ACCESS_KEY_ID / S3_CREDENTIALS): управляется через конфигурацию Polaris.</div>'
+        ? '<div class="st-item-sub">Задан в .env (S3_ACCESS_KEY_ID / S3_CREDENTIALS): управляется через конфигурацию Polaris</div>'
         : `<div class="st-item-actions">
-            ${revoked ? '' : `<button type="button" class="st-btn" data-sg="key-rotate" data-id="${k.id}">Rotate</button>
-              <button type="button" class="st-btn danger" data-sg="key-revoke" data-id="${k.id}">Revoke</button>`}
+            ${revoked ? '' : `<button type="button" class="st-btn" data-sg="key-rotate" data-id="${k.id}">Сменить секрет</button>
+              <button type="button" class="st-btn danger" data-sg="key-revoke" data-id="${k.id}">Отозвать</button>`}
             <button type="button" class="st-btn" data-sg="key-edit" data-id="${k.id}">Изменить описание</button>
-            ${revoked ? `<button type="button" class="st-btn danger" data-sg="key-delete" data-id="${k.id}">Delete</button>` : ''}
+            ${revoked ? `<button type="button" class="st-btn danger" data-sg="key-delete" data-id="${k.id}">Удалить</button>` : ''}
           </div>`;
       return `
         <div class="st-item sg-key-card${revoked ? ' is-revoked' : ''}" data-key-id="${escapeHTML(k.access_key_id)}">
           <div class="st-item-head"><span class="st-item-title">${escapeHTML(k.name)}</span>
-            <span>${k.needs_rotation ? '<span class="st-badge is-warn">нужна ротация</span> ' : ''}${k.managed_in_env ? '<span class="st-badge">.env</span> ' : ''}${revoked ? '<span class="st-badge is-err">Revoked</span>' : '<span class="st-badge is-ok">Active</span>'}</span></div>
+            <span>${k.needs_rotation ? '<span class="st-badge is-warn">нужна ротация</span> ' : ''}${k.managed_in_env ? '<span class="st-badge">.env</span> ' : ''}${revoked ? '<span class="st-badge is-err">Отозван</span>' : '<span class="st-badge is-ok">Активен</span>'}</span></div>
           <div class="st-item-sub">Access Key ID: <code>${escapeHTML(k.access_key_id)}</code>
-            <button type="button" class="st-btn sg-mini" data-sg="copy-text" data-text="${escapeHTML(k.access_key_id)}">Copy</button></div>
+            <button type="button" class="st-btn sg-mini" data-sg="copy-text" data-text="${escapeHTML(k.access_key_id)}">Копировать</button></div>
           ${k.description ? `<div class="st-item-sub">${escapeHTML(k.description)}</div>` : ''}
           <div class="sg-chips"><span class="st-item-sub">Права:</span> ${perms}</div>
-          <div class="sg-chips"><span class="st-item-sub">Buckets:</span> ${buckets}</div>
+          <div class="sg-chips"><span class="st-item-sub">Бакеты:</span> ${buckets}</div>
           <div class="st-item-sub">Создан: ${escapeHTML(fmtDate(k.created_at))} · последнее использование: ${k.last_used_at ? escapeHTML(relTime(k.last_used_at)) : 'ещё не использовался'}${k.rotated_at ? ` · ротация: ${escapeHTML(fmtDate(k.rotated_at))}` : ''}${revoked && k.revoked_at ? ` · отозван: ${escapeHTML(fmtDate(k.revoked_at))}` : ''}</div>
           ${actions}</div>`;
     }).join('');
     const databaseKeys = S.creds.credentials.filter((k) => !k.managed_in_env);
     const empty = databaseKeys.length ? '' : '<p class="st-empty" data-empty="keys">Ключей пока нет. Создайте ключ для сервиса и выдайте ему только нужные права.</p>';
     return `
-      <section class="card sg-keys-block" aria-label="Access Keys">
-        <div class="sg-toolbar sg-keys-head"><div class="sg-title"><h3 class="st-subtitle">Access Keys</h3>${tip('Secret Access Key показывается один раз при создании или ротации и нигде не хранится. Права проверяются при каждом запросе, в том числе по presigned URL; отозванный ключ перестаёт работать сразу.', 'О ключах доступа')}</div>
-          <button type="button" class="st-btn primary" data-sg="new-key">Create Access Key</button></div>
+      <section class="card sg-keys-block" aria-label="Ключи доступа">
+        <div class="sg-toolbar sg-keys-head"><div class="sg-title"><h3 class="st-subtitle">Ключи доступа</h3>${tip('Secret Access Key показывается один раз при создании или ротации и нигде не хранится. Права проверяются при каждом запросе, в том числе по presigned URL; отозванный ключ перестаёт работать сразу.', 'О ключах доступа')}</div>
+          <button type="button" class="st-btn primary" data-sg="new-key">Создать ключ</button></div>
         ${cards ? `<div class="st-list">${cards}</div>` : ''}${empty}
       </section>`;
   }
@@ -739,11 +739,11 @@ window.StorageModule = (() => {
     try { if (!buckets) buckets = (await api('/api/storage/buckets')).buckets; S.buckets = buckets; } catch (e) { buckets = []; }
     const bucketBoxes = buckets.length
       ? buckets.map((b) => `<label class="sg-check"><input type="checkbox" data-bucket value="${escapeHTML(b.name)}" /> ${escapeHTML(b.name)}</label>`).join('')
-      : '<span class="st-item-sub">Buckets ещё нет — создайте bucket или разрешите все.</span>';
+      : '<span class="st-item-sub">Бакетов ещё нет — создайте бакет или разрешите все</span>';
     const permBoxes = Object.keys(PERM_INFO).map((p) =>
       `<label class="sg-check"><input type="checkbox" data-perm value="${p}" /> <b>${p}</b> <span class="st-item-sub">${escapeHTML(PERM_INFO[p])}</span></label>`).join('');
     openModal(`
-      <div class="tk-head"><h3>Create Access Key</h3></div>
+      <div class="tk-head"><h3>Новый ключ доступа</h3></div>
       <div class="tk-field"><label for="sm-kname">Название</label><input id="sm-kname" type="text" maxlength="80" autocomplete="off" placeholder="backup-service" />
         <div class="st-modal-error" data-field-error="name" hidden></div></div>
       <div class="tk-field"><label for="sm-kdesc">Описание</label><textarea id="sm-kdesc" rows="2" maxlength="500" placeholder="Для чего ключ"></textarea>
@@ -829,7 +829,7 @@ window.StorageModule = (() => {
   function confirmRevoke(id) {
     const key = findKey(id);
     confirmDialog({
-      title: `Revoke «${key?.name || ''}»?`, confirmLabel: 'Отозвать',
+      title: `Отозвать «${key?.name || ''}»?`, confirmLabel: 'Отозвать',
       text: 'Ключ немедленно перестанет проходить S3-аутентификацию, в том числе выданные им presigned URL. Отменить отзыв нельзя.',
       onConfirm: async () => { await api(`/api/storage/credentials/${id}/revoke`, 'POST'); setNotice('ok', 'Ключ отозван'); S.creds = await api('/api/storage/credentials'); },
     });
@@ -886,15 +886,15 @@ window.StorageModule = (() => {
           <td>${c.checked_at ? escapeHTML(fmtDate(c.checked_at)) : '—'}</td>
           <td><button type="button" class="st-btn" data-sg="run-check" data-name="${name}" ${S.checking ? 'disabled' : ''}>Проверить</button></td></tr>`;
     }).join('');
-    const tests = d.last_tests ? renderTestResults(d.last_tests, false) : '<p class="st-empty">Тесты ещё не запускались.</p>';
+    const tests = d.last_tests ? renderTestResults(d.last_tests, false) : '<p class="st-empty">Тесты ещё не запускались</p>';
     const stepButtons = TEST_STEPS.map(([id, label]) =>
       `<button type="button" class="st-btn" data-sg="run-step" data-step="${id}" ${busy.test ? 'disabled' : ''}>${label}</button>`).join('');
     return `
-      <div class="sg-toolbar"><h3 class="st-subtitle">Health Checks</h3>
-        <button type="button" class="st-btn primary" data-sg="run-all-checks" ${S.checking ? 'disabled' : ''}>${S.checking ? 'Проверяем…' : 'Run all checks'}</button></div>
+      <div class="sg-toolbar"><h3 class="st-subtitle">Проверки</h3>
+        <button type="button" class="st-btn primary" data-sg="run-all-checks" ${S.checking ? 'disabled' : ''}>${S.checking ? 'Проверяем…' : 'Запустить все проверки'}</button></div>
       <div class="sg-scroll"><table class="sg-table"><thead><tr><th>Проверка</th><th>Результат</th><th>Описание</th><th>Время</th><th>Проверено</th><th></th></tr></thead><tbody>${checks}</tbody></table></div>
-      <div class="sg-toolbar sg-tests-head"><div class="sg-title"><h3 class="st-subtitle">Storage Tests</h3>${tip('Тесты используют только синтетические данные в служебном bucket и временный ключ; всё созданное удаляется даже при ошибке.', 'О тестах')}${d.last_tests ? testsStatus(d.last_tests) : ''}</div>
-        <button type="button" class="st-btn primary" data-sg="run-tests" ${busy.test ? 'disabled' : ''}>${busy.test ? 'Выполняется…' : 'Run all tests'}</button></div>
+      <div class="sg-toolbar sg-tests-head"><div class="sg-title"><h3 class="st-subtitle">Тесты Storage</h3>${tip('Тесты используют только синтетические данные в служебном bucket и временный ключ; всё созданное удаляется даже при ошибке.', 'О тестах')}${d.last_tests ? testsStatus(d.last_tests) : ''}</div>
+        <button type="button" class="st-btn primary" data-sg="run-tests" ${busy.test ? 'disabled' : ''}>${busy.test ? 'Выполняется…' : 'Запустить все тесты'}</button></div>
       <div class="st-item-actions">${stepButtons}</div>
       <div id="sg-tests">${tests}</div>
       ${viewMultipart(d.multipart)}
@@ -917,16 +917,16 @@ window.StorageModule = (() => {
       <tr data-upload="${escapeHTML(u.upload_id)}"><td>${escapeHTML(u.bucket)}</td><td class="sg-key">${escapeHTML(u.key)}</td>
         <td><code>${escapeHTML(u.upload_id.slice(0, 8))}…</code></td><td>${escapeHTML(fmtDate(u.created_at))}</td>
         <td>${u.parts} · ${escapeHTML(fmtSize(u.bytes))}</td><td>${escapeHTML(u.status)}</td>
-        <td><button type="button" class="st-btn danger" data-sg="abort-upload" data-id="${escapeHTML(u.upload_id)}">Abort</button></td></tr>`).join('');
+        <td><button type="button" class="st-btn danger" data-sg="abort-upload" data-id="${escapeHTML(u.upload_id)}">Прервать</button></td></tr>`).join('');
     return `
-      <h3 class="st-subtitle">Multipart Uploads</h3>
-      <div class="sg-scroll"><table class="sg-table"><thead><tr><th>Bucket</th><th>Object Key</th><th>Upload</th><th>Создана</th><th>Части</th><th>Состояние</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-      <p class="st-item-sub">Загрузки не отменяются автоматически: решение за вами.</p>`;
+      <h3 class="st-subtitle">Незавершённые multipart-загрузки</h3>
+      <div class="sg-scroll"><table class="sg-table"><thead><tr><th>Бакет</th><th>Ключ объекта</th><th>Загрузка</th><th>Создана</th><th>Части</th><th>Состояние</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="st-item-sub">Загрузки не отменяются автоматически: решение за вами</p>`;
   }
 
   function viewRecovery(d) {
     const r = d.recovery;
-    if (!r) return '<h3 class="st-subtitle">Recovery</h3><p class="st-empty">Недоступно: Storage не запущен.</p>';
+    if (!r) return '<h3 class="st-subtitle">Восстановление</h3><p class="st-empty">Недоступно: Storage не запущен</p>';
     const rec = d.last_reconcile;
     const counters = [
       ['Подозрительные orphan (без ссылки)', r.orphans_suspected], ['Orphan с ссылкой (будут удалены)', r.orphans_pending_delete],
@@ -936,9 +936,9 @@ window.StorageModule = (() => {
     const orphanRows = r.orphans.map((o) => `<tr><td>${escapeHTML(o.kind)}</td><td>${escapeHTML(o.marker || '—')}</td><td>${o.has_reference ? 'да' : 'нет'}</td><td>${o.delete_attempts}</td><td>${escapeHTML(o.last_error || '')}</td><td>${escapeHTML(fmtDate(o.created_at))}</td></tr>`).join('');
     const failedRows = r.failed_deletions.map((f) => `<tr><td>${escapeHTML(f.status)}</td><td>${f.attempts}</td><td>${escapeHTML(f.last_error || '')}</td><td>${escapeHTML(fmtDate(f.last_attempt_at))}</td></tr>`).join('');
     return `
-      <div class="sg-toolbar sg-head"><h3 class="st-subtitle">Recovery</h3>${tip(`Только просмотр. Данные, принадлежность которых к Storage не подтверждена, автоматически не удаляются; удаление сообщений в Telegram из интерфейса недоступно. ${rec ? `Последняя сверка: ${escapeHTML(fmtDate(rec.at))} — ${escapeHTML(rec.summary)}.` : 'Фоновая сверка ещё не выполнялась.'}`, 'О разделе Recovery')}</div>
+      <div class="sg-toolbar sg-head"><h3 class="st-subtitle">Восстановление</h3>${tip(`Только просмотр. Данные, принадлежность которых к Storage не подтверждена, автоматически не удаляются; удаление сообщений в Telegram из интерфейса недоступно. ${rec ? `Последняя сверка: ${escapeHTML(fmtDate(rec.at))} — ${escapeHTML(rec.summary)}.` : 'Фоновая сверка ещё не выполнялась.'}`, 'О разделе Recovery')}</div>
       <div class="sg-stats">${counters}</div>
-      ${r.orphans.length ? `<div class="sg-scroll"><table class="sg-table"><thead><tr><th>Тип</th><th>Метка</th><th>Ссылка</th><th>Попыток</th><th>Ошибка</th><th>Создан</th></tr></thead><tbody>${orphanRows}</tbody></table></div>` : '<p class="st-empty" data-empty="orphans">Orphan-записей нет.</p>'}
+      ${r.orphans.length ? `<div class="sg-scroll"><table class="sg-table"><thead><tr><th>Тип</th><th>Метка</th><th>Ссылка</th><th>Попыток</th><th>Ошибка</th><th>Создан</th></tr></thead><tbody>${orphanRows}</tbody></table></div>` : '<p class="st-empty" data-empty="orphans">Записей без владельца нет</p>'}
       ${r.failed_deletions.length ? `<div class="sg-scroll"><table class="sg-table"><thead><tr><th>Статус</th><th>Попыток</th><th>Ошибка</th><th>Последняя попытка</th></tr></thead><tbody>${failedRows}</tbody></table></div>` : ''}`;
   }
 
@@ -956,14 +956,14 @@ window.StorageModule = (() => {
   }
 
   function showTestModal(result) {
-    openModal(`<div class="tk-head"><h3>Test Storage</h3></div>${renderTestResults(result)}
+    openModal(`<div class="tk-head"><h3>Тест Storage</h3></div>${renderTestResults(result)}
       <div class="tk-actions"><div class="tk-actions-row"><button type="button" class="tk-btn" data-sm="close">Закрыть</button></div></div>`,
     (action) => { if (action === 'close') closeModal(); });
   }
 
   function confirmAbortUpload(id) {
     confirmDialog({
-      title: 'Отменить multipart-загрузку?', confirmLabel: 'Abort',
+      title: 'Отменить multipart-загрузку?', confirmLabel: 'Прервать',
       text: 'Все загруженные части будут удалены. Клиент, который их загружает, получит ошибку NoSuchUpload.',
       onConfirm: async () => { await api(`/api/storage/multipart/${id}/abort`, 'POST'); setNotice('ok', 'Загрузка отменена'); S.diag = await api('/api/storage/diagnostics'); },
     });

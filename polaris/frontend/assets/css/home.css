@@ -3,9 +3,8 @@
 
 .home-date {
   margin: 4px 2px 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: var(--fs-xl);
+  font-weight: 500;
 }
 
 .home-grid {
@@ -24,14 +23,14 @@
   color: var(--text);
   font: inherit;
   cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 .home-card:hover { border-color: rgba(248, 250, 252, 0.2); background: var(--surface-raised); }
 .home-card:active { background: var(--surface-raised); }
 
 .home-card-title {
   color: var(--text-secondary);
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -42,8 +41,8 @@
   align-items: baseline;
   gap: 8px;
   min-width: 0;
-  font-size: 1.9rem;
-  font-weight: 700;
+  font-size: var(--fs-xl);
+  font-weight: 500;
   line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
@@ -51,14 +50,14 @@
 .home-day {
   flex: 0 0 auto;
   color: var(--text-secondary);
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: var(--fs-base);
+  font-weight: 500;
 }
 .home-time { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 .home-card-sub {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -72,7 +71,7 @@
 .home-card.is-bad .home-card-sub { color: var(--error); }
 
 .home-section { display: flex; flex-direction: column; gap: 12px; }
-.home-section-title { margin: 0 2px; font-size: 1.05rem; }
+.home-section-title { margin: 0 2px; font-size: var(--fs-md); }
 
 .home-tasks { display: flex; flex-direction: column; gap: 8px; }
 .home-task {
@@ -90,8 +89,8 @@
   border-radius: var(--radius-md);
 }
 .home-task:active { background: var(--surface-raised); }
-.home-task-title { font-weight: 600; overflow-wrap: anywhere; }
-.home-task-when { color: var(--text-muted); font-size: 0.82rem; }
+.home-task-title { font-weight: 500; overflow-wrap: anywhere; }
+.home-task-when { color: var(--text-muted); font-size: var(--fs-sm); }
 .home-task-when.is-overdue { color: var(--error); }
 
 .home-warning {
@@ -100,7 +99,7 @@
   border: 0;
   color: var(--warning);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
 }

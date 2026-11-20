@@ -315,7 +315,7 @@ window.SettingsModule = (() => {
           <span class="st-item-title">Токен агента</span>
           ${agent.configured ? badge('ok', 'Задан') : badge('off', 'Не задан')}
         </div>
-        ${agent.configured ? `<div class="st-item-sub">Токен <code>plr_…${escapeHTML(agent.hint)}</code></div>` : '<div class="st-item-sub">Сгенерируйте токен и вставьте его в агента.</div>'}
+        ${agent.configured ? `<div class="st-item-sub">Токен <code>plr_…${escapeHTML(agent.hint)}</code></div>` : '<div class="st-item-sub">Сгенерируйте токен и вставьте его в агента</div>'}
         ${sourceText ? `<div class="st-item-sub">${sourceText}</div>` : ''}
         <div class="st-item-actions">
           <button type="button" class="st-btn primary" data-st="agent-generate">${agent.configured ? 'Перевыпустить' : 'Сгенерировать токен'}</button>

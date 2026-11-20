@@ -293,7 +293,7 @@ window.FinanceModule = (() => {
       .join('');
 
     const list = payments.length === 0
-      ? `<p class="metric-subtext" style="padding:12px 0">Платежи не найдены.</p>`
+      ? `<p class="metric-subtext" style="padding:12px 0">Платежи не найдены</p>`
       : payments.map((p) => renderPaymentRow(p)).join('');
 
     return `
@@ -310,7 +310,7 @@ window.FinanceModule = (() => {
             </select>
             <label class="finance-search">
               <span class="icon" data-icon="search" aria-hidden="true"></span>
-              <input type="search" data-action="search-payments" placeholder="Поиск…" value="${escapeHTML(searchQuery)}" />
+              <input type="search" data-action="search-payments" placeholder="Поиск" value="${escapeHTML(searchQuery)}" />
             </label>
           </div>
         </div>

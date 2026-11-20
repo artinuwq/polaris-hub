@@ -160,7 +160,7 @@ class NavigationAndOverviewTests(UiTestCase):
             self.assertIn("мс", comp_text)
         self.assertEqual(page.locator(".sg-comp").count(), 4)
         tiles = page.inner_text(".sg-stats")
-        self.assertIn("Buckets", tiles)
+        self.assertIn("Бакеты", tiles)
         self.assertRegex(tiles, r"Объекты \(логические\)")
         self.assertIn("Blobs (физические)", tiles)
         self.assertIn("Незавершённые multipart", tiles)
@@ -233,7 +233,7 @@ class BucketUiTests(UiTestCase):
         self.assertRegex(row, r"ui-bucket\s+\S+.*0\s+0 Б")
         self.assertEqual([b.name for b in self.core.list_buckets()], ["files", "ui-bucket"])
         headers = page.eval_on_selector_all(".sg-table th", "els => els.map(e => e.textContent.trim())")
-        self.assertEqual(headers, ["Bucket Name", "Created At", "Object Count", "Total Size", "Actions"])
+        self.assertEqual(headers, ["Название", "Создан", "Объектов", "Размер", "Действия"])
 
     def test_empty_state_and_error_states(self):
         self.core.delete_bucket("files")
@@ -355,7 +355,7 @@ class AccessKeyUiTests(UiTestCase):
         self.assertNotIn(secret, page.inner_text("body"))
         card = self.text(f'.sg-key-card[data-key-id="{akid}"]')
         self.assertIn(akid, card)
-        for expected in ("backup", "ночные бэкапы", "Active", "ListBucket", "ReadObject", "WriteObject", "files", "ещё не использовался"):
+        for expected in ("backup", "ночные бэкапы", "Активен", "ListBucket", "ReadObject", "WriteObject", "files", "ещё не использовался"):
             self.assertIn(expected, card)
         page.reload()
         page.wait_for_selector("#drawer-toggle")
@@ -433,7 +433,7 @@ class AccessKeyUiTests(UiTestCase):
         self.click_modal("confirm")
         self.wait_modal_closed()
         self.page.wait_for_selector(f'.sg-key-card.is-revoked[data-key-id="{akid}"]')
-        self.assertIn("Revoked", self.text(f'.sg-key-card[data-key-id="{akid}"]'))
+        self.assertIn("Отозван", self.text(f'.sg-key-card[data-key-id="{akid}"]'))
         self.assertEqual(self.page.locator(f'.sg-key-card[data-key-id="{akid}"] [data-sg="key-rotate"]').count(), 0)
         for r in (client.get("files", "from-ui-key.txt"), client.request("GET"), client.put("files", "again", b"x")):
             self.assertEqual((r.status_code, code(r)), (403, "InvalidAccessKeyId"))
@@ -759,7 +759,7 @@ class DiagnosticsUiTests(UiTestCase):
         self.click_modal("confirm")
         self.wait_modal_closed()
         page.wait_for_function("!document.querySelector('[data-upload]')")
-        self.assertNotIn("Multipart Uploads", self.text())  # когда загрузок нет, блока нет вообще
+        self.assertNotIn("multipart-загрузки", self.text())  # когда загрузок нет, блока нет вообще
         self.assertNotIn("Незавершённых загрузок нет", self.page.text_content("#storage-container"))
         self.assertEqual(self.core.multipart.list_all(), [])
         self.assertEqual(self.driver.blobs, {})
@@ -775,7 +775,7 @@ class DiagnosticsUiTests(UiTestCase):
         for forbidden in ("SECRETFILEID", "message_id", "chat_id"):
             self.assertNotIn(forbidden, body)
         text = self.text()
-        self.assertIn("Recovery", text)
+        self.assertIn("Восстановление", text)
         self.assertIn("db_write_lost", text)
         self.assertIn("Только просмотр", self.page.text_content("#storage-container"))  # пояснение лежит в скрытой плашке
         self.assertNotIn("Только просмотр", text)
