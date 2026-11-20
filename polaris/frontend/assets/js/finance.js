@@ -563,7 +563,7 @@ window.FinanceModule = (() => {
         ${modalError ? `<p class="create-modal-hint" style="color:var(--error)">${escapeHTML(modalError)}</p>` : ''}
 
         <div class="create-modal-actions" style="justify-content:${modalMode === 'edit' ? 'space-between' : 'flex-end'}">
-          ${modalMode === 'edit' ? `<button class="small-button ghost" type="button" data-action="delete-payment" style="color:var(--error);border-color:rgba(255,93,115,0.3)" ${modalSaving ? 'disabled' : ''}>Удалить</button>` : ''}
+          ${modalMode === 'edit' ? `<button class="small-button ghost" type="button" data-action="delete-payment" style="color:var(--error);border-color:rgba(229, 72, 77,0.3)" ${modalSaving ? 'disabled' : ''}>Удалить</button>` : ''}
           <div style="display:flex;gap:8px">
             <button class="small-button ghost" type="button" data-action="close-add-payment" ${modalSaving ? 'disabled' : ''}>Отмена</button>
             <button class="small-button primary" type="button" data-action="submit-add-payment" ${modalSaving ? 'disabled' : ''}>${modalSaving ? 'Сохраняю…' : 'Сохранить'}</button>

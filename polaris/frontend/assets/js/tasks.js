@@ -80,9 +80,9 @@ window.TasksModule = (() => {
   ];
 
   const ENERGY_OPTIONS = [
-    { id: 'quick', label: '🟢 Быстро', desc: '10 минут' },
-    { id: 'medium', label: '🟡 Средняя', desc: '30–60 минут' },
-    { id: 'large', label: '🔴 Большая', desc: '2 часа+' },
+    { id: 'quick', label: 'Быстро', desc: '10 минут', dot: 'ok' },
+    { id: 'medium', label: 'Средняя', desc: '30–60 минут', dot: 'warn' },
+    { id: 'large', label: 'Большая', desc: '2 часа+', dot: 'error' },
   ];
 
   const REMIND_OPTIONS = [
@@ -421,7 +421,7 @@ window.TasksModule = (() => {
     }
 
     const energy = ENERGY_OPTIONS.find((e) => e.id === task.energy);
-    if (energy) chips.push(`<span class="task-meta-item" title="${escapeHTML(energy.desc)}">${energy.label.split(' ')[0]}</span>`);
+    if (energy) chips.push(`<span class="task-meta-item" title="${escapeHTML(energy.desc)}"><span class="dot dot-${energy.dot}" aria-hidden="true"></span>${escapeHTML(energy.label)}</span>`);
 
     if (task.repeat && task.repeat !== 'never') {
       chips.push(`<span class="task-meta-item" title="${escapeHTML(REPEAT_OPTIONS.find((r) => r.id === task.repeat)?.label || '')}"><span class="icon" data-icon="repeat" aria-hidden="true"></span></span>`);
@@ -855,7 +855,7 @@ window.TasksModule = (() => {
     try {
       await apiRequest(`/api/tasks/${taskId}/reminders`, 'POST', { remind_at: toLocalISO(date) });
       clearCache();
-      toast(`🔔 Напомню: ${fmtReminder(date.toISOString())}`);
+      toast(`Напомню: ${fmtReminder(date.toISOString())}`);
       return true;
     } catch (e) { toast(`Не удалось: ${e.message}`); return false; }
   }

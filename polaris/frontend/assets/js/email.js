@@ -160,7 +160,7 @@ window.EmailModule = (() => {
 
   function renderItem(m) {
     const attachments = (m.attachments || []).length
-      ? `<div class="mail-attach">📎 ${escapeHTML(m.attachments.join(', '))}</div>`
+      ? `<div class="mail-attach"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 11.5-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"></path></svg><span>${escapeHTML(m.attachments.join(', '))}</span></div>`
       : '';
     return `
       <details class="card mail-item">
@@ -218,7 +218,7 @@ window.EmailModule = (() => {
     if (!container) return;
     const broken = accounts.filter((a) => a.enabled && a.last_status === 'error');
     const warn = broken.map((a) => `
-      <div class="mail-warn">⚠️ ${escapeHTML(a.label || a.email)}: ${escapeHTML(a.last_error || 'ошибка подключения')}
+      <div class="mail-warn"><span class="dot dot-warn" aria-hidden="true"></span>${escapeHTML(a.label || a.email)}: ${escapeHTML(a.last_error || 'ошибка подключения')}
         <button type="button" class="small-button" data-view="settings">Исправить</button></div>`).join('');
 
     const toolbar = `

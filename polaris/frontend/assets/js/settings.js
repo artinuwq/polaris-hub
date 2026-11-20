@@ -81,7 +81,7 @@ window.SettingsModule = (() => {
     if (m) return `Тема ${m[2]} в группе ${superId(m[1])}`;
     if (/^@[A-Za-z][A-Za-z0-9_]{3,31}$/.test(text)) return `Канал/группа ${text}`;
     m = text.match(/^(-?\d{1,16})(?:\/(\d{1,12}))?$/);
-    if (!m) return '⚠ Не похоже на ID, группу, тему или ссылку t.me/c/…';
+    if (!m) return 'Не похоже на ID, группу, тему или ссылку t.me/c/…';
     const neg = m[1].startsWith('-');
     const digits = m[1].replace('-', '');
     if (m[2]) return `Тема ${m[2]} в группе ${neg ? m[1] : superId(digits)}`;
@@ -354,7 +354,7 @@ window.SettingsModule = (() => {
       if (action === 'close') { closeModal(); return; }
       if (action === 'token-copy') {
         const ok = await copyText(token);
-        btn.textContent = ok ? 'Скопировано ✓' : 'Выделите и скопируйте вручную';
+        btn.textContent = ok ? 'Скопировано' : 'Выделите и скопируйте вручную';
         if (!ok) overlayEl?.querySelector('#sm-token')?.focus();
       }
     });

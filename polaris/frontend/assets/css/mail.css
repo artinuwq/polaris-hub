@@ -1,8 +1,8 @@
 /* Email + Settings (mail) */
-.mail-list { display: flex; flex-direction: column; gap: 10px; }
+.mail-list { display: flex; flex-direction: column; gap: 12px; }
 .mail-item { padding: 0; overflow: hidden; }
 .mail-item > summary {
-  display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; cursor: pointer; list-style: none;
+  display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; cursor: pointer; list-style: none;
 }
 .mail-item > summary::-webkit-details-marker { display: none; }
 .mail-item[open] > summary { border-bottom: 1px solid var(--border-soft); }
@@ -18,11 +18,12 @@
 .mail-preview { color: var(--text-muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mail-item[open] .mail-subject, .mail-item[open] .mail-preview { white-space: normal; }
 .mail-item[open] .mail-preview { display: none; }
-.mail-expanded { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.mail-expanded { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
 .mail-meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 0.85rem; }
 .mail-meta dt { color: var(--text-muted); }
 .mail-meta dd { margin: 0; overflow-wrap: anywhere; }
-.mail-attach { font-size: 0.85rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.mail-attach { display: flex; align-items: flex-start; gap: 8px; font-size: 0.85rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.mail-attach svg { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .mail-text {
   white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.92rem; line-height: 1.5;
   border-left: 3px solid var(--border); padding-left: 12px; max-height: 60vh; overflow: auto;
@@ -38,7 +39,7 @@
 .st-card { display: flex; flex-direction: column; gap: 12px; }
 .st-title { margin: 0; font-size: 1.15rem; }
 .st-subtitle { margin: 0 0 8px; font-size: 0.95rem; }
-.st-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border-soft); }
+.st-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border-soft); }
 .st-row-main { flex: 1 1 260px; min-width: 0; }
 .st-row-title { font-weight: 600; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .st-row-sub { color: var(--text-secondary); font-size: 0.85rem; overflow-wrap: anywhere; }
@@ -50,27 +51,27 @@
 .st-inline { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .st-input {
   background: var(--surface); color: var(--text); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 9px 12px; font: inherit; min-width: 0; width: 100%; box-sizing: border-box;
+  border-radius: var(--radius-sm); padding: 8px 12px; font: inherit; min-width: 0; width: 100%; box-sizing: border-box;
 }
 .st-inline .st-input { flex: 1 1 200px; width: auto; }
 .st-input:focus { outline: none; border-color: var(--primary); }
 .st-hint { margin: 0; color: var(--text-muted); font-size: 0.82rem; min-height: 1.2em; }
-.st-formats { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 0.82rem; display: flex; flex-direction: column; gap: 2px; }
-.st-formats code, .st-row-sub code { background: var(--surface-raised); padding: 1px 5px; border-radius: 4px; }
-.st-msg { border-radius: var(--radius-sm); padding: 9px 12px; font-size: 0.9rem; border: 1px solid var(--border-soft); background: var(--surface-raised); }
+.st-formats { margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.82rem; display: flex; flex-direction: column; gap: 2px; }
+.st-formats code, .st-row-sub code { background: var(--surface-raised); padding: 1px 4px; border-radius: 4px; }
+.st-msg { border-radius: var(--radius-sm); padding: 8px 12px; font-size: 0.9rem; border: 1px solid var(--border-soft); background: var(--surface-raised); }
 .st-msg.is-ok { border-color: var(--success); }
 .st-msg.is-error { border-color: var(--error); color: var(--error); }
 .st-error { color: var(--error); }
 .st-soon { opacity: 0.7; }
 
-.email-page, .settings-page { display: flex; flex-direction: column; gap: 14px; }
+.email-page, .settings-page { display: flex; flex-direction: column; gap: 16px; }
 
 .update-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Вкладки настроек */
 .st-tabs {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   padding: 4px;
   background: var(--surface);
   border: 1px solid var(--border-soft);
@@ -79,7 +80,7 @@
 .st-tab {
   flex: 1 1 0;
   min-width: 0;
-  padding: 9px 12px;
+  padding: 8px 12px;
   background: transparent;
   border: 0;
   border-radius: var(--radius-sm);
@@ -92,7 +93,7 @@
 .st-tabs.is-sub { background: transparent; border: 0; padding: 0; gap: 8px; }
 .st-tabs.is-sub .st-tab {
   flex: 0 0 auto;
-  padding: 6px 14px;
+  padding: 8px 16px;
   border: 1px solid var(--border-soft);
   border-radius: 999px;
   font-weight: 500;
@@ -106,7 +107,7 @@
 .mail-toolbar { display: flex; gap: 8px; align-items: stretch; }
 .mail-refresh {
   flex: 1 1 auto;
-  padding: 11px 14px;
+  padding: 12px 16px;
   border: 0;
   border-radius: var(--radius-md);
   background: var(--primary);
@@ -124,7 +125,7 @@
   gap: 8px;
   min-width: 0;
   max-width: 55%;
-  padding: 11px 14px;
+  padding: 12px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
@@ -153,7 +154,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 14px;
+  padding: 16px;
   background: rgba(4, 6, 10, 0.62);
   backdrop-filter: blur(4px);
 }
@@ -163,7 +164,7 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -171,13 +172,13 @@
   box-shadow: var(--shadow);
 }
 .mail-modal-head h3 { margin: 0; font-size: 1.02rem; }
-.mail-picks { display: flex; flex-direction: column; gap: 6px; }
+.mail-picks { display: flex; flex-direction: column; gap: 8px; }
 .mail-pick {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -205,7 +206,7 @@
 .mail-pick-title { font-weight: 600; font-size: 0.9rem; overflow-wrap: anywhere; }
 .mail-pick-sub { color: var(--text-muted); font-size: 0.75rem; overflow-wrap: anywhere; }
 .mail-modal-done {
-  padding: 11px 14px;
+  padding: 12px 16px;
   border: 1px solid var(--calendar-today, rgba(120, 100, 255, 0.7));
   border-radius: var(--radius-md);
   background: transparent;
@@ -222,7 +223,7 @@
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 11px 14px;
+  padding: 12px 16px;
   border: 1px solid var(--calendar-today, rgba(120, 100, 255, 0.7));
   border-radius: var(--radius-md);
   background: transparent;
@@ -236,22 +237,22 @@
 
 .st-list { display: flex; flex-direction: column; gap: 8px; }
 .st-empty { margin: 4px 2px; color: var(--text-muted); font-size: 0.88rem; }
-.st-item { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; }
+.st-item { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; }
 .st-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .st-item-title { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
 .st-item-sub { color: var(--text-secondary); font-size: 0.8rem; overflow-wrap: anywhere; }
-.st-item-sub code { background: var(--surface-raised); padding: 1px 5px; border-radius: 4px; }
+.st-item-sub code { background: var(--surface-raised); padding: 1px 4px; border-radius: 4px; }
 .st-item-error { color: var(--error); font-size: 0.8rem; overflow-wrap: anywhere; }
 .st-item-inline { display: flex; flex-direction: column; gap: 8px; }
-.st-item-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.st-item-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 
-.st-badge { flex: 0 0 auto; padding: 2px 9px; border: 1px solid var(--border); border-radius: 999px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; color: var(--text-secondary); }
-.st-badge.is-ok { color: #52d273; border-color: rgba(82, 210, 115, 0.4); background: rgba(82, 210, 115, 0.08); }
-.st-badge.is-err { color: #ff5d73; border-color: rgba(255, 93, 115, 0.4); background: rgba(255, 93, 115, 0.08); }
+.st-badge { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; color: var(--text-secondary); }
+.st-badge.is-ok { color: #4cc38a; border-color: rgba(76, 195, 138, 0.4); background: rgba(76, 195, 138, 0.08); }
+.st-badge.is-err { color: #e5484d; border-color: rgba(229, 72, 77, 0.4); background: rgba(229, 72, 77, 0.08); }
 .st-badge.is-warn { color: #f5b942; border-color: rgba(245, 185, 66, 0.4); background: rgba(245, 185, 66, 0.08); }
 
 .st-btn {
-  padding: 7px 12px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
@@ -263,16 +264,16 @@
   -webkit-tap-highlight-color: transparent;
 }
 .st-btn.primary { border-color: var(--calendar-today, rgba(120, 100, 255, 0.7)); background: transparent; }
-.st-btn.danger { color: #ff5d73; border-color: rgba(255, 93, 115, 0.35); background: rgba(255, 93, 115, 0.06); }
+.st-btn.danger { color: #e5484d; border-color: rgba(229, 72, 77, 0.35); background: rgba(229, 72, 77, 0.06); }
 .st-btn:disabled { opacity: 0.6; }
 
-.st-modal-error { margin: 0; padding: 8px 10px; border: 1px solid rgba(255, 93, 115, 0.4); border-radius: var(--radius-sm); color: #ff5d73; font-size: 0.82rem; }
+.st-modal-error { margin: 0; padding: 8px 12px; border: 1px solid rgba(229, 72, 77, 0.4); border-radius: var(--radius-sm); color: #e5484d; font-size: 0.82rem; }
 .st-modal-hint { margin: 0; color: var(--text-muted); font-size: 0.78rem; min-height: 1.1em; overflow-wrap: anywhere; }
 
 /* Агент: токен и адрес */
 .st-code {
   display: block;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
   background: var(--surface-raised);

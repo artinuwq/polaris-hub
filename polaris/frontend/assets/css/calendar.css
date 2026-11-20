@@ -8,9 +8,9 @@
 /* Color categories per item type */
 .calendar-event-task { color: #5ab8ff; }
 .calendar-event-reminder { color: #a78bfa; }
-.calendar-event-payment { color: #52d273; }
+.calendar-event-payment { color: #4cc38a; }
 .calendar-event-subscription { color: #f5b942; }
-.calendar-event-meeting { color: #ff5d73; }
+.calendar-event-meeting { color: #e5484d; }
 
 .calendar-header-actions {
   display: flex;
@@ -24,7 +24,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 7px;
+  padding: 8px 8px;
   border: 1px solid var(--calendar-today);
   border-radius: var(--radius-sm);
   background: var(--calendar-today-soft);
@@ -41,8 +41,8 @@
 }
 
 .calendar-add-button .icon {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   color: var(--calendar-today);
 }
 
@@ -73,7 +73,7 @@
 }
 
 .calendar-view-button {
-  padding: 6px 7px;
+  padding: 8px 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -99,7 +99,7 @@
 }
 
 .calendar-today-button {
-  padding: 6px 12px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
@@ -112,7 +112,7 @@
 
 .calendar-today-button:hover {
   border-color: var(--primary);
-  background: rgba(90, 184, 255, 0.06);
+  background: rgba(248, 250, 252, 0.04);
 }
 
 /* Month navigation */
@@ -147,7 +147,7 @@
 }
 
 .calendar-nav .nav-button:hover {
-  border-color: rgba(90, 184, 255, 0.4);
+  border-color: rgba(248, 250, 252, 0.2);
   background: var(--surface-raised);
   color: var(--text);
 }
@@ -197,7 +197,7 @@
 
 @media (hover: hover) {
   .calendar-month .calendar-day:hover {
-    border-color: rgba(90, 184, 255, 0.3);
+    border-color: rgba(248, 250, 252, 0.2);
     background: var(--surface-raised);
   }
 }
@@ -285,8 +285,8 @@
 .calendar-day-event {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 12px 12px;
   border: 1px solid var(--border-soft);
   border-left: 3px solid var(--primary);
   border-radius: var(--radius-sm);
@@ -297,7 +297,7 @@
 
 @media (hover: hover) {
   .calendar-day-event:hover {
-    border-color: rgba(90, 184, 255, 0.3);
+    border-color: rgba(248, 250, 252, 0.2);
     background: var(--surface-raised);
   }
 }
@@ -330,22 +330,22 @@
 }
 
 .calendar-event-time .icon {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
 }
 
 .calendar-event-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-top: 2px;
   flex-wrap: wrap;
 }
 
 .calendar-event-tag {
-  padding: 1px 6px;
+  padding: 1px 8px;
   border-radius: 4px;
-  background: rgba(90, 184, 255, 0.08);
+  background: rgba(248, 250, 252, 0.06);
   color: var(--text-secondary);
   font-size: 0.68rem;
 }
@@ -370,10 +370,10 @@
 /* Type color badges */
 .calendar-event-type-task { background: rgba(90, 184, 255, 0.1); color: #5ab8ff; border-color: rgba(90, 184, 255, 0.3); }
 .calendar-event-type-reminder { background: rgba(167, 139, 250, 0.1); color: #a78bfa; border-color: rgba(167, 139, 250, 0.3); }
-.calendar-event-type-payment { background: rgba(82, 210, 115, 0.1); color: #52d273; border-color: rgba(82, 210, 115, 0.3); }
+.calendar-event-type-payment { background: rgba(76, 195, 138, 0.1); color: #4cc38a; border-color: rgba(76, 195, 138, 0.3); }
 .calendar-event-type-subscription { background: rgba(245, 185, 66, 0.1); color: #f5b942; border-color: rgba(245, 185, 66, 0.3); }
 .calendar-event-type-meeting,
-.calendar-event-type-event { background: rgba(255, 93, 115, 0.1); color: #ff5d73; border-color: rgba(255, 93, 115, 0.3); }
+.calendar-event-type-event { background: rgba(229, 72, 77, 0.1); color: #e5484d; border-color: rgba(229, 72, 77, 0.3); }
 
 /* Loading / Error */
 .calendar-loading,
@@ -409,7 +409,7 @@
 .calendar-week {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .calendar-week-day {
@@ -422,11 +422,11 @@
   transition: all 160ms ease;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .calendar-week-day:hover {
-  border-color: rgba(90, 184, 255, 0.3);
+  border-color: rgba(248, 250, 252, 0.2);
   background: var(--surface-raised);
 }
 
@@ -480,7 +480,7 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 3px 6px;
+  padding: 3px 8px;
   border-left: 2px solid #5ab8ff;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.03);
@@ -552,7 +552,7 @@
 }
 .calendar-nav-title h2 { white-space: nowrap; }
 .calendar-today-chip {
-  padding: 3px 10px;
+  padding: 3px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: transparent;

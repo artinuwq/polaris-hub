@@ -20,12 +20,14 @@ window.ServersModule = (() => {
     error: 'Ошибка',
   };
 
+  // какой цветной точкой показывать статус сервера (см. .dot в app.css)
   const STATUS_DOTS = {
-    pending: '🟡',
-    online: '🟢',
-    offline: '🔴',
-    error: '🔴',
+    pending: 'warn',
+    online: 'ok',
+    offline: 'error',
+    error: 'error',
   };
+  const statusDot = (kind) => `<span class="dot dot-${kind || 'off'}" aria-hidden="true"></span>`;
 
   const SERVICE_LABELS = { running: 'running', stopped: 'stopped', failed: 'failed', unknown: 'unknown' };
 
@@ -377,7 +379,7 @@ window.ServersModule = (() => {
   }
 
   function renderServerCard(s) {
-    const dot = STATUS_DOTS[s.status] || '⚪';
+    const dot = statusDot(STATUS_DOTS[s.status]);
     const label = STATUS_LABELS[s.status] || s.status;
     const live = s.status === 'online' || s.status === 'offline';
     return `
@@ -429,7 +431,7 @@ window.ServersModule = (() => {
         ${renderHeader(true)}
         <div class="card servers-card span-12">
           <h3 class="finance-section-title">${escapeHTML(tokenInfo.name || 'Новый сервер')}</h3>
-          <p class="servers-waiting-status">🟡 Waiting for agent</p>
+          <p class="servers-waiting-status">${statusDot('warn')}Waiting for agent</p>
           <p class="metric-subtext">Установите Polaris Agent на сервере, чтобы он появился здесь online.</p>
 
           <div class="servers-install-box">
@@ -440,7 +442,7 @@ window.ServersModule = (() => {
           </div>
 
           <p class="servers-token-timer ${expired ? 'expired' : ''}">
-            ${expired ? '🔴 Registration token expired' : `Token expires in ${formatCountdown(remaining)}`}
+            ${expired ? `${statusDot('error')}Registration token expired` : `Token expires in ${formatCountdown(remaining)}`}
           </p>
 
           ${expired ? `<button class="small-button primary" type="button" data-action="regenerate-token">Сгенерировать новый token</button>` : ''}
@@ -462,7 +464,7 @@ window.ServersModule = (() => {
     }
 
     const s = selectedServer;
-    const dot = STATUS_DOTS[s.status] || '⚪';
+    const dot = statusDot(STATUS_DOTS[s.status]);
     const label = STATUS_LABELS[s.status] || s.status;
 
     if (s.status === 'pending' || (s.status === 'error' && s.status_reason === 'token_expired')) {
@@ -513,7 +515,7 @@ window.ServersModule = (() => {
         ${renderEventsCard()}
 
         <div class="card servers-card span-12">
-          <button class="small-button ghost" type="button" data-action="delete-server" style="color:var(--error);border-color:rgba(255,93,115,0.3)">Удалить сервер</button>
+          <button class="small-button ghost" type="button" data-action="delete-server" style="color:var(--error);border-color:rgba(229, 72, 77,0.3)">Удалить сервер</button>
         </div>
       </div>
     `;
@@ -527,7 +529,7 @@ window.ServersModule = (() => {
         ${renderHeader(true)}
         <div class="card servers-card span-12">
           <h3 class="finance-section-title">${escapeHTML(s.name)}</h3>
-          <p class="servers-waiting-status">${s.status === 'error' ? '🔴 Registration token expired' : '🟡 Waiting for agent'}</p>
+          <p class="servers-waiting-status">${s.status === 'error' ? `${statusDot('error')}Registration token expired` : `${statusDot('warn')}Waiting for agent`}</p>
           <p class="metric-subtext">${s.status === 'error' ? 'Сгенерируйте новый registration token, чтобы установить Agent.' : 'Установите Polaris Agent, чтобы сервер стал online.'}</p>
           <button class="small-button primary" type="button" data-action="regenerate-token-for" data-server-id="${escapeHTML(s.id)}">
             ${s.status === 'error' ? 'Сгенерировать новый token' : 'Показать install-команду'}
@@ -539,19 +541,19 @@ window.ServersModule = (() => {
 
   /* ─── Agent: версия, обновление, настройки ─── */
   const UPDATE_RESULTS = {
-    updated: ['✅ Обновлён', ''],
-    current: ['Уже последняя версия', ''],
-    failed: ['⚠️ Не удалось обновить', 'is-error'],
-    rollback: ['↩️ Откат на прошлую версию', 'is-error'],
+    updated: ['Обновлён', '', 'ok'],
+    current: ['Уже последняя версия', '', 'off'],
+    failed: ['Не удалось обновить', 'is-error', 'error'],
+    rollback: ['Откат на прошлую версию', 'is-error', 'warn'],
   };
 
   function renderAgentCard(s) {
     if (!s.agent_id) return '';
     const version = s.agent_version || '—';
     const state = s.update_available ? `доступна ${escapeHTML(s.latest_agent_version)}` : 'актуальна';
-    const [resultLabel, resultClass] = UPDATE_RESULTS[s.update_result] || ['', ''];
+    const [resultLabel, resultClass, resultDot] = UPDATE_RESULTS[s.update_result] || ['', '', 'off'];
     const resultLine = resultLabel
-      ? `<p class="servers-agent-line ${resultClass}">${resultLabel}${s.update_detail ? `: ${escapeHTML(s.update_detail)}` : ''}${s.update_result_at ? ` · ${escapeHTML(s.update_result_at.slice(0, 16).replace('T', ' '))}` : ''}</p>`
+      ? `<p class="servers-agent-line ${resultClass}">${statusDot(resultDot)}${resultLabel}${s.update_detail ? `: ${escapeHTML(s.update_detail)}` : ''}${s.update_result_at ? ` · ${escapeHTML(s.update_result_at.slice(0, 16).replace('T', ' '))}` : ''}</p>`
       : '';
     const pendingLine = s.update_pending
       ? '<p class="servers-agent-line">Команда отправлена: агент получит её при ближайшем heartbeat, скачает версию из репозитория и перезапустится.</p>'
@@ -739,8 +741,8 @@ window.ServersModule = (() => {
       return `<div class="card servers-card span-12" data-services-card>${head}<p class="metric-subtext">Ни за одним сервисом не следим. Выберите из установленных — если сервис упадёт, в Telegram придёт уведомление.</p></div>`;
     }
     const rows = s.services.map((svc) => {
-      const dot = svc.status === 'running' ? '🟢' : svc.status === 'failed' ? '🔴' : svc.status === 'stopped' ? '🟠' : '⚪';
-      return `<div class="servers-service-row"><span>${escapeHTML(svc.name)}</span><span>${dot} ${SERVICE_LABELS[svc.status] || svc.status}</span></div>`;
+      const kind = svc.status === 'running' ? 'ok' : svc.status === 'failed' ? 'error' : svc.status === 'stopped' ? 'warn' : 'off';
+      return `<div class="servers-service-row"><span>${escapeHTML(svc.name)}</span><span>${statusDot(kind)}${SERVICE_LABELS[svc.status] || svc.status}</span></div>`;
     }).join('');
     return `<div class="card servers-card span-12" data-services-card>${head}${rows}</div>`;
   }

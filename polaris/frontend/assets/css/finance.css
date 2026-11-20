@@ -3,11 +3,11 @@
 .finance-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .finance-card {
-  padding: 18px;
+  padding: 20px;
 }
 
 .finance-section-title {
@@ -27,7 +27,7 @@
 .finance-upcoming-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .finance-upcoming-item {
@@ -35,7 +35,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -45,7 +45,7 @@
 
 .finance-upcoming-item:hover {
   background: var(--surface-raised);
-  border-color: rgba(90, 184, 255, 0.25);
+  border-color: rgba(248, 250, 252, 0.2);
 }
 
 .finance-upcoming-main {
@@ -92,18 +92,18 @@
 .finance-filters {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .finance-chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .finance-chip {
-  padding: 5px 12px;
+  padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: transparent;
@@ -115,7 +115,7 @@
 }
 
 .finance-chip:hover {
-  border-color: rgba(90, 184, 255, 0.4);
+  border-color: rgba(248, 250, 252, 0.2);
   color: var(--text);
 }
 
@@ -133,7 +133,7 @@
 }
 
 .finance-select {
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -145,8 +145,8 @@
 .finance-search {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
+  gap: 8px;
+  padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -155,8 +155,8 @@
 }
 
 .finance-search .icon {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   color: var(--text-muted);
   flex-shrink: 0;
 }
@@ -175,14 +175,14 @@
 .finance-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .finance-row {
   display: grid;
   grid-template-columns: 1.4fr 1fr auto;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 12px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
@@ -193,7 +193,7 @@
 
 .finance-row:hover {
   background: var(--surface-raised);
-  border-color: rgba(90, 184, 255, 0.25);
+  border-color: rgba(248, 250, 252, 0.2);
 }
 
 .finance-row-main {
@@ -220,8 +220,8 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  background: rgba(82, 210, 115, 0.14);
-  color: #52d273;
+  background: rgba(76, 195, 138, 0.14);
+  color: #4cc38a;
 }
 
 .finance-status-badge.status-paused {
@@ -263,7 +263,7 @@
 }
 
 .finance-row-date.overdue {
-  color: #ff5d73;
+  color: #e5484d;
   font-weight: 600;
 }
 
@@ -271,7 +271,7 @@
 @media (max-width: 720px) {
   .finance-row {
     grid-template-columns: 1fr;
-    row-gap: 6px;
+    row-gap: 8px;
   }
   .finance-row-amount {
     align-items: flex-start;
@@ -294,7 +294,7 @@
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 11px 14px;
+  padding: 12px 16px;
   border: 1px solid var(--calendar-today, rgba(120, 100, 255, 0.7));
   border-radius: var(--radius-md);
   background: transparent;
@@ -317,12 +317,12 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 12px 16px;
 }
 .finance-stat-title { color: var(--text-secondary); font-size: 0.78rem; }
 .finance-stat-value { font-size: 1.45rem; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
 .finance-stat-value small { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
 .finance-stat-sub { color: var(--text-muted); font-size: 0.78rem; }
 .finance-total { display: flex; flex-direction: column; gap: 2px; }
-.finance-total + .finance-total { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--border-soft); }
+.finance-total + .finance-total { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
 

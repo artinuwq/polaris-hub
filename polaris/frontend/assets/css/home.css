@@ -1,5 +1,5 @@
 /* Home */
-.home-page { display: flex; flex-direction: column; gap: 18px; }
+.home-page { display: flex; flex-direction: column; gap: 20px; }
 
 .home-date {
   margin: 4px 2px 0;
@@ -17,7 +17,7 @@
 .home-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   padding: 16px;
   text-align: left;
@@ -26,7 +26,7 @@
   cursor: pointer;
   transition: border-color 160ms ease, background 160ms ease;
 }
-.home-card:hover { border-color: rgba(90, 184, 255, 0.3); background: var(--surface-raised); }
+.home-card:hover { border-color: rgba(248, 250, 252, 0.2); background: var(--surface-raised); }
 .home-card:active { background: var(--surface-raised); }
 
 .home-card-title {
@@ -71,7 +71,7 @@
 .home-card.is-good .home-card-sub { color: var(--success); }
 .home-card.is-bad .home-card-sub { color: var(--error); }
 
-.home-section { display: flex; flex-direction: column; gap: 10px; }
+.home-section { display: flex; flex-direction: column; gap: 12px; }
 .home-section-title { margin: 0 2px; font-size: 1.05rem; }
 
 .home-tasks { display: flex; flex-direction: column; gap: 8px; }
@@ -80,7 +80,7 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 12px 16px;
   text-align: left;
   color: var(--text);
   font: inherit;

@@ -1,12 +1,12 @@
 /* Polaris Meme: раздел «Polaris Meme». Переиспользует st-* (mail.css) и tk-* (tasks.css). */
-.meme-page { display: flex; flex-direction: column; gap: 14px; }
+.meme-page { display: flex; flex-direction: column; gap: 16px; }
 .mm-toolbar { display: flex; gap: 8px; align-items: center; }
 .mm-toolbar .st-input { flex: 1; }
 .mm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .mm-card { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 .mm-thumb { display: block; padding: 0; border: 0; background: var(--surface-raised); cursor: pointer; aspect-ratio: 1 / 1; width: 100%; }
 .mm-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.mm-info { padding: 8px 10px 4px; display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
+.mm-info { padding: 8px 12px 4px; display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
 .mm-title { margin: 0; font-size: 0.88rem; font-weight: 600; overflow-wrap: anywhere; }
 .mm-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .mm-chip { background: var(--surface-raised); border: 1px solid var(--border-soft); color: var(--text-secondary); border-radius: 999px; padding: 2px 8px; font: inherit; font-size: 0.72rem; cursor: pointer; }
@@ -21,17 +21,17 @@ span.mm-chip { cursor: default; }
 .mm-ibtn.is-danger { color: var(--error); }
 .mm-gear { width: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .mm-gear svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.mm-set { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border-soft); }
+.mm-set { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border-soft); }
 .mm-set h4 { margin: 0; font-size: 0.92rem; }
-.mm-pick { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mm-pick { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .mm-pick .st-hint { overflow-wrap: anywhere; min-height: 0; }
 .mm-more { align-self: center; }
 .mm-modal { max-height: 92vh; overflow-y: auto; }
-.mm-preview { display: block; max-width: 100%; max-height: 200px; margin: 0 auto 6px; border-radius: var(--radius-sm); object-fit: contain; }
+.mm-preview { display: block; max-width: 100%; max-height: 200px; margin: 0 auto 8px; border-radius: var(--radius-sm); object-fit: contain; }
 .mm-preview.is-large { max-height: 60vh; }
 .mm-preview[hidden] { display: none; }
 @media (max-width: 600px) {
-  .mm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .mm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 }
 /* модалка настроек: заголовок по центру, строка «Inline-кэш — Обновить», подсказки «i» */
 .mm-head-center { text-align: center; }
@@ -39,7 +39,7 @@ span.mm-chip { cursor: default; }
 .mm-tip-below .sg-tip-pop { top: calc(100% + 6px); bottom: auto; }
 .mm-row { position: relative; flex-direction: row; align-items: center; gap: 8px; }
 .mm-cache-state { margin-left: auto; color: var(--text-secondary); font-size: 0.8rem; white-space: nowrap; }
-.mm-refresh { padding: 7px 12px; font-size: 0.8rem; flex: 0 0 auto; }
+.mm-refresh { padding: 8px 12px; font-size: 0.8rem; flex: 0 0 auto; }
 .mm-check { display: flex; flex-direction: column; gap: 8px; }
 .mm-check-q { text-align: center; }
 .st-hint.is-warn { color: var(--warning, #f5b942); }
