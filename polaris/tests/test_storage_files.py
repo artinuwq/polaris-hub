@@ -70,6 +70,17 @@ class FileManagerTests(AdminTestCase):
         missing = self.admin.bucket_objects("files", prefix="docs/none.txt", limit=1)["objects"]
         self.assertEqual(missing, [])
 
+    def test_saving_over_a_file_replaces_content_and_changes_etag(self):
+        """Редактор сохраняет загрузкой по тому же ключу и по etag замечает чужие правки."""
+        before = self.admin.bucket_objects("files", prefix="docs/a.txt", limit=1)["objects"][0]
+        saved = self.admin.object_upload("files", "docs/a.txt", io.BytesIO("новый текст\n".encode("utf-8")), "text/plain")
+        after = self.admin.bucket_objects("files", prefix="docs/a.txt", limit=1)["objects"]
+        self.assertEqual(len(after), 1)  # файл один, а не две версии
+        self.assertEqual((after[0]["key"], after[0]["size"], after[0]["etag"]), ("docs/a.txt", saved["size"], saved["etag"]))
+        self.assertNotEqual(before["etag"], after[0]["etag"])
+        info, stream = self.admin.object_download(after[0]["id"])
+        self.assertEqual(b"".join(stream).decode("utf-8"), "новый текст\n")
+
     def test_folder_delete_removes_only_that_folder(self):
         self.admin.folder_create("files", "docs/empty/")
         result = self.admin.folder_delete("files", "docs/")

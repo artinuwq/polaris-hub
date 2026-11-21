@@ -3,11 +3,15 @@
    загружать файлы (кнопкой или перетаскиванием, с прогрессом), скачивать и удалять файлы и папки целиком.
    Новые bucket, папка и пустой файл создаются прямо в списке, как в проводнике: появляется строка с полем имени,
    справа — ✓ (создать) и ✕ (отмена); Enter и Esc делают то же самое.
+   Текстовые файлы (.txt, .md) открываются по нажатию в редакторе на весь экран: остального интерфейса нет,
+   выход — системная кнопка «Назад» Telegram (общий стек window.PolarisBack); несохранённые правки не теряются.
    Ходит в те же /api/storage/* (только админ): browse, folders, upload, objects/{id}. */
 window.FilesModule = (() => {
   'use strict';
 
   const PAGE = 200;
+  const EDITABLE = /\.(txt|md|markdown)$/i;   // что открывается в редакторе
+  const EDIT_MAX = 1024 * 1024;               // больше 1 МиБ в редактор не берём — только скачать
   const ICON_FOLDER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path></svg>';
   const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10"></path><path d="m8 10 4 4 4-4"></path><path d="M5 19h14"></path></svg>';
   const ICON_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path><path d="M10 11v6M14 11v6"></path></svg>';
@@ -184,15 +188,21 @@ window.FilesModule = (() => {
   }
 
   /* ─── модальные окна ─── */
+  let modalDismiss = null;  // вызывается, если окно закрыли не кнопкой (фон, «Назад»)
+
   function closeModal() {
     if (!overlayEl) return;
+    const dismiss = modalDismiss;
+    modalDismiss = null;
     overlayEl.remove();
     overlayEl = null;
     window.PolarisBack?.pop('files-modal');
+    if (dismiss) dismiss();
   }
 
-  function openModal(html, onAction) {
+  function openModal(html, onAction, onDismiss = null) {
     closeModal();
+    modalDismiss = onDismiss;
     overlayEl = document.createElement('div');
     overlayEl.className = 'tk-overlay';
     overlayEl.innerHTML = `<div class="tk-modal" role="dialog" aria-modal="true">${html}</div>`;
@@ -305,8 +315,11 @@ window.FilesModule = (() => {
 
   function fileRow(o) {
     const meta = [fmtSize(o.size), fmtDate(o.last_modified)].filter(Boolean).join(' · ');
+    const open = EDITABLE.test(o.name)
+      ? ` is-openable" data-fm="open-file" data-id="${escapeHTML(o.id)}" data-key="${escapeHTML(o.key)}" data-name="${escapeHTML(o.name)}" data-size="${Number(o.size) || 0}" data-etag="${escapeHTML(o.etag || '')}`
+      : '';
     return `
-      <div class="fm-row">
+      <div class="fm-row${open}">
         <span class="fm-icon">${ICON_FILE}</span>
         <span class="fm-main"><span class="fm-name">${escapeHTML(o.name)}</span><span class="fm-meta">${escapeHTML(meta)}</span></span>
         <span class="fm-actions">
@@ -606,6 +619,202 @@ window.FilesModule = (() => {
     setNotice(failed ? 'error' : 'ok', failed ? `Загружено ${files.length - failed} из ${files.length}` : `Загружено файлов: ${files.length}`);
   }
 
+  /* ─── редактор текстовых файлов ─── */
+  let E = null;  // открытый редактор: {id, key, name, bucket, el, original, eol, bom, etag, dirty, saving, loaded, touched, fit}
+
+  const ICON_BACK_CLOSE = ICON_CLOSE;
+  const inTelegram = () => Boolean(window.Telegram?.WebApp?.initData);
+
+  function editorState(text, kind = '') {
+    const box = E?.el.querySelector('#fm-editor-state');
+    if (!box) return;
+    box.textContent = text;
+    box.className = `fm-editor-state${kind ? ` is-${kind}` : ''}`;
+  }
+
+  function refreshEditor() {
+    if (!E) return;
+    const field = E.el.querySelector('#fm-editor-text');
+    E.dirty = E.loaded && field.value !== E.original;
+    E.el.querySelector('[data-fme="save"]').disabled = !E.dirty || E.saving;
+    if (E.saving) editorState('Сохраняю', '');
+    else if (E.dirty) editorState('Изменён', 'dirty');
+    else if (E.loaded && E.touched) editorState('Сохранено', '');
+    else if (E.loaded) editorState('', '');
+    // пока есть несохранённое, Telegram спросит подтверждение при закрытии мини-приложения
+    const tg = window.Telegram?.WebApp;
+    if (E.dirty) tg?.enableClosingConfirmation?.(); else tg?.disableClosingConfirmation?.();
+  }
+
+  function openEditor(id, key, name, size, etag) {
+    if (E) return;
+    if (Number(size) > EDIT_MAX) {
+      setNotice('error', `«${name}» больше 1 МиБ — в редакторе не открывается, его можно скачать`);
+      return;
+    }
+    const el = document.createElement('div');
+    el.className = 'fm-editor';
+    el.id = 'fm-editor';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.setAttribute('aria-label', `Редактор: ${name}`);
+    el.innerHTML = `
+      <header class="fm-editor-bar">
+        <button type="button" class="fm-ibtn" data-fme="close" aria-label="Закрыть" title="Закрыть" ${inTelegram() ? 'hidden' : ''}>${ICON_BACK_CLOSE}</button>
+        <div class="fm-editor-title"><span class="fm-editor-name">${escapeHTML(name)}</span><span id="fm-editor-state" class="fm-editor-state" role="status">Загрузка</span></div>
+        <button type="button" class="st-btn primary" data-fme="save" disabled>Сохранить</button>
+      </header>
+      <textarea id="fm-editor-text" class="fm-editor-text" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" aria-label="Содержимое файла" disabled></textarea>`;
+    const vv = window.visualViewport;
+    const fit = () => {  // экранная клавиатура уменьшает видимую область — панель с кнопкой остаётся на виду
+      el.style.height = `${vv ? vv.height : window.innerHeight}px`;
+      el.style.top = `${vv ? vv.offsetTop : 0}px`;
+    };
+    E = { id, key, name, bucket: S.bucket, el, original: '', eol: '\n', bom: false, etag: etag || '', dirty: false,
+          saving: false, loaded: false, touched: false, fit };
+    const mine = E;
+    el.addEventListener('click', (e) => {
+      const action = e.target.closest('[data-fme]')?.dataset.fme;
+      if (action === 'save') saveEditor();
+      else if (action === 'close') requestCloseEditor();
+    });
+    el.addEventListener('input', (e) => { if (e.target.id === 'fm-editor-text') refreshEditor(); });
+    el.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveEditor(); }
+      else if (e.key === 'Escape' && !overlayEl) { e.preventDefault(); requestCloseEditor(); }
+    });
+    // жесты внутри редактора не должны открывать меню приложения (свайп от края) и тянуть страницу
+    ['touchstart', 'touchmove', 'touchend'].forEach((t) => el.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
+    document.body.appendChild(el);
+    document.documentElement.classList.add('fm-editing');
+    fit();
+    vv?.addEventListener('resize', fit);
+    vv?.addEventListener('scroll', fit);
+    window.addEventListener('resize', fit);
+    window.PolarisBack?.push('files-editor', requestCloseEditor);  // системная кнопка «Назад» Telegram
+    loadEditor(mine);
+  }
+
+  async function loadEditor(mine) {
+    const field = mine.el.querySelector('#fm-editor-text');
+    try {
+      const response = await api(`/api/storage/objects/${enc(mine.id)}/download`, 'GET', undefined, true);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (E !== mine) return;
+      if (bytes.length > EDIT_MAX) throw new ApiError('Файл больше 1 МиБ — в редакторе не открывается', 413);
+      let text;
+      try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+      catch (e) { throw new ApiError('Файл не в кодировке UTF-8 — открыть его в редакторе нельзя', 415); }
+      mine.bom = bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
+      mine.eol = text.includes('\r\n') ? '\r\n' : '\n';       // поле ввода приводит всё к «\n», на сохранении вернём как было
+      mine.original = text.replace(/\r\n/g, '\n');
+      field.value = mine.original;
+      field.disabled = false;
+      mine.loaded = true;
+      refreshEditor();
+    } catch (e) {
+      if (E !== mine) return;
+      editorState(errText(e), 'error');
+    }
+  }
+
+  const editorBytes = () => {
+    const field = E.el.querySelector('#fm-editor-text');
+    const text = E.eol === '\r\n' ? field.value.replace(/\n/g, '\r\n') : field.value;
+    return new Blob([E.bom ? new Uint8Array([0xEF, 0xBB, 0xBF]) : new Uint8Array(0), text],
+      { type: /\.(md|markdown)$/i.test(E.name) ? 'text/markdown' : 'text/plain' });
+  };
+
+  function askOverwrite(title, text, confirmLabel) {
+    return new Promise((resolve) => {
+      openModal(`
+        <div class="tk-head"><h3>${escapeHTML(title)}</h3></div>
+        <p class="tk-desc">${escapeHTML(text)}</p>
+        <div class="tk-actions"><div class="tk-actions-row">
+          <button type="button" class="tk-btn primary" data-fmm="yes">${escapeHTML(confirmLabel)}</button>
+          <button type="button" class="tk-btn" data-fmm="close">Отмена</button>
+        </div></div>`, (action) => {
+        if (action !== 'yes') { closeModal(); return; }  // закрытие само вызовет onDismiss → resolve(false)
+        modalDismiss = null;
+        closeModal();
+        resolve(true);
+      }, () => resolve(false));
+    });
+  }
+
+  async function saveEditor() {
+    const mine = E;
+    if (!mine || !mine.dirty || mine.saving) return false;
+    mine.saving = true;
+    refreshEditor();
+    try {
+      // кто-то мог изменить файл с момента открытия: без этой проверки мы молча затёрли бы чужие правки
+      const probe = await api(`/api/storage/buckets/${enc(mine.bucket)}/objects?prefix=${enc(mine.key)}&limit=1`);
+      const current = (probe.objects || []).find((o) => o.key === mine.key);
+      if (!current || (mine.etag && current.etag !== mine.etag)) {
+        const go = await askOverwrite(
+          current ? 'Файл изменился' : 'Файл удалён',
+          current ? 'С момента открытия файл изменили в другом месте. Перезаписать его вашей версией?'
+            : 'Файл удалили в другом месте. Создать его заново с вашим текстом?',
+          current ? 'Перезаписать' : 'Создать заново');
+        if (!go || E !== mine) { mine.saving = false; refreshEditor(); return false; }
+      }
+      const saved = await xhrUpload(mine.bucket, mine.key, editorBytes(), () => {});
+      if (E !== mine) return true;
+      mine.original = mine.el.querySelector('#fm-editor-text').value;
+      mine.etag = saved?.etag || '';
+      mine.id = saved?.id || mine.id;
+      mine.touched = true;
+      mine.saving = false;
+      refreshEditor();
+      return true;
+    } catch (e) {
+      if (E !== mine) return false;
+      mine.saving = false;
+      refreshEditor();
+      editorState(`Не сохранено: ${Object.values(e.errors || {})[0] || errText(e)}`, 'error');
+      return false;
+    }
+  }
+
+  function closeEditor() {
+    const mine = E;
+    if (!mine) return;
+    E = null;
+    mine.el.remove();
+    document.documentElement.classList.remove('fm-editing');
+    const vv = window.visualViewport;
+    vv?.removeEventListener('resize', mine.fit);
+    vv?.removeEventListener('scroll', mine.fit);
+    window.removeEventListener('resize', mine.fit);
+    window.PolarisBack?.pop('files-editor');
+    window.Telegram?.WebApp?.disableClosingConfirmation?.();
+    if (mine.touched && container) {  // размер и время в списке изменились
+      loadFolder().then(() => setNotice('ok', `«${mine.name}» сохранён`));
+    }
+  }
+
+  function requestCloseEditor() {
+    if (!E || E.saving) return;
+    if (!E.dirty) { closeEditor(); return; }
+    openModal(`
+      <div class="tk-head"><h3>Сохранить изменения?</h3></div>
+      <p class="tk-desc">В «${escapeHTML(E.name)}» есть несохранённые правки.</p>
+      <div class="tk-actions"><div class="tk-actions-row">
+        <button type="button" class="tk-btn primary" data-fmm="save">Сохранить</button>
+        <button type="button" class="tk-btn danger" data-fmm="discard">Не сохранять</button>
+        <button type="button" class="tk-btn" data-fmm="close">Остаться</button>
+      </div></div>`, async (action) => {
+      if (action === 'discard') { closeModal(); closeEditor(); return; }
+      if (action === 'save') {
+        closeModal();
+        if (await saveEditor()) closeEditor();
+        return;
+      }
+      closeModal();
+    });
+  }
+
   /* ─── события ─── */
   function onClick(e) {
     const el = e.target.closest('[data-fm]');
@@ -625,6 +834,7 @@ window.FilesModule = (() => {
       case 'draft-ok': return submitDraft();
       case 'draft-cancel': return cancelDraft();
       case 'pick': setFab(false); return container.querySelector('#fm-file')?.click();
+      case 'open-file': return openEditor(d.id, d.key, d.name, d.size, d.etag);
       case 'download': return downloadFile(d.id, d.name);
       case 'delete-file': return confirmDeleteFile(d.id, d.name);
       case 'delete-folder': return confirmDeleteFolder(d.prefix, d.name);
@@ -686,6 +896,7 @@ window.FilesModule = (() => {
   }
 
   function leave() {
+    closeEditor();
     closeModal();
     container = null;
     boundTo = null;
