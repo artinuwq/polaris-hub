@@ -29,7 +29,6 @@ window.FilesModule = (() => {
   let overlayEl = null;
   let loadToken = 0;
   let uploading = false;
-  let notice = null;
 
   const S = {
     buckets: null,            // список bucket-ов (корень)
@@ -177,14 +176,36 @@ window.FilesModule = (() => {
     ? multipartUpload(bucket, key, file, onProgress)
     : xhrUpload(bucket, key, file, (p) => onProgress(p, '')));
 
-  function setNotice(kind, text) { notice = text ? { kind, text } : null; renderNotice(); }
+  /* Короткий статус («сохранён», ошибка) появляется с анимацией рядом с круглой кнопкой внизу и сам исчезает */
+  let toastEl = null;
+  let toastTimer = 0;
 
-  function renderNotice() {
-    const box = container?.querySelector('#fm-msg');
-    if (!box) return;
-    box.hidden = !notice;
-    box.className = `st-msg${notice ? ` is-${notice.kind}` : ''}`;
-    box.textContent = notice ? notice.text : '';
+  function hideToast() {
+    clearTimeout(toastTimer);
+    toastEl?.classList.remove('is-visible');
+  }
+
+  function removeToast() {
+    clearTimeout(toastTimer);
+    toastEl?.remove();
+    toastEl = null;
+  }
+
+  function setNotice(kind, text) {
+    if (!text) { hideToast(); return; }
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.id = 'fm-toast';
+      toastEl.setAttribute('role', 'status');
+      toastEl.addEventListener('click', hideToast);
+      document.body.appendChild(toastEl);
+    }
+    clearTimeout(toastTimer);
+    toastEl.textContent = text;
+    toastEl.className = `fm-toast is-${kind}`;
+    void toastEl.offsetWidth;  // перезапуск анимации, если статус сменился, пока предыдущий ещё виден
+    toastEl.classList.add('is-visible');
+    toastTimer = setTimeout(hideToast, kind === 'error' ? 6000 : 2400);
   }
 
   /* ─── модальные окна ─── */
@@ -379,8 +400,7 @@ window.FilesModule = (() => {
     if (!container) return;
     const field = container.querySelector('#fm-draft');
     const caret = field && document.activeElement === field ? [field.selectionStart, field.selectionEnd] : null;
-    container.innerHTML = `<div id="fm-msg" class="st-msg" hidden></div>${S.bucket ? viewFolder() : viewBuckets()}`;
-    renderNotice();
+    container.innerHTML = S.bucket ? viewFolder() : viewBuckets();
     renderUploads();
     if (caret) {  // перерисовка (загрузка списка, прогресс) не должна выбивать из ввода имени
       const again = container.querySelector('#fm-draft');
@@ -446,7 +466,7 @@ window.FilesModule = (() => {
     S.prefix = prefix;
     S.error = '';
     S.draft = null;
-    notice = null;
+    hideToast();
     if (bucket) loadFolder(); else { S.buckets = null; render(); loadBuckets(); }
   }
 
@@ -462,7 +482,7 @@ window.FilesModule = (() => {
 
   function startDraft(kind) {
     setFab(false);
-    notice = null;
+    hideToast();
     S.draft = { kind, value: '', error: '', busy: false };
     render();
     focusDraft();  // в том же обработчике нажатия — иначе мобильная клавиатура не откроется
@@ -622,25 +642,86 @@ window.FilesModule = (() => {
   /* ─── редактор текстовых файлов ─── */
   let E = null;  // открытый редактор: {id, key, name, bucket, el, original, eol, bom, etag, dirty, saving, loaded, touched, fit}
 
-  const ICON_BACK_CLOSE = ICON_CLOSE;
   const inTelegram = () => Boolean(window.Telegram?.WebApp?.initData);
 
-  function editorState(text, kind = '') {
-    const box = E?.el.querySelector('#fm-editor-state');
-    if (!box) return;
-    box.textContent = text;
-    box.className = `fm-editor-state${kind ? ` is-${kind}` : ''}`;
+  /* Верхняя панель на время редактирования: капсула показывает имя файла (серая — просто смотрим, жёлтая —
+     есть несохранённые правки, нажатие сохраняет), «меню» превращается в «назад». */
+  const CAP_ICONS = {
+    file: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M14 3v5h5"></path></svg>',
+    save: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V3z"></path><path d="M8 3v5h7V3"></path><path d="M8 21v-7h8v7"></path></svg>',
+    check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg>',
+    alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 16.5v.5"></path><circle cx="12" cy="12" r="9"></circle></svg>',
+    back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"></path></svg>',
+  };
+  const CAP_STATES = ['is-dirty', 'is-saving', 'is-saved', 'is-error'];
+
+  function chromeNodes() {
+    return {
+      capsule: document.getElementById('search-capsule'),
+      capIcon: document.querySelector('#search-capsule .icon'),
+      capText: document.getElementById('search-capsule-text'),
+      back: document.getElementById('drawer-toggle'),
+      backIcon: document.querySelector('#drawer-toggle .icon'),
+    };
+  }
+
+  function chromeEnter(mine) {
+    const n = chromeNodes();
+    mine.chrome = {
+      capIcon: n.capIcon?.innerHTML, capText: n.capText?.textContent, capLabel: n.capsule?.getAttribute('aria-label'),
+      backIcon: n.backIcon?.innerHTML, backLabel: n.back?.getAttribute('aria-label'),
+    };
+    if (n.backIcon) n.backIcon.innerHTML = CAP_ICONS.back;
+    n.back?.setAttribute('aria-label', 'Назад');
+    n.capsule?.classList.add('is-file');
+    if (n.capText) n.capText.textContent = mine.name;
+  }
+
+  function chromeLeave(mine) {
+    const n = chromeNodes();
+    const saved = mine.chrome || {};
+    n.capsule?.classList.remove('is-file', ...CAP_STATES);
+    if (n.capIcon && saved.capIcon != null) n.capIcon.innerHTML = saved.capIcon;
+    // подпись возвращаем, только если её не успело сменить приложение (например, переход в другой раздел)
+    if (n.capText && saved.capText != null && n.capText.textContent === mine.name) n.capText.textContent = saved.capText;
+    if (saved.capLabel != null) n.capsule?.setAttribute('aria-label', saved.capLabel); else n.capsule?.removeAttribute('aria-label');
+    n.capsule?.removeAttribute('title');
+    if (n.backIcon && saved.backIcon != null) n.backIcon.innerHTML = saved.backIcon;
+    if (saved.backLabel != null) n.back?.setAttribute('aria-label', saved.backLabel);
+  }
+
+  function paintChrome() {
+    if (!E) return;
+    const n = chromeNodes();
+    const state = E.saving ? 'saving' : (E.flash || (E.dirty ? 'dirty' : 'view'));
+    n.capsule?.classList.remove(...CAP_STATES);
+    if (state !== 'view') n.capsule?.classList.add(`is-${state}`);
+    const icon = { view: 'file', dirty: 'save', saving: 'save', saved: 'check', error: 'alert' }[state];
+    if (n.capIcon) n.capIcon.innerHTML = CAP_ICONS[icon];
+    const hint = { view: 'Файл открыт', dirty: 'Есть несохранённые изменения — нажмите, чтобы сохранить', saving: 'Сохраняю…', saved: 'Сохранено', error: 'Не сохранено' }[state];
+    n.capsule?.setAttribute('aria-label', `${E.name}. ${hint}`);
+    n.capsule?.setAttribute('title', hint);
+  }
+
+  // на время редактирования кнопки верхней панели не должны уводить из файла и терять правки
+  function onChromeClick(e) {
+    if (!E) return;
+    const hit = (sel) => e.target.closest?.(sel);
+    if (hit('#drawer-toggle')) { e.preventDefault(); e.stopPropagation(); requestCloseEditor(); }
+    else if (hit('#search-capsule')) { e.preventDefault(); e.stopPropagation(); if (E.dirty && !E.saving) saveEditor(); }
+    else if (hit('#search-toggle')) { e.preventDefault(); e.stopPropagation(); }
+  }
+
+  // нажатие на капсулу не должно забирать фокус у текста: иначе на телефоне закроется клавиатура
+  function onChromeMouseDown(e) {
+    if (E && e.target.closest?.('#search-capsule')) e.preventDefault();
   }
 
   function refreshEditor() {
     if (!E) return;
     const field = E.el.querySelector('#fm-editor-text');
     E.dirty = E.loaded && field.value !== E.original;
-    E.el.querySelector('[data-fme="save"]').disabled = !E.dirty || E.saving;
-    if (E.saving) editorState('Сохраняю', '');
-    else if (E.dirty) editorState('Изменён', 'dirty');
-    else if (E.loaded && E.touched) editorState('Сохранено', '');
-    else if (E.loaded) editorState('', '');
+    paintChrome();
     // пока есть несохранённое, Telegram спросит подтверждение при закрытии мини-приложения
     const tg = window.Telegram?.WebApp;
     if (E.dirty) tg?.enableClosingConfirmation?.(); else tg?.disableClosingConfirmation?.();
@@ -659,34 +740,37 @@ window.FilesModule = (() => {
     el.setAttribute('aria-modal', 'true');
     el.setAttribute('aria-label', `Редактор: ${name}`);
     el.innerHTML = `
-      <header class="fm-editor-bar">
-        <button type="button" class="fm-ibtn" data-fme="close" aria-label="Закрыть" title="Закрыть" ${inTelegram() ? 'hidden' : ''}>${ICON_BACK_CLOSE}</button>
-        <div class="fm-editor-title"><span class="fm-editor-name">${escapeHTML(name)}</span><span id="fm-editor-state" class="fm-editor-state" role="status">Загрузка</span></div>
-        <button type="button" class="st-btn primary" data-fme="save" disabled>Сохранить</button>
-      </header>
       <textarea id="fm-editor-text" class="fm-editor-text" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" aria-label="Содержимое файла" disabled></textarea>`;
     const vv = window.visualViewport;
-    const fit = () => {  // экранная клавиатура уменьшает видимую область — панель с кнопкой остаётся на виду
-      el.style.height = `${vv ? vv.height : window.innerHeight}px`;
-      el.style.top = `${vv ? vv.offsetTop : 0}px`;
+    const bar = document.querySelector('.topbar');
+    const fit = () => {  // редактор лежит под верхней панелью; экранная клавиатура уменьшает видимую область
+      const visibleTop = vv ? vv.offsetTop : 0;
+      const visibleHeight = vv ? vv.height : window.innerHeight;
+      const top = Math.max(bar ? bar.getBoundingClientRect().bottom : 0, visibleTop);
+      el.style.top = `${top}px`;
+      el.style.height = `${Math.max(120, visibleTop + visibleHeight - top)}px`;
     };
     E = { id, key, name, bucket: S.bucket, el, original: '', eol: '\n', bom: false, etag: etag || '', dirty: false,
-          saving: false, loaded: false, touched: false, fit };
+          saving: false, loaded: false, touched: false, flash: '', flashTimer: 0, fit };
     const mine = E;
-    el.addEventListener('click', (e) => {
-      const action = e.target.closest('[data-fme]')?.dataset.fme;
-      if (action === 'save') saveEditor();
-      else if (action === 'close') requestCloseEditor();
+    el.addEventListener('input', (e) => {
+      if (e.target.id !== 'fm-editor-text') return;
+      mine.flash = '';  // новая правка: «сохранено»/«ошибка» устарели, дальше решает, есть ли несохранённое
+      refreshEditor();
     });
-    el.addEventListener('input', (e) => { if (e.target.id === 'fm-editor-text') refreshEditor(); });
     el.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveEditor(); }
       else if (e.key === 'Escape' && !overlayEl) { e.preventDefault(); requestCloseEditor(); }
+      e.stopPropagation();  // «/» и Ctrl+K в тексте не должны открывать глобальный поиск (он увёл бы из файла)
     });
     // жесты внутри редактора не должны открывать меню приложения (свайп от края) и тянуть страницу
     ['touchstart', 'touchmove', 'touchend'].forEach((t) => el.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
     document.body.appendChild(el);
     document.documentElement.classList.add('fm-editing');
+    document.addEventListener('click', onChromeClick, true);
+    document.addEventListener('mousedown', onChromeMouseDown, true);
+    chromeEnter(mine);
+    paintChrome();
     fit();
     vv?.addEventListener('resize', fit);
     vv?.addEventListener('scroll', fit);
@@ -714,7 +798,8 @@ window.FilesModule = (() => {
       refreshEditor();
     } catch (e) {
       if (E !== mine) return;
-      editorState(errText(e), 'error');
+      closeEditor();
+      setNotice('error', errText(e));
     }
   }
 
@@ -766,13 +851,18 @@ window.FilesModule = (() => {
       mine.id = saved?.id || mine.id;
       mine.touched = true;
       mine.saving = false;
+      mine.flash = 'saved';
+      clearTimeout(mine.flashTimer);
+      mine.flashTimer = setTimeout(() => { if (E === mine && mine.flash === 'saved') { mine.flash = ''; paintChrome(); } }, 1400);
       refreshEditor();
+      setNotice('ok', 'Сохранено');
       return true;
     } catch (e) {
       if (E !== mine) return false;
       mine.saving = false;
+      mine.flash = 'error';
       refreshEditor();
-      editorState(`Не сохранено: ${Object.values(e.errors || {})[0] || errText(e)}`, 'error');
+      setNotice('error', `Не сохранено: ${Object.values(e.errors || {})[0] || errText(e)}`);
       return false;
     }
   }
@@ -781,7 +871,11 @@ window.FilesModule = (() => {
     const mine = E;
     if (!mine) return;
     E = null;
+    clearTimeout(mine.flashTimer);
     mine.el.remove();
+    document.removeEventListener('click', onChromeClick, true);
+    document.removeEventListener('mousedown', onChromeMouseDown, true);
+    chromeLeave(mine);
     document.documentElement.classList.remove('fm-editing');
     const vv = window.visualViewport;
     vv?.removeEventListener('resize', mine.fit);
@@ -902,7 +996,7 @@ window.FilesModule = (() => {
     boundTo = null;
     loadToken += 1;
     Object.assign(S, { buckets: null, bucket: '', prefix: '', folders: [], objects: [], cursor: null, loading: false, error: '', draft: null });
-    notice = null;
+    removeToast();
   }
 
   return { init, leave };
