@@ -5,6 +5,8 @@
    справа — ✓ (создать) и ✕ (отмена); Enter и Esc делают то же самое.
    Текстовые файлы (.txt, .md) открываются по нажатию в редакторе на весь экран: остального интерфейса нет,
    выход — системная кнопка «Назад» Telegram (общий стек window.PolarisBack); несохранённые правки не теряются.
+   Загрузка файлов показывается только капсулой рядом с круглой кнопкой: «Файл загружается» / «Файлы загружаются»,
+   а прогресс — заливкой капсулы слева направо (зелёная часть = доля загруженного, остальное серое).
    Ходит в те же /api/storage/* (только админ): browse, folders, upload, objects/{id}. */
 window.FilesModule = (() => {
   'use strict';
@@ -176,11 +178,40 @@ window.FilesModule = (() => {
     ? multipartUpload(bucket, key, file, onProgress)
     : xhrUpload(bucket, key, file, (p) => onProgress(p, '')));
 
-  /* Короткий статус («сохранён», ошибка) появляется с анимацией рядом с круглой кнопкой внизу и сам исчезает */
+  /* Статус рядом с круглой кнопкой внизу. Обычное сообщение («создан», ошибка) выезжает и само исчезает.
+     На время загрузки это капсула прогресса: часть слева, равная доле загруженного, залита зелёным, остальное серое. */
   let toastEl = null;
   let toastTimer = 0;
+  let pillBusy = false;   // капсула показывает загрузку и не должна пропасть, пока она не закончится
+  let heldError = '';     // ошибка, пришедшая во время загрузки: покажем сразу после неё
+
+  function ensureToast() {
+    if (toastEl) return toastEl;
+    toastEl = document.createElement('div');
+    toastEl.id = 'fm-toast';
+    toastEl.setAttribute('role', 'status');
+    toastEl.innerHTML = '<span class="fm-toast-fill"></span><span class="fm-toast-text"></span>';
+    toastEl.addEventListener('click', () => { if (!pillBusy) hideToast(); });
+    document.body.appendChild(toastEl);
+    return toastEl;
+  }
+
+  function showToast(kind, text, { progress = null, ms = 0, repop = true } = {}) {
+    const el = ensureToast();
+    clearTimeout(toastTimer);
+    const keep = el.classList.contains('is-visible') && !repop;  // смена текста без повторного «выезда»
+    el.querySelector('.fm-toast-text').textContent = text;
+    el.className = `fm-toast is-${kind}${progress === null ? '' : ' has-progress'}${keep ? ' is-visible' : ''}`;
+    el.style.setProperty('--p', progress === null ? 0 : progress);
+    if (!keep) {
+      void el.offsetWidth;  // перезапуск анимации, если статус сменился, пока предыдущий ещё виден
+      el.classList.add('is-visible');
+    }
+    if (ms) toastTimer = setTimeout(hideToast, ms);
+  }
 
   function hideToast() {
+    if (pillBusy) return;  // уход в другую папку не должен убирать прогресс загрузки
     clearTimeout(toastTimer);
     toastEl?.classList.remove('is-visible');
   }
@@ -193,19 +224,43 @@ window.FilesModule = (() => {
 
   function setNotice(kind, text) {
     if (!text) { hideToast(); return; }
-    if (!toastEl) {
-      toastEl = document.createElement('div');
-      toastEl.id = 'fm-toast';
-      toastEl.setAttribute('role', 'status');
-      toastEl.addEventListener('click', hideToast);
-      document.body.appendChild(toastEl);
+    if (pillBusy) { if (kind === 'error') heldError = text; return; }  // «создано» во время загрузки не нужно, ошибку покажем после
+    showToast(kind, text, { ms: kind === 'error' ? 6000 : 2400 });
+  }
+
+  function nudgeToast() {  // «загрузка уже идёт»: капсула слегка пульсирует вместо ещё одного сообщения
+    if (!toastEl) return;
+    toastEl.classList.remove('is-nudge');
+    void toastEl.offsetWidth;
+    toastEl.classList.add('is-nudge');
+  }
+
+  /* Доля загруженного по всем файлам с учётом размера: большой файл «весит» больше маленьких */
+  function uploadShare(items) {
+    const finished = (u) => u.state === 'ok' || u.state === 'error';
+    const total = items.reduce((sum, u) => sum + u.size, 0);
+    if (!total) return items.length ? items.filter(finished).length / items.length : 0;
+    return Math.min(1, items.reduce((sum, u) => sum + (finished(u) ? u.size : u.pct * u.size), 0) / total);
+  }
+
+  function paintUploadProgress() {
+    if (pillBusy && toastEl) toastEl.style.setProperty('--p', uploadShare(S.uploads).toFixed(3));
+  }
+
+  /* Итог загрузки в той же капсуле; возвращает, сколько миллисекунд она ещё на экране */
+  function showUploadResult(items) {
+    const failed = items.filter((u) => u.state === 'error');
+    pillBusy = false;
+    if (!failed.length) {
+      showToast('ok', items.length > 1 ? 'Файлы загружены' : 'Файл загружен', { progress: 1, ms: 2400, repop: false });
+      return 2400;
     }
-    clearTimeout(toastTimer);
-    toastEl.textContent = text;
-    toastEl.className = `fm-toast is-${kind}`;
-    void toastEl.offsetWidth;  // перезапуск анимации, если статус сменился, пока предыдущий ещё виден
-    toastEl.classList.add('is-visible');
-    toastTimer = setTimeout(hideToast, kind === 'error' ? 6000 : 2400);
+    const first = failed[0];
+    showToast('error', items.length === 1
+      ? `Не удалось загрузить «${first.name}»: ${first.error}`
+      : `Загружено ${items.length - failed.length} из ${items.length}: «${first.name}» — ${first.error}`,
+      { ms: 6000, repop: false });
+    return 6000;
   }
 
   /* ─── модальные окна ─── */
@@ -392,7 +447,6 @@ window.FilesModule = (() => {
       ${crumbs()}
       ${fabHTML()}
       <input id="fm-file" type="file" multiple hidden />
-      <div id="fm-uploads" class="fm-uploads"></div>
       <div id="fm-drop" class="fm-dropzone">${body}${more}</div>`;
   }
 
@@ -401,25 +455,10 @@ window.FilesModule = (() => {
     const field = container.querySelector('#fm-draft');
     const caret = field && document.activeElement === field ? [field.selectionStart, field.selectionEnd] : null;
     container.innerHTML = S.bucket ? viewFolder() : viewBuckets();
-    renderUploads();
     if (caret) {  // перерисовка (загрузка списка, прогресс) не должна выбивать из ввода имени
       const again = container.querySelector('#fm-draft');
       if (again && !again.disabled) { again.focus({ preventScroll: true }); again.setSelectionRange(...caret); }
     }
-  }
-
-  function renderUploads() {
-    const box = container?.querySelector('#fm-uploads');
-    if (!box) return;
-    if (!S.uploads.length) { box.innerHTML = ''; return; }
-    const label = { wait: 'в очереди', run: '', ok: 'готово', error: '' };
-    const rows = S.uploads.map((u) => `
-      <div class="fm-upload is-${u.state}">
-        <div class="fm-upload-head"><span class="fm-name">${escapeHTML(u.name)}</span>
-          <span class="fm-meta">${escapeHTML(u.state === 'run' ? `${Math.round(u.pct * 100)}%${u.note ? ` · ${u.note}` : ''}` : (u.state === 'error' ? u.error : label[u.state]))}</span></div>
-        <div class="fm-bar"><i style="width:${Math.round((u.state === 'ok' ? 1 : u.pct) * 100)}%"></i></div>
-      </div>`).join('');
-    box.innerHTML = `${rows}${uploading ? '' : '<button type="button" class="st-btn" data-fm="dismiss-uploads">Скрыть</button>'}`;
   }
 
   /* ─── загрузка данных ─── */
@@ -608,7 +647,7 @@ window.FilesModule = (() => {
   async function uploadFiles(fileList) {
     const files = Array.from(fileList || []);
     if (!files.length || !S.bucket) return;
-    if (uploading) { setNotice('error', 'Дождитесь окончания текущей загрузки'); return; }
+    if (uploading) { nudgeToast(); return; }  // капсула прогресса уже на экране
     const existing = new Set(S.objects.map((o) => o.name));
     const dup = files.filter((f) => existing.has(f.name)).map((f) => f.name);
     if (dup.length && !window.confirm(`Файлы с такими именами уже есть и будут заменены:\n${dup.join('\n')}\n\nПродолжить?`)) return;
@@ -616,27 +655,31 @@ window.FilesModule = (() => {
     const bucket = S.bucket, prefix = S.prefix;
     S.uploads = files.map((f) => ({ name: f.name, size: f.size, pct: 0, state: 'wait', error: '' }));
     uploading = true;
-    render();
-    let failed = 0;
+    pillBusy = true;
+    heldError = '';
+    showToast('progress', files.length > 1 ? 'Файлы загружаются' : 'Файл загружается', { progress: 0 });
+    render();  // круглая кнопка на время загрузки неактивна
     for (let i = 0; i < files.length; i += 1) {
       const item = S.uploads[i];
       item.state = 'run';
-      renderUploads();
       try {
-        await uploadOne(bucket, `${prefix}${files[i].name}`, files[i], (p, note) => { item.pct = p; item.note = note; renderUploads(); });
+        await uploadOne(bucket, `${prefix}${files[i].name}`, files[i], (p) => { item.pct = p; paintUploadProgress(); });
         item.state = 'ok';
       } catch (e) {
         item.state = 'error';
         item.error = errText(e);
-        failed += 1;
       }
-      renderUploads();
+      paintUploadProgress();
     }
     uploading = false;
-    if (!container) return;
+    if (!container) { pillBusy = false; return; }  // ушли со страницы: капсулы уже нет
     if (S.bucket === bucket && S.prefix === prefix) await loadFolder();
-    else renderUploads();
-    setNotice(failed ? 'error' : 'ok', failed ? `Загружено ${files.length - failed} из ${files.length}` : `Загружено файлов: ${files.length}`);
+    const visibleFor = showUploadResult(S.uploads);
+    if (heldError) {  // ошибка, пришедшая во время загрузки, — сразу после итога
+      const held = heldError;
+      heldError = '';
+      setTimeout(() => { if (container) setNotice('error', held); }, visibleFor + 200);
+    }
   }
 
   /* ─── редактор текстовых файлов ─── */
@@ -854,8 +897,7 @@ window.FilesModule = (() => {
       mine.flash = 'saved';
       clearTimeout(mine.flashTimer);
       mine.flashTimer = setTimeout(() => { if (E === mine && mine.flash === 'saved') { mine.flash = ''; paintChrome(); } }, 1400);
-      refreshEditor();
-      setNotice('ok', 'Сохранено');
+      refreshEditor();  // «сохранён» скажет только список, когда выйдут из редактора (см. closeEditor)
       return true;
     } catch (e) {
       if (E !== mine) return false;
@@ -932,7 +974,6 @@ window.FilesModule = (() => {
       case 'download': return downloadFile(d.id, d.name);
       case 'delete-file': return confirmDeleteFile(d.id, d.name);
       case 'delete-folder': return confirmDeleteFolder(d.prefix, d.name);
-      case 'dismiss-uploads': S.uploads = []; return renderUploads();
       default: return undefined;
     }
   }
