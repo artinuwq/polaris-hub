@@ -92,7 +92,8 @@
 /* Круглая кнопка действий (справа снизу) и раскрывающиеся круглые кнопки над ней */
 .fm-fab-backdrop { display: none; position: fixed; inset: 0; z-index: 39; background: rgba(4, 6, 10, 0.35); }
 .fm-fab-backdrop.is-open { display: block; }
-.fm-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.fm-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; pointer-events: none; }  /* контейнер занимает место закрытого меню, но не должен перехватывать нажатия на строки под ним */
+.fm-fab-main { pointer-events: auto; }
 .fm-fab-menu { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; pointer-events: none; }
 .fm-fab-item { display: flex; align-items: center; gap: 12px; opacity: 0; transform: translateY(14px) scale(0.85); transform-origin: right bottom; transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease); }
 .fm-fab.is-open .fm-fab-menu { pointer-events: auto; }
@@ -190,3 +191,29 @@ html.fm-editing .fm-toast { right: 16px; }  /* в редакторе кругл�
 @media (prefers-reduced-motion: reduce) { .fm-toast, .fm-toast-fill, .search-capsule.is-file { transition: none; } .fm-toast.is-nudge { animation: none; } .search-capsule.is-file.is-saving { animation: none; } }
 .fm-editor-text { flex: 1 1 auto; width: 100%; min-height: 0; box-sizing: border-box; margin: 0; padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px)); border: 0; outline: none; resize: none; background: transparent; color: var(--text); font: 16px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 4; }
 .fm-editor-text:disabled { color: var(--text-muted); }
+
+/* ─── просмотр фото: слой под верхней панелью (top/height выставляет files.js), имя файла — в капсуле ─── */
+.fm-viewer { position: fixed; left: 0; right: 0; z-index: 40; overflow: hidden; background: #04060a; border-top: 1px solid var(--border-soft); outline: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+.fm-viewer-stage { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; touch-action: none; }
+.fm-viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; will-change: transform; cursor: zoom-in; -webkit-user-drag: none; }
+.fm-viewer.is-zoomed .fm-viewer-img { cursor: grab; }
+.fm-viewer-img.is-bounce { animation: fm-viewer-bounce 0.28s var(--ease); }
+@keyframes fm-viewer-bounce { 40% { transform: translateX(-10px); } 70% { transform: translateX(5px); } }
+.fm-viewer-status { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--text-secondary); font-size: var(--fs-sm); pointer-events: none; text-align: center; padding: 0 24px; }
+.fm-viewer-status button { pointer-events: auto; }
+.fm-viewer-status[hidden] { display: none; }
+.fm-viewer.is-loading .fm-viewer-status span::after { content: ''; display: inline-block; width: 10px; height: 10px; margin-left: 10px; border-radius: 50%; border: 2px solid var(--text-muted); border-top-color: transparent; vertical-align: -1px; animation: fm-viewer-spin 0.8s linear infinite; }
+@keyframes fm-viewer-spin { to { transform: rotate(360deg); } }
+.fm-viewer-nav { position: absolute; top: 50%; width: 44px; height: 44px; margin-top: -22px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: rgba(21, 26, 38, 0.78); color: var(--text); cursor: pointer; box-shadow: var(--shadow); transition: opacity 0.15s ease; }
+.fm-viewer-nav.is-prev { left: 10px; }
+.fm-viewer-nav.is-next { right: 10px; }
+.fm-viewer-nav:disabled { opacity: 0.25; cursor: default; }
+.fm-viewer-nav svg, .fm-viewer-dl svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.fm-viewer.is-zoomed .fm-viewer-nav { opacity: 0; pointer-events: none; }
+.fm-viewer-bar { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; max-width: calc(100% - 24px); padding: 5px 5px 5px 14px; border-radius: 999px; border: 1px solid var(--border); background: rgba(21, 26, 38, 0.82); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--text-secondary); font-size: var(--fs-xs); white-space: nowrap; }
+.fm-viewer-count { color: var(--text); font-variant-numeric: tabular-nums; }
+.fm-viewer-count:empty { display: none; }
+.fm-viewer-meta { overflow: hidden; text-overflow: ellipsis; }
+.fm-viewer-dl { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 0; background: var(--primary); color: #07101a; cursor: pointer; }
+html.fm-viewing .fm-toast { left: 16px; right: 16px; width: fit-content; margin: 0 auto; bottom: calc(74px + env(safe-area-inset-bottom, 0px)); max-width: calc(100vw - 32px); }
+@media (prefers-reduced-motion: reduce) { .fm-viewer-img.is-bounce { animation: none; } .fm-viewer.is-loading .fm-viewer-status span::after { animation: none; } }

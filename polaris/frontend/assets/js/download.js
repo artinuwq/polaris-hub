@@ -65,5 +65,11 @@ window.PolarisDownload = (() => {
 
   const message = (result, name) => (MESSAGES[result] || MESSAGES.browser)(name);
 
-  return { start, message };
+  /* Короткоживущий URL без заголовков авторизации — чтобы браузер сам грузил картинку в <img> */
+  async function link(objectId) {
+    const l = await getLink(objectId);
+    return { url: new URL(l.path, window.location.origin).href, file_name: l.file_name, expires_in: l.expires_in };
+  }
+
+  return { start, message, link };
 })();

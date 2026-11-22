@@ -14,6 +14,9 @@ window.FilesModule = (() => {
   const PAGE = 200;
   const EDITABLE = /\.(txt|md|markdown)$/i;   // что открывается в редакторе
   const EDIT_MAX = 1024 * 1024;               // больше 1 МиБ в редактор не берём — только скачать
+  const IMAGE = /\.(jpe?g|png|gif|webp|avif|bmp)$/i;   // что открывается во встроенном просмотре фото (SVG и HEIC — только скачать)
+  const IMAGE_MAX = 60 * 1024 * 1024;         // огромные снимки (RAW и т. п.) лучше скачать
+  const ZOOM_MAX = 6;
   const ICON_FOLDER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path></svg>';
   const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10"></path><path d="m8 10 4 4 4-4"></path><path d="M5 19h14"></path></svg>';
   const ICON_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path><path d="M10 11v6M14 11v6"></path></svg>';
@@ -24,6 +27,9 @@ window.FilesModule = (() => {
   const ICON_REFRESH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-4.5L4 9"></path><path d="M4 4v5h5"></path><path d="M4 13a8 8 0 0 0 14 4.5l2-2.5"></path><path d="M20 20v-5h-5"></path></svg>';
   const ICON_CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>';
+  const ICON_IMAGE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="m4 18 5-5 4 4 3-3 4 4"></path></svg>';
+  const ICON_PREV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"></path></svg>';
+  const ICON_NEXT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"></path></svg>';
   const ICON_FILE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M14 3v5h5"></path></svg>';
 
   let container = null;
@@ -391,12 +397,13 @@ window.FilesModule = (() => {
 
   function fileRow(o) {
     const meta = [fmtSize(o.size), fmtDate(o.last_modified)].filter(Boolean).join(' · ');
-    const open = EDITABLE.test(o.name)
+    const image = IMAGE.test(o.name);
+    const open = EDITABLE.test(o.name) || image
       ? ` is-openable" data-fm="open-file" data-id="${escapeHTML(o.id)}" data-key="${escapeHTML(o.key)}" data-name="${escapeHTML(o.name)}" data-size="${Number(o.size) || 0}" data-etag="${escapeHTML(o.etag || '')}`
       : '';
     return `
       <div class="fm-row${open}">
-        <span class="fm-icon">${ICON_FILE}</span>
+        <span class="fm-icon">${image ? ICON_IMAGE : ICON_FILE}</span>
         <span class="fm-main"><span class="fm-name">${escapeHTML(o.name)}</span><span class="fm-meta">${escapeHTML(meta)}</span></span>
         <span class="fm-actions">
           <button type="button" class="fm-ibtn" data-fm="download" data-id="${escapeHTML(o.id)}" data-name="${escapeHTML(o.name)}" aria-label="Скачать" title="Скачать">${ICON_DOWNLOAD}</button>
@@ -695,6 +702,7 @@ window.FilesModule = (() => {
     check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg>',
     alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 16.5v.5"></path><circle cx="12" cy="12" r="9"></circle></svg>',
     back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"></path></svg>',
+    image: ICON_IMAGE,
   };
   const CAP_STATES = ['is-dirty', 'is-saving', 'is-saved', 'is-error'];
 
@@ -748,10 +756,10 @@ window.FilesModule = (() => {
 
   // на время редактирования кнопки верхней панели не должны уводить из файла и терять правки
   function onChromeClick(e) {
-    if (!E) return;
+    if (!E && !V) return;
     const hit = (sel) => e.target.closest?.(sel);
-    if (hit('#drawer-toggle')) { e.preventDefault(); e.stopPropagation(); requestCloseEditor(); }
-    else if (hit('#search-capsule')) { e.preventDefault(); e.stopPropagation(); if (E.dirty && !E.saving) saveEditor(); }
+    if (hit('#drawer-toggle')) { e.preventDefault(); e.stopPropagation(); if (V) closeViewer(); else requestCloseEditor(); }
+    else if (hit('#search-capsule')) { e.preventDefault(); e.stopPropagation(); if (E && E.dirty && !E.saving) saveEditor(); }
     else if (hit('#search-toggle')) { e.preventDefault(); e.stopPropagation(); }
   }
 
@@ -770,8 +778,21 @@ window.FilesModule = (() => {
     if (E.dirty) tg?.enableClosingConfirmation?.(); else tg?.disableClosingConfirmation?.();
   }
 
+  /* Полноэкранный слой (редактор, просмотр фото) лежит под верхней панелью; клавиатура уменьшает видимую область */
+  function makeFit(el) {
+    const vv = window.visualViewport;
+    const bar = document.querySelector('.topbar');
+    return () => {
+      const visibleTop = vv ? vv.offsetTop : 0;
+      const visibleHeight = vv ? vv.height : window.innerHeight;
+      const top = Math.max(bar ? bar.getBoundingClientRect().bottom : 0, visibleTop);
+      el.style.top = `${top}px`;
+      el.style.height = `${Math.max(120, visibleTop + visibleHeight - top)}px`;
+    };
+  }
+
   function openEditor(id, key, name, size, etag) {
-    if (E) return;
+    if (E || V) return;
     if (Number(size) > EDIT_MAX) {
       setNotice('error', `«${name}» больше 1 МиБ — в редакторе не открывается, его можно скачать`);
       return;
@@ -785,14 +806,7 @@ window.FilesModule = (() => {
     el.innerHTML = `
       <textarea id="fm-editor-text" class="fm-editor-text" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" aria-label="Содержимое файла" disabled></textarea>`;
     const vv = window.visualViewport;
-    const bar = document.querySelector('.topbar');
-    const fit = () => {  // редактор лежит под верхней панелью; экранная клавиатура уменьшает видимую область
-      const visibleTop = vv ? vv.offsetTop : 0;
-      const visibleHeight = vv ? vv.height : window.innerHeight;
-      const top = Math.max(bar ? bar.getBoundingClientRect().bottom : 0, visibleTop);
-      el.style.top = `${top}px`;
-      el.style.height = `${Math.max(120, visibleTop + visibleHeight - top)}px`;
-    };
+    const fit = makeFit(el);
     E = { id, key, name, bucket: S.bucket, el, original: '', eol: '\n', bom: false, etag: etag || '', dirty: false,
           saving: false, loaded: false, touched: false, flash: '', flashTimer: 0, fit };
     const mine = E;
@@ -951,6 +965,302 @@ window.FilesModule = (() => {
     });
   }
 
+  /* ─── просмотр фото ─── */
+  let V = null;  // открытый просмотр: {el, stage, img, items, index, name, seq, scale, tx, ty, ...}
+
+  function openViewer(id) {
+    if (V || E) return;
+    const clicked = S.objects.find((o) => o.id === id);
+    if (!clicked) return;
+    if (Number(clicked.size) > IMAGE_MAX) {
+      setNotice('error', `«${clicked.name}» больше ${Math.round(IMAGE_MAX / 1048576)} МиБ — в просмотре не открывается, его можно скачать`);
+      return;
+    }
+    // листаем фото этой папки; огромные снимки в ленту не берём (их можно только скачать)
+    const items = S.objects.filter((o) => IMAGE.test(o.name) && Number(o.size) <= IMAGE_MAX);
+    const index = items.findIndex((o) => o.id === id);
+    if (index < 0) return;
+    hideToast();  // прежнее сообщение не должно висеть поверх фото
+    const el = document.createElement('div');
+    el.className = 'fm-viewer';
+    el.id = 'fm-viewer';
+    el.tabIndex = -1;
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.innerHTML = `
+      <div class="fm-viewer-stage">
+        <img class="fm-viewer-img" alt="" draggable="false" hidden />
+        <div class="fm-viewer-status" role="status"></div>
+      </div>
+      <button type="button" class="fm-viewer-nav is-prev" data-fmv="prev" aria-label="Предыдущее фото">${ICON_PREV}</button>
+      <button type="button" class="fm-viewer-nav is-next" data-fmv="next" aria-label="Следующее фото">${ICON_NEXT}</button>
+      <div class="fm-viewer-bar">
+        <span class="fm-viewer-count"></span><span class="fm-viewer-meta"></span>
+        <button type="button" class="fm-viewer-dl" data-fmv="download" aria-label="Скачать" title="Скачать">${ICON_DOWNLOAD}</button>
+      </div>`;
+    const fit = makeFit(el);
+    const vv = window.visualViewport;
+    V = { el, stage: el.querySelector('.fm-viewer-stage'), img: el.querySelector('.fm-viewer-img'), items, index, name: items[index].name,
+          seq: 0, scale: 1, tx: 0, ty: 0, pts: new Map(), fit, lastTap: null, gesture: null };
+    const mine = V;
+    el.addEventListener('click', (e) => {
+      const action = e.target.closest('[data-fmv]')?.dataset.fmv;
+      if (action === 'prev') stepViewer(-1);
+      else if (action === 'next') stepViewer(1);
+      else if (action === 'download') downloadFile(mine.items[mine.index].id, mine.items[mine.index].name);
+      else if (action === 'retry') showImage(mine.index);
+    });
+    bindViewerGestures(mine);
+    mine.img.addEventListener('load', () => {
+      if (V !== mine || mine.img.dataset.seq !== String(mine.seq)) return;
+      mine.el.classList.remove('is-loading');
+      mine.img.hidden = false;
+      setViewerStatus('');
+      mine.natural = `${mine.img.naturalWidth}×${mine.img.naturalHeight}`;
+      paintViewer();
+      applyViewerTransform();
+    });
+    mine.img.addEventListener('error', () => {
+      if (V !== mine || mine.img.dataset.seq !== String(mine.seq) || !mine.img.getAttribute('src')) return;
+      mine.img.hidden = true;
+      mine.el.classList.remove('is-loading');
+      setViewerStatus('Не удалось загрузить фото', true);
+    });
+    document.body.appendChild(el);
+    const root = document.documentElement;
+    root.classList.add('fm-editing', 'fm-viewing');
+    document.addEventListener('click', onChromeClick, true);
+    document.addEventListener('keydown', onViewerKey, true);
+    chromeEnter(mine);
+    fit();
+    vv?.addEventListener('resize', fit);
+    vv?.addEventListener('scroll', fit);
+    window.addEventListener('resize', fit);
+    window.addEventListener('resize', applyViewerTransform);
+    window.PolarisBack?.push('files-viewer', closeViewer);
+    el.focus({ preventScroll: true });
+    showImage(index);
+  }
+
+  // клавиши слушаем на уровне документа: после нажатия кнопки листания (она на краю блокируется) фокус пропадает,
+  // а стрелки, Esc и масштаб должны работать всегда
+  function onViewerKey(e) {
+    if (!V || e.altKey) return;
+    const k = e.key;
+    let handled = true;
+    if (k === 'ArrowLeft') stepViewer(-1);
+    else if (k === 'ArrowRight') stepViewer(1);
+    else if (k === 'Escape') closeViewer();
+    else if (k === '+' || k === '=') zoomViewer(V.scale * 1.4);
+    else if (k === '-') zoomViewer(V.scale / 1.4);
+    else if (k === '0') resetViewerZoom();
+    else handled = k === '/' || ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'k');  // глобальный поиск увёл бы из просмотра
+    if (handled) { e.preventDefault(); e.stopPropagation(); }
+  }
+
+  function setViewerStatus(text, retry = false) {
+    const box = V?.el.querySelector('.fm-viewer-status');
+    if (!box) return;
+    box.innerHTML = text ? `<span>${escapeHTML(text)}</span>${retry ? '<button type="button" class="tk-btn" data-fmv="retry">Повторить</button>' : ''}` : '';
+    box.hidden = !text;
+  }
+
+  function paintViewer() {
+    if (!V) return;
+    const item = V.items[V.index];
+    const n = chromeNodes();
+    if (n.capIcon) n.capIcon.innerHTML = CAP_ICONS.image;
+    if (n.capText) n.capText.textContent = item.name;
+    V.name = item.name;
+    const position = `${V.index + 1} из ${V.items.length}`;
+    n.capsule?.setAttribute('aria-label', `${item.name}. Фото ${position}`);
+    n.capsule?.setAttribute('title', item.name);
+    V.el.setAttribute('aria-label', `Просмотр: ${item.name}`);
+    V.el.querySelector('.fm-viewer-count').textContent = V.items.length > 1 ? `${V.index + 1} / ${V.items.length}` : '';
+    V.el.querySelector('.fm-viewer-meta').textContent = [fmtSize(item.size), V.natural || ''].filter(Boolean).join(' · ');
+    V.el.querySelectorAll('.fm-viewer-nav').forEach((b) => { b.hidden = V.items.length < 2; });
+    V.el.querySelector('.is-prev').disabled = V.index === 0;
+    V.el.querySelector('.is-next').disabled = V.index === V.items.length - 1;
+  }
+
+  async function showImage(index) {
+    const v = V;
+    if (!v) return;
+    v.index = index;
+    v.seq += 1;
+    const seq = v.seq;
+    v.natural = '';
+    resetViewerZoom(false);
+    v.img.hidden = true;
+    v.img.removeAttribute('src');
+    v.el.classList.add('is-loading');
+    setViewerStatus('Загрузка…');
+    paintViewer();
+    try {
+      // подписанная ссылка: картинку грузит сам браузер (потоком, без копии в памяти страницы)
+      const link = await window.PolarisDownload.link(v.items[index].id);
+      if (V !== v || v.seq !== seq) return;
+      v.img.dataset.seq = String(seq);
+      v.img.src = link.url;
+    } catch (e) {
+      if (V !== v || v.seq !== seq) return;
+      v.el.classList.remove('is-loading');
+      setViewerStatus(errText(e), true);
+    }
+  }
+
+  function stepViewer(delta) {
+    if (!V) return;
+    const next = V.index + delta;
+    if (next < 0 || next >= V.items.length) { bounceViewer(); return; }
+    showImage(next);
+  }
+
+  function bounceViewer() {  // упёрлись в край: картинка слегка «подпрыгивает»
+    const img = V?.img;
+    if (!img || V.scale > 1) return;
+    img.classList.remove('is-bounce');
+    void img.offsetWidth;
+    img.classList.add('is-bounce');
+  }
+
+  /* Масштаб и сдвиг: щипок, двойное касание, колесо мыши, перетаскивание; на 1× горизонтальный свайп листает */
+  function viewerLimits() {
+    const v = V;
+    const w = v.img.offsetWidth * v.scale;
+    const h = v.img.offsetHeight * v.scale;
+    return { x: Math.max(0, (w - v.stage.clientWidth) / 2), y: Math.max(0, (h - v.stage.clientHeight) / 2) };
+  }
+
+  function applyViewerTransform(animate = false) {
+    const v = V;
+    if (!v) return;
+    const lim = viewerLimits();
+    v.tx = Math.max(-lim.x, Math.min(lim.x, v.tx));
+    v.ty = Math.max(-lim.y, Math.min(lim.y, v.ty));
+    v.img.style.transition = animate ? 'transform 0.2s ease' : 'none';
+    v.img.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.scale})`;
+    v.el.classList.toggle('is-zoomed', v.scale > 1.001);
+  }
+
+  function resetViewerZoom(animate = true) {
+    if (!V) return;
+    V.scale = 1; V.tx = 0; V.ty = 0;
+    applyViewerTransform(animate);
+  }
+
+  function zoomViewer(scale, cx = null, cy = null, animate = true) {
+    const v = V;
+    if (!v) return;
+    const next = Math.max(1, Math.min(ZOOM_MAX, scale));
+    const rect = v.stage.getBoundingClientRect();
+    const px = (cx ?? rect.left + rect.width / 2) - (rect.left + rect.width / 2);  // точка относительно центра
+    const py = (cy ?? rect.top + rect.height / 2) - (rect.top + rect.height / 2);
+    const k = next / v.scale;
+    v.tx = px - (px - v.tx) * k;   // точка под пальцем остаётся на месте
+    v.ty = py - (py - v.ty) * k;
+    v.scale = next;
+    if (next === 1) { v.tx = 0; v.ty = 0; }
+    applyViewerTransform(animate);
+  }
+
+  function bindViewerGestures(v) {
+    const stage = v.stage;
+    const dist = () => { const [a, b] = [...v.pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    const mid = () => { const [a, b] = [...v.pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
+    stage.addEventListener('pointerdown', (e) => {
+      if (v.img.hidden || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      try { stage.setPointerCapture?.(e.pointerId); } catch (err) { /* нет активного указателя — продолжаем без захвата */ }
+      v.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (v.pts.size === 2) {
+        const m = mid();
+        v.gesture = { kind: 'pinch', d0: dist(), s0: v.scale, mx: m.x, my: m.y, tx0: v.tx, ty0: v.ty };
+      } else if (v.pts.size === 1) {
+        v.gesture = { kind: 'drag', x0: e.clientX, y0: e.clientY, tx0: v.tx, ty0: v.ty, moved: false, t0: Date.now() };
+      }
+    });
+    stage.addEventListener('pointermove', (e) => {
+      if (!v.pts.has(e.pointerId) || !v.gesture) return;
+      v.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const g = v.gesture;
+      if (g.kind === 'pinch' && v.pts.size === 2) {
+        const m = mid();
+        const next = Math.max(1, Math.min(ZOOM_MAX, g.s0 * dist() / g.d0));
+        const rect = stage.getBoundingClientRect();
+        const px = g.mx - (rect.left + rect.width / 2);
+        const py = g.my - (rect.top + rect.height / 2);
+        const k = next / g.s0;
+        v.scale = next;
+        v.tx = px - (px - g.tx0) * k + (m.x - g.mx);
+        v.ty = py - (py - g.ty0) * k + (m.y - g.my);
+        applyViewerTransform();
+      } else if (g.kind === 'drag') {
+        const dx = e.clientX - g.x0;
+        const dy = e.clientY - g.y0;
+        if (Math.hypot(dx, dy) > 6) g.moved = true;
+        if (v.scale > 1.001) { v.tx = g.tx0 + dx; v.ty = g.ty0 + dy; applyViewerTransform(); }
+        else if (g.moved) { v.tx = dx * 0.55; v.ty = 0; v.img.style.transition = 'none'; v.img.style.transform = `translate(${v.tx}px, 0) scale(1)`; }
+      }
+    });
+    const finish = (e) => {
+      if (!v.pts.has(e.pointerId)) return;
+      const g = v.gesture;
+      v.pts.delete(e.pointerId);
+      if (!g) return;
+      if (g.kind === 'pinch') {
+        v.gesture = v.pts.size === 1 ? (() => { const [p] = [...v.pts.values()]; return { kind: 'drag', x0: p.x, y0: p.y, tx0: v.tx, ty0: v.ty, moved: true, t0: 0 }; })() : null;
+        if (v.scale < 1.02) resetViewerZoom();
+        return;
+      }
+      v.gesture = null;
+      const dx = e.clientX - g.x0;
+      const dy = e.clientY - g.y0;
+      if (v.scale <= 1.001) {
+        if (g.moved && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { v.tx = 0; stepViewer(dx < 0 ? 1 : -1); applyViewerTransform(true); return; }
+        v.tx = 0; v.ty = 0; applyViewerTransform(true);
+      }
+      if (!g.moved && e.type === 'pointerup') {  // касание без движения: два подряд — увеличить/вернуть
+        const now = Date.now();
+        const last = v.lastTap;
+        if (last && now - last.t < 320 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 30) {
+          v.lastTap = null;
+          if (v.scale > 1.001) resetViewerZoom(); else zoomViewer(2.5, e.clientX, e.clientY);
+        } else v.lastTap = { t: now, x: e.clientX, y: e.clientY };
+      }
+    };
+    stage.addEventListener('pointerup', finish);
+    stage.addEventListener('pointercancel', finish);
+    stage.addEventListener('wheel', (e) => {
+      if (v.img.hidden) return;
+      e.preventDefault();
+      zoomViewer(v.scale * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY, false);
+    }, { passive: false });
+    // жесты внутри просмотра не должны открывать меню приложения (свайп от края) и тянуть страницу
+    ['touchstart', 'touchmove', 'touchend'].forEach((t) => v.el.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
+  }
+
+  function closeViewer() {
+    const mine = V;
+    if (!mine) return;
+    V = null;
+    mine.el.remove();
+    document.removeEventListener('click', onChromeClick, true);
+    document.removeEventListener('keydown', onViewerKey, true);
+    chromeLeave(mine);
+    document.documentElement.classList.remove('fm-editing', 'fm-viewing');
+    const vv = window.visualViewport;
+    vv?.removeEventListener('resize', mine.fit);
+    vv?.removeEventListener('scroll', mine.fit);
+    window.removeEventListener('resize', mine.fit);
+    window.removeEventListener('resize', applyViewerTransform);
+    window.PolarisBack?.pop('files-viewer');
+  }
+
+  function openFile(d) {
+    if (IMAGE.test(d.name)) openViewer(d.id);
+    else openEditor(d.id, d.key, d.name, d.size, d.etag);
+  }
+
   /* ─── события ─── */
   function onClick(e) {
     const el = e.target.closest('[data-fm]');
@@ -970,7 +1280,7 @@ window.FilesModule = (() => {
       case 'draft-ok': return submitDraft();
       case 'draft-cancel': return cancelDraft();
       case 'pick': setFab(false); return container.querySelector('#fm-file')?.click();
-      case 'open-file': return openEditor(d.id, d.key, d.name, d.size, d.etag);
+      case 'open-file': return openFile(d);
       case 'download': return downloadFile(d.id, d.name);
       case 'delete-file': return confirmDeleteFile(d.id, d.name);
       case 'delete-folder': return confirmDeleteFolder(d.prefix, d.name);
@@ -1031,6 +1341,7 @@ window.FilesModule = (() => {
   }
 
   function leave() {
+    closeViewer();
     closeEditor();
     closeModal();
     container = null;
