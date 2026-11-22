@@ -217,3 +217,8 @@ html.fm-editing .fm-toast { right: 16px; }  /* в редакторе кругл�
 .fm-viewer-dl { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 0; background: var(--primary); color: #07101a; cursor: pointer; }
 html.fm-viewing .fm-toast { left: 16px; right: 16px; width: fit-content; margin: 0 auto; bottom: calc(74px + env(safe-area-inset-bottom, 0px)); max-width: calc(100vw - 32px); }
 @media (prefers-reduced-motion: reduce) { .fm-viewer-img.is-bounce { animation: none; } .fm-viewer.is-loading .fm-viewer-status span::after { animation: none; } }
+
+/* ─── видео в просмотре: плеер браузера сам запрашивает нужные куски файла (Range) ─── */
+.fm-viewer-video { max-width: 100%; max-height: 100%; background: #000; outline: none; }
+.fm-viewer-video[hidden] { display: none; }
+.fm-viewer.is-video .fm-viewer-stage { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }  /* плашка снизу не должна закрывать элементы управления плеера */

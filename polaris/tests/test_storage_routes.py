@@ -18,7 +18,7 @@ from tests.test_storage_admin import AdminTestCase  # noqa: E402
 
 TOKEN = "admin-token-123"
 ADMIN = {"X-Polaris-Token": TOKEN}
-PUBLIC_PREFIX = "/api/storage/download/"
+PUBLIC_PREFIX = ("/api/storage/download/", "/api/storage/media/")  # маршруты без admin-заголовков: доступ даёт подписанный токен
 EXPECTED = {
     ("GET", "/api/storage/status"), ("GET", "/api/storage/config"), ("PUT", "/api/storage/config"),
     ("POST", "/api/storage/test"), ("GET", "/api/storage/buckets"), ("POST", "/api/storage/buckets"),
@@ -33,6 +33,7 @@ EXPECTED = {
     ("POST", "/api/storage/buckets/{bucket}/multipart"), ("PUT", "/api/storage/multipart/{upload_id}/parts/{part_number}"),
     ("POST", "/api/storage/multipart/{upload_id}/complete"),
     ("POST", "/api/storage/objects/{object_id}/download-link"), ("GET", "/api/storage/download/{token}"),
+    ("POST", "/api/storage/objects/{object_id}/media-link"), ("GET", "/api/storage/media/{token}"),
     ("GET", "/api/storage/buckets/{bucket}/browse"), ("POST", "/api/storage/buckets/{bucket}/folders"),
     ("DELETE", "/api/storage/buckets/{bucket}/folders"), ("PUT", "/api/storage/buckets/{bucket}/upload"),
 }
@@ -73,7 +74,7 @@ class AdminProtectionTests(unittest.TestCase):
                                     "SignedHeaders=host, Signature=" + "0" * 64,
                    "x-amz-date": "20261115T000000Z", "x-amz-content-sha256": "UNSIGNED-PAYLOAD"}
         for method, path, _ in api.router.routes:
-            if path.startswith(PUBLIC_PREFIX):  # единственный маршрут без admin-заголовков: защищён подписью, см. PublicDownloadTests
+            if path.startswith(PUBLIC_PREFIX):  # маршруты без admin-заголовков защищены подписью, см. PublicDownloadTests и MediaRouteTests
                 continue
             url = concrete(path)
             for label, headers in (("без учётных данных", {}), ("S3-подпись", s3_like), ("неверный токен", {"X-Polaris-Token": "x"}),
@@ -248,6 +249,70 @@ class PublicDownloadTests(unittest.TestCase):
     def test_link_creation_itself_requires_admin(self):
         with mock.patch.multiple(auth.settings, update_api_token=TOKEN, debug=False):
             status, _, _ = fastapi_stub.call(api.router, "POST", "/api/storage/objects/oid/download-link")
+        self.assertIn(status, (401, 403))
+
+
+class MediaRouteTests(unittest.TestCase):
+    """GET /api/storage/media/{token}: Range, 206/416, безопасные заголовки; ссылка создаётся только админом."""
+
+    class Admin:
+        size = 1000
+
+        def media_open(self, token, range_header):
+            if token != "good":
+                raise AdminError(403, "Ссылка недействительна или истекла")
+            self.range_seen = range_header
+            info = {"status": 200, "content_type": "video/mp4", "size": self.size, "start": 0, "end": self.size - 1}
+            if range_header == "bytes=100-199":
+                return {**info, "status": 206, "start": 100, "end": 199}, iter([b"x" * 100])
+            if range_header == "bytes=5000-":
+                return {**info, "status": 416}, None
+            return info, iter([b"y" * self.size])
+
+    def setUp(self):
+        self.fake = self.Admin()
+        api._admin = self.fake
+        self.addCleanup(setattr, api, "_admin", None)
+
+    def get(self, token="good", **headers):
+        return fastapi_stub.call(api.router, "GET", f"/api/storage/media/{token}", headers=headers)
+
+    def test_partial_content_without_any_auth_headers(self):
+        status, response, _ = self.get(Range="bytes=100-199")
+        self.assertEqual(status, 200)  # заглушка отдаёт сам ответ; код ответа — в status_code
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(self.fake.range_seen, "bytes=100-199")
+        self.assertEqual(response.headers["Content-Range"], "bytes 100-199/1000")
+        self.assertEqual(response.headers["Content-Length"], "100")
+        self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+        self.assertEqual(response.media_type, "video/mp4")
+        self.assertEqual(b"".join(response.body_iterator), b"x" * 100)
+
+    def test_whole_file_without_range(self):
+        _, response, _ = self.get()
+        self.assertEqual((response.status_code, response.headers["Content-Length"]), (200, "1000"))
+        self.assertNotIn("Content-Range", response.headers)
+
+    def test_unsatisfiable_range_is_416_with_size(self):
+        _, response, _ = self.get(Range="bytes=5000-")
+        self.assertEqual(response.status_code, 416)
+        self.assertEqual(response.headers["Content-Range"], "bytes */1000")
+        self.assertEqual(b"".join(response.body_iterator), b"")
+
+    def test_media_is_inline_and_cannot_run_scripts(self):
+        _, response, _ = self.get()
+        self.assertEqual(response.headers["Content-Disposition"], "inline")
+        self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(response.headers["Content-Security-Policy"], "sandbox")
+        self.assertEqual(response.headers["Cross-Origin-Resource-Policy"], "same-origin")
+
+    def test_bad_token_is_rejected(self):
+        status, detail, _ = self.get("bad")
+        self.assertEqual((status, detail), (403, "Ссылка недействительна или истекла"))
+
+    def test_link_creation_requires_admin(self):
+        with mock.patch.multiple(auth.settings, update_api_token=TOKEN, debug=False):
+            status, _, _ = fastapi_stub.call(api.router, "POST", "/api/storage/objects/oid/media-link")
         self.assertIn(status, (401, 403))
 
 

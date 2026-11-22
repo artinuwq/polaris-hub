@@ -9,7 +9,9 @@
   GET    /api/storage/buckets/{bucket}/objects      — ?prefix=&after=&limit=
   GET    /api/storage/objects/{id} · DELETE /api/storage/objects/{id} · GET /api/storage/objects/{id}/download
   POST   /api/storage/objects/{id}/download-link    — подписанная ссылка на скачивание (для Telegram.WebApp.downloadFile)
-  GET    /api/storage/download/{token}              — единственный маршрут без admin-заголовков: доступ даёт токен ссылки
+  GET    /api/storage/download/{token}              — маршрут без admin-заголовков: доступ даёт токен ссылки
+  POST   /api/storage/objects/{id}/media-link       — ссылка для встроенного плеера (видео/аудио), ~3 часа
+  GET    /api/storage/media/{token}                 — второй маршрут без admin-заголовков: кусок файла по Range (206), только аудио/видео, inline
   GET    /api/storage/buckets/{bucket}/browse       — ?prefix=&cursor=&limit=: подпапки и файлы «папки» (файловый менеджер)
   POST   /api/storage/buckets/{bucket}/folders      — {prefix}: создать папку · DELETE ...?prefix=: удалить папку со всем содержимым
   PUT    /api/storage/buckets/{bucket}/upload       — ?key=: тело запроса — байты файла (перезаписывает существующий ключ)
@@ -232,6 +234,35 @@ def download_object_link(object_id: str, response: Response,
 def download_by_link(token: str):
     """Без заголовков авторизации: доступ даёт подписанный токен из download-link (один объект, ~5 минут)."""
     return _file_response(*_run(get_admin().download_by_token, token))
+
+
+@router.post("/objects/{object_id}/media-link")
+def media_link(object_id: str, response: Response, _user: TelegramWebAppUser | None = Depends(require_admin)):
+    """Ссылка для встроенного плеера (видео/аудио): на один объект, на несколько часов, с поддержкой Range."""
+    return _secret_response(response, _run(get_admin().media_link, object_id))
+
+
+@router.get("/media/{token}")
+def media_stream(token: str, request: Request):
+    """Без заголовков авторизации: доступ даёт токен из media-link. Отдаёт запрошенный кусок файла (Range):
+    плеер сам решает, что и когда докачивать, перематывать можно в любое место. Только аудио/видео, только inline."""
+    info, stream = _run(get_admin().media_open, token, request.headers.get("range"))
+    size = info["size"]
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, max-age=300",
+        "Content-Disposition": "inline",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox",
+        "Cross-Origin-Resource-Policy": "same-origin",
+    }
+    if info["status"] == 416:
+        return StreamingResponse(iter(()), status_code=416, headers={**headers, "Content-Range": f"bytes */{size}", "Content-Length": "0"})
+    length = 0 if size == 0 else info["end"] - info["start"] + 1
+    headers["Content-Length"] = str(length)
+    if info["status"] == 206:
+        headers["Content-Range"] = f"bytes {info['start']}-{info['end']}/{size}"
+    return StreamingResponse(stream, status_code=info["status"], media_type=info["content_type"], headers=headers)
 
 
 @router.get("/credentials")

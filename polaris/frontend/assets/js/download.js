@@ -14,10 +14,10 @@ window.PolarisDownload = (() => {
     return h;
   }
 
-  async function getLink(objectId) {
+  async function getLink(objectId, kind = 'download-link') {
     let response;
     try {
-      response = await fetch(`/api/storage/objects/${encodeURIComponent(objectId)}/download-link`,
+      response = await fetch(`/api/storage/objects/${encodeURIComponent(objectId)}/${kind}`,
         { method: 'POST', headers: headers(), cache: 'no-store' });
     } catch (e) {
       throw new Error('Нет связи с сервером Polaris');
@@ -25,7 +25,9 @@ window.PolarisDownload = (() => {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const detail = payload.detail ?? payload.message ?? `HTTP ${response.status}`;
-      throw new Error(typeof detail === 'object' ? (detail.message || 'Ошибка запроса') : String(detail));
+      const error = new Error(typeof detail === 'object' ? (detail.message || 'Ошибка запроса') : String(detail));
+      error.status = response.status;  // например, 415: файл не воспроизводится в плеере
+      throw error;
     }
     return payload.data ?? payload;
   }
@@ -65,11 +67,17 @@ window.PolarisDownload = (() => {
 
   const message = (result, name) => (MESSAGES[result] || MESSAGES.browser)(name);
 
+  /* Ссылка для встроенного плеера (видео): на несколько часов и с поддержкой Range — плеер докачивает и перематывает сам */
+  async function mediaLink(objectId) {
+    const l = await getLink(objectId, 'media-link');
+    return { url: new URL(l.path, window.location.origin).href, file_name: l.file_name, content_type: l.content_type, size: l.size, expires_in: l.expires_in };
+  }
+
   /* Короткоживущий URL без заголовков авторизации — чтобы браузер сам грузил картинку в <img> */
   async function link(objectId) {
     const l = await getLink(objectId);
     return { url: new URL(l.path, window.location.origin).href, file_name: l.file_name, expires_in: l.expires_in };
   }
 
-  return { start, message, link };
+  return { start, message, link, mediaLink };
 })();

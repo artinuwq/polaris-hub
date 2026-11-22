@@ -24,6 +24,7 @@ from polaris.storage.backends.base import (
     UploadResult,
     make_marker,
 )
+from polaris.storage.chunk_cache import ChunkCache
 from polaris.storage.database import StorageDatabase
 from polaris.storage.errors import (
     BucketExists,
@@ -65,6 +66,7 @@ def is_hidden_bucket(name: str) -> bool:
 
 _BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _READ_PIECE = 1024 * 1024
+_RANGE_PIECE = 256 * 1024  # размер порции при отдаче диапазона
 
 
 def _validate_bucket_name(name: str) -> str:
@@ -170,6 +172,8 @@ class StorageCore:
         chunk_size: int,
         max_concurrent_uploads: int = 2,
         max_concurrent_downloads: int = 4,
+        chunk_cache_bytes: int = 48 * 1024 * 1024,
+        range_slot_wait: float = 10.0,
         delete_max_attempts: int = 10,
         stale_upload_seconds: int = 1800,
         heartbeat_interval: float = 20.0,
@@ -188,6 +192,8 @@ class StorageCore:
         self._sleep = sleep
         self._upload_slots = threading.BoundedSemaphore(max_concurrent_uploads)
         self._download_slots = threading.BoundedSemaphore(max_concurrent_downloads)
+        self._chunk_cache = ChunkCache(chunk_cache_bytes)  # для чтения диапазонов (плеер, Range в S3 API)
+        self._range_slot_wait = range_slot_wait
         self._active_lock = threading.Lock()
         self._active_objects: set[str] = set()
         self._active_blobs: set[str] = set()
@@ -601,7 +607,7 @@ class StorageCore:
             raise IntegrityError("; ".join(problems))
         return blob, chunks
 
-    def stream(self, object_id: str, start: int | None = None, end: int | None = None) -> Iterator[bytes]:
+    def stream(self, object_id: str, start: int | None = None, end: int | None = None, *, read_ahead: bool = False) -> Iterator[bytes]:
         """Поток содержимого готового объекта (или диапазона байт start..end включительно).
 
         Каждый чанк целиком скачивается и проверяется (размер, SHA-256) ДО выдачи потребителю.
@@ -609,43 +615,82 @@ class StorageCore:
         затронутые чанки (целиком). Если поток оборвался исключением (в т.ч. IntegrityError),
         результат нельзя считать успешным — даже если часть байт уже получена.
         Читаются только чанки, пересекающиеся с диапазоном: произвольное чтение внутри backend не нужно.
+
+        read_ahead=True — режим плеера (диапазоны для воспроизведения): проверенные чанки кэшируются, одновременные
+        запросы одного чанка делят одну загрузку, слот скачивания занимается только при обращении к backend, а следующий
+        чанк подкачивается заранее. Без него (S3 и прочие) поведение прежнее: ничего лишнего не читается.
         """
         obj = self.get_metadata(object_id)
         if start is not None or end is not None:
             if start is None or end is None or not 0 <= start <= end < obj.size_bytes:
                 raise InvalidRange(f"диапазон {start}-{end} вне объекта размером {obj.size_bytes}")
         blob, chunks = self._ready_chunks(obj)
-        return self._iter_stream(obj, blob, chunks, start, end)
+        return self._iter_stream(obj, blob, chunks, start, end, read_ahead)
 
     def _iter_stream(self, obj: StorageObject, blob: StorageBlob, chunks: list[StorageChunk],
-                     start: int | None = None, end: int | None = None) -> Iterator[bytes]:
-        if not self._download_slots.acquire(blocking=False):
+                     start: int | None = None, end: int | None = None, read_ahead: bool = False) -> Iterator[bytes]:
+        full = start is None
+        # Диапазоны идут через кэш чанков: слот скачивания нужен только на реальное обращение к backend (промах кэша),
+        # иначе десятки мелких запросов плеера упирались бы в лимит параллельных скачиваний, хотя сеть не используют.
+        ranged = not full and read_ahead and self._chunk_cache.enabled
+        if not ranged and not self._download_slots.acquire(blocking=False):
             raise StorageBusy("достигнут лимит параллельных скачиваний")
         try:
-            full = start is None
             total = hashlib.sha256() if full and blob.checksum_kind == "content" else None
             size, offset = 0, 0
-            for chunk in chunks:
+            for index, chunk in enumerate(chunks):
                 c_start, c_end = offset, offset + chunk.size_bytes  # c_end — исключительно
                 offset = c_end
                 if not full and c_start > end:  # type: ignore[operator]
                     break
                 if not full and c_end <= start:  # type: ignore[operator]
                     continue
-                data = self._fetch_chunk(chunk)
+                data = self._read_chunk_cached(chunk) if ranged else self._fetch_chunk(chunk)
                 if total is not None:
                     total.update(data)
                 if full:
                     size += len(data)
                     yield bytes(data)
                 else:
+                    if ranged and index + 1 < len(chunks):
+                        self._prefetch_chunk(chunks[index + 1])
                     lo = max(start, c_start) - c_start  # type: ignore[type-var]
                     hi = min(end, c_end - 1) + 1 - c_start  # type: ignore[type-var]
-                    yield bytes(data[lo:hi])
+                    for pos in range(lo, hi, _RANGE_PIECE):  # небольшими порциями: обрыв клиента не заставляет копировать весь чанк
+                        yield bytes(data[pos:min(pos + _RANGE_PIECE, hi)])
             if full and (size != blob.size_bytes or (total is not None and total.hexdigest() != blob.checksum_sha256)):
                 raise IntegrityError(f"итоговая проверка объекта {obj.id} не пройдена")
         finally:
-            self._download_slots.release()
+            if not ranged:
+                self._download_slots.release()
+
+    def _read_chunk_cached(self, chunk: StorageChunk) -> bytes:
+        def load() -> bytes | bytearray:
+            if not self._download_slots.acquire(timeout=self._range_slot_wait):
+                raise StorageBusy("достигнут лимит параллельных скачиваний")
+            try:
+                return self._fetch_chunk(chunk)
+            finally:
+                self._download_slots.release()
+
+        return self._chunk_cache.fetch(chunk.id, load)
+
+    def _prefetch_chunk(self, chunk: StorageChunk) -> None:
+        """Подкачать следующий чанк заранее. Если свободного слота нет или чанк уже в пути — молча пропускаем."""
+        if self._chunk_cache.has(chunk.id):
+            return
+
+        def work() -> None:
+            if not self._download_slots.acquire(blocking=False):
+                return
+            try:
+                self._chunk_cache.fetch(chunk.id, lambda: self._fetch_chunk(chunk))
+            except Exception:  # noqa: BLE001 — упреждающее чтение не должно ничего ломать: настоящий запрос сам сообщит об ошибке
+                logger.debug("упреждающая подкачка чанка %s не удалась", chunk.chunk_index)
+            finally:
+                self._download_slots.release()
+
+        threading.Thread(target=work, name="storage-chunk-prefetch", daemon=True).start()
 
     def _fetch_chunk(self, chunk: StorageChunk) -> bytes | bytearray:
         data = self.driver.download(chunk.backend_reference)  # type: ignore[arg-type]

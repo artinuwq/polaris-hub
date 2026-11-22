@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import itertools
 import logging
 import os
 import re
@@ -21,14 +22,14 @@ from typing import Any, Callable, Iterator
 
 from polaris.infra.config_store import read_env_value, write_env_value
 from polaris.infra.settings import Settings
-from polaris.modules.storage import download_links
+from polaris.modules.storage import download_links, media
 from polaris.modules.storage.config_fields import BY_KEY, FIELDS, FieldError, from_env, mask_secret, to_env
 from polaris.storage import core as storage_core
 from polaris.storage.access_keys import PERMISSIONS, AccessKey, AccessKeyError, AccessKeyStore
 from polaris.storage.backends.telegram import TelegramConfig, TelegramDriver
 from polaris.storage.database import load_migrations, utcnow_iso
 from polaris.storage.errors import (
-    BucketExists, BucketNotEmpty, BucketNotFound, InvalidName, MultipartError, ObjectConflict, ObjectNotFound,
+    BucketExists, BucketNotEmpty, BucketNotFound, IntegrityError, InvalidName, MultipartError, ObjectConflict, ObjectNotFound,
     ObjectNotReady, StorageBusy, StorageError, StorageUnavailable,
 )
 from polaris.storage.multipart import MAX_PARTS
@@ -453,6 +454,51 @@ class StorageAdmin:
         if object_id is None:
             raise AdminError(403, "Ссылка недействительна или истекла")
         return self.object_download(object_id)
+
+    # ─── воспроизведение видео/аудио (Range) ───
+
+    def media_link(self, object_id: str) -> dict:
+        """Ссылка для встроенного плеера: без заголовков авторизации, на один объект, на несколько часов."""
+        o = self._object(object_id)
+        mime = media.media_mime(o.object_key, o.mime_type)
+        if mime is None:
+            raise AdminError(415, "Этот тип файла не воспроизводится в плеере — его можно скачать")
+        token = download_links.sign(self._link_secret(), media.MEDIA_PREFIX + o.id, ttl=media.MEDIA_TTL)
+        return {"path": f"/api/storage/media/{token}", "file_name": o.object_key.rsplit("/", 1)[-1] or "object",
+                "content_type": mime, "size": o.size_bytes, "expires_in": media.MEDIA_TTL}
+
+    def media_open(self, token: str, range_header: str | None) -> tuple[dict, Iterator[bytes] | None]:
+        """Кусок файла для плеера. info: status (200/206/416), content_type, size, start, end.
+        Поток — None при 416. Первая порция читается сразу: сбой Storage станет честным 503/502, а не обрывом ответа."""
+        subject = download_links.verify(self._link_secret(), token)
+        if subject is None or not subject.startswith(media.MEDIA_PREFIX):
+            raise AdminError(403, "Ссылка недействительна или истекла")
+        o = self._object(subject[len(media.MEDIA_PREFIX):])
+        mime = media.media_mime(o.object_key, o.mime_type)
+        if mime is None:
+            raise AdminError(415, "Этот тип файла не воспроизводится в плеере")
+        size = o.size_bytes
+        info = {"status": 200, "content_type": mime, "size": size, "start": 0, "end": max(0, size - 1)}
+        try:
+            span = media.parse_range(range_header, size)
+        except media.RangeNotSatisfiable:
+            return {**info, "status": 416}, None
+        if span is not None:
+            info.update(status=206, start=span[0], end=span[1])
+        if size == 0:
+            return info, iter(())
+        core = self._core()
+        try:
+            stream = iter(core.stream(o.id, info["start"], info["end"], read_ahead=True))  # и для 200: через кэш чанков, без полного хеширования
+            first = next(stream, b"")
+        except StorageBusy:
+            raise AdminError(503, "Слишком много одновременных скачиваний, повторите позже") from None
+        except ObjectNotFound:
+            raise AdminError(404, "Объект не найден") from None
+        except IntegrityError:
+            logger.error("Storage: проверка целостности не пройдена при воспроизведении")
+            raise AdminError(502, "Файл в Storage повреждён") from None
+        return info, itertools.chain([first], stream)
 
     # ─── клиентская нарезка: multipart для Mini App ───
 

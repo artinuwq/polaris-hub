@@ -16,6 +16,8 @@ window.FilesModule = (() => {
   const EDIT_MAX = 1024 * 1024;               // больше 1 МиБ в редактор не берём — только скачать
   const IMAGE = /\.(jpe?g|png|gif|webp|avif|bmp)$/i;   // что открывается во встроенном просмотре фото (SVG и HEIC — только скачать)
   const IMAGE_MAX = 60 * 1024 * 1024;         // огромные снимки (RAW и т. п.) лучше скачать
+  const VIDEO = /\.(mp4|m4v|webm|mov|ogv)$/i;  // что пробуем играть встроенным плеером (mkv, avi и т. п. — только скачать)
+  const isMedia = (name) => IMAGE.test(name) || VIDEO.test(name);
   const ZOOM_MAX = 6;
   const ICON_FOLDER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path></svg>';
   const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10"></path><path d="m8 10 4 4 4-4"></path><path d="M5 19h14"></path></svg>';
@@ -28,6 +30,7 @@ window.FilesModule = (() => {
   const ICON_CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg>';
   const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>';
   const ICON_IMAGE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="m4 18 5-5 4 4 3-3 4 4"></path></svg>';
+  const ICON_VIDEO = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10.5 9.5 4 2.5-4 2.5z"></path></svg>';
   const ICON_PREV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"></path></svg>';
   const ICON_NEXT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"></path></svg>';
   const ICON_FILE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M14 3v5h5"></path></svg>';
@@ -398,12 +401,13 @@ window.FilesModule = (() => {
   function fileRow(o) {
     const meta = [fmtSize(o.size), fmtDate(o.last_modified)].filter(Boolean).join(' · ');
     const image = IMAGE.test(o.name);
-    const open = EDITABLE.test(o.name) || image
+    const video = VIDEO.test(o.name);
+    const open = EDITABLE.test(o.name) || image || video
       ? ` is-openable" data-fm="open-file" data-id="${escapeHTML(o.id)}" data-key="${escapeHTML(o.key)}" data-name="${escapeHTML(o.name)}" data-size="${Number(o.size) || 0}" data-etag="${escapeHTML(o.etag || '')}`
       : '';
     return `
       <div class="fm-row${open}">
-        <span class="fm-icon">${image ? ICON_IMAGE : ICON_FILE}</span>
+        <span class="fm-icon">${image ? ICON_IMAGE : video ? ICON_VIDEO : ICON_FILE}</span>
         <span class="fm-main"><span class="fm-name">${escapeHTML(o.name)}</span><span class="fm-meta">${escapeHTML(meta)}</span></span>
         <span class="fm-actions">
           <button type="button" class="fm-ibtn" data-fm="download" data-id="${escapeHTML(o.id)}" data-name="${escapeHTML(o.name)}" aria-label="Скачать" title="Скачать">${ICON_DOWNLOAD}</button>
@@ -703,6 +707,7 @@ window.FilesModule = (() => {
     alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 16.5v.5"></path><circle cx="12" cy="12" r="9"></circle></svg>',
     back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"></path></svg>',
     image: ICON_IMAGE,
+    video: ICON_VIDEO,
   };
   const CAP_STATES = ['is-dirty', 'is-saving', 'is-saved', 'is-error'];
 
@@ -972,12 +977,12 @@ window.FilesModule = (() => {
     if (V || E) return;
     const clicked = S.objects.find((o) => o.id === id);
     if (!clicked) return;
-    if (Number(clicked.size) > IMAGE_MAX) {
+    if (IMAGE.test(clicked.name) && Number(clicked.size) > IMAGE_MAX) {
       setNotice('error', `«${clicked.name}» больше ${Math.round(IMAGE_MAX / 1048576)} МиБ — в просмотре не открывается, его можно скачать`);
       return;
     }
-    // листаем фото этой папки; огромные снимки в ленту не берём (их можно только скачать)
-    const items = S.objects.filter((o) => IMAGE.test(o.name) && Number(o.size) <= IMAGE_MAX);
+    // листаем фото и видео этой папки; огромные снимки в ленту не берём (их можно только скачать)
+    const items = S.objects.filter((o) => (IMAGE.test(o.name) && Number(o.size) <= IMAGE_MAX) || VIDEO.test(o.name));
     const index = items.findIndex((o) => o.id === id);
     if (index < 0) return;
     hideToast();  // прежнее сообщение не должно висеть поверх фото
@@ -990,6 +995,7 @@ window.FilesModule = (() => {
     el.innerHTML = `
       <div class="fm-viewer-stage">
         <img class="fm-viewer-img" alt="" draggable="false" hidden />
+        <video class="fm-viewer-video" controls playsinline preload="metadata" hidden></video>
         <div class="fm-viewer-status" role="status"></div>
       </div>
       <button type="button" class="fm-viewer-nav is-prev" data-fmv="prev" aria-label="Предыдущее фото">${ICON_PREV}</button>
@@ -1000,7 +1006,7 @@ window.FilesModule = (() => {
       </div>`;
     const fit = makeFit(el);
     const vv = window.visualViewport;
-    V = { el, stage: el.querySelector('.fm-viewer-stage'), img: el.querySelector('.fm-viewer-img'), items, index, name: items[index].name,
+    V = { el, stage: el.querySelector('.fm-viewer-stage'), img: el.querySelector('.fm-viewer-img'), video: el.querySelector('.fm-viewer-video'), kind: 'image', resumeAt: 0, items, index, name: items[index].name,
           seq: 0, scale: 1, tx: 0, ty: 0, pts: new Map(), fit, lastTap: null, gesture: null };
     const mine = V;
     el.addEventListener('click', (e) => {
@@ -1008,7 +1014,7 @@ window.FilesModule = (() => {
       if (action === 'prev') stepViewer(-1);
       else if (action === 'next') stepViewer(1);
       else if (action === 'download') downloadFile(mine.items[mine.index].id, mine.items[mine.index].name);
-      else if (action === 'retry') showImage(mine.index);
+      else if (action === 'retry') showItem(mine.index, true);
     });
     bindViewerGestures(mine);
     mine.img.addEventListener('load', () => {
@@ -1026,6 +1032,7 @@ window.FilesModule = (() => {
       mine.el.classList.remove('is-loading');
       setViewerStatus('Не удалось загрузить фото', true);
     });
+    bindViewerVideo(mine);
     document.body.appendChild(el);
     const root = document.documentElement;
     root.classList.add('fm-editing', 'fm-viewing');
@@ -1039,7 +1046,7 @@ window.FilesModule = (() => {
     window.addEventListener('resize', applyViewerTransform);
     window.PolarisBack?.push('files-viewer', closeViewer);
     el.focus({ preventScroll: true });
-    showImage(index);
+    showItem(index);
   }
 
   // клавиши слушаем на уровне документа: после нажатия кнопки листания (она на краю блокируется) фокус пропадает,
@@ -1048,12 +1055,19 @@ window.FilesModule = (() => {
     if (!V || e.altKey) return;
     const k = e.key;
     let handled = true;
-    if (k === 'ArrowLeft') stepViewer(-1);
+    const video = V.kind === 'video';
+    if (k === 'Escape') closeViewer();
+    else if (k === 'PageUp') stepViewer(-1);
+    else if (k === 'PageDown') stepViewer(1);
+    else if ((k === 'ArrowLeft' || k === 'ArrowRight') && video && !e.shiftKey) {  // в видео стрелки — перемотка, Shift+стрелка — соседний файл
+      V.video.currentTime = Math.max(0, Math.min(V.video.duration || Infinity, V.video.currentTime + (k === 'ArrowLeft' ? -5 : 5)));
+    } else if (k === 'ArrowLeft') stepViewer(-1);
     else if (k === 'ArrowRight') stepViewer(1);
-    else if (k === 'Escape') closeViewer();
-    else if (k === '+' || k === '=') zoomViewer(V.scale * 1.4);
-    else if (k === '-') zoomViewer(V.scale / 1.4);
-    else if (k === '0') resetViewerZoom();
+    else if (k === ' ' && video && document.activeElement !== V.video && !document.activeElement?.closest?.('button')) {
+      if (V.video.paused) V.video.play().catch(() => {}); else V.video.pause();
+    } else if (!video && (k === '+' || k === '=')) zoomViewer(V.scale * 1.4);
+    else if (!video && k === '-') zoomViewer(V.scale / 1.4);
+    else if (!video && k === '0') resetViewerZoom();
     else handled = k === '/' || ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'k');  // глобальный поиск увёл бы из просмотра
     if (handled) { e.preventDefault(); e.stopPropagation(); }
   }
@@ -1069,11 +1083,12 @@ window.FilesModule = (() => {
     if (!V) return;
     const item = V.items[V.index];
     const n = chromeNodes();
-    if (n.capIcon) n.capIcon.innerHTML = CAP_ICONS.image;
+    const video = VIDEO.test(item.name);
+    if (n.capIcon) n.capIcon.innerHTML = video ? CAP_ICONS.video : CAP_ICONS.image;
     if (n.capText) n.capText.textContent = item.name;
     V.name = item.name;
     const position = `${V.index + 1} из ${V.items.length}`;
-    n.capsule?.setAttribute('aria-label', `${item.name}. Фото ${position}`);
+    n.capsule?.setAttribute('aria-label', `${item.name}. ${video ? 'Видео' : 'Фото'} ${position}`);
     n.capsule?.setAttribute('title', item.name);
     V.el.setAttribute('aria-label', `Просмотр: ${item.name}`);
     V.el.querySelector('.fm-viewer-count').textContent = V.items.length > 1 ? `${V.index + 1} / ${V.items.length}` : '';
@@ -1083,42 +1098,96 @@ window.FilesModule = (() => {
     V.el.querySelector('.is-next').disabled = V.index === V.items.length - 1;
   }
 
-  async function showImage(index) {
+  function stopVideo(v) {
+    // освободить сетевое соединение и слот скачивания на сервере: без этого плеер продолжал бы буферизовать
+    v.video.pause();
+    if (v.video.getAttribute('src')) { v.video.removeAttribute('src'); v.video.load(); }
+    v.video.hidden = true;
+  }
+
+  const fmtDuration = (sec) => {
+    if (!Number.isFinite(sec) || sec <= 0) return '';
+    const t = Math.round(sec), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), r = t % 60;
+    return h ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`;
+  };
+
+  async function showItem(index, retry = false) {
     const v = V;
     if (!v) return;
+    const keepAt = retry && v.index === index && v.kind === 'video' ? v.resumeAt : 0;  // «Повторить» продолжает с того же места
     v.index = index;
     v.seq += 1;
     const seq = v.seq;
+    const item = v.items[index];
+    v.kind = VIDEO.test(item.name) ? 'video' : 'image';
     v.natural = '';
+    v.resumeAt = keepAt;
     resetViewerZoom(false);
     v.img.hidden = true;
     v.img.removeAttribute('src');
+    stopVideo(v);
+    v.el.classList.toggle('is-video', v.kind === 'video');
+    document.documentElement.classList.toggle('fm-viewing-video', v.kind === 'video');
     v.el.classList.add('is-loading');
     setViewerStatus('Загрузка…');
     paintViewer();
     try {
-      // подписанная ссылка: картинку грузит сам браузер (потоком, без копии в памяти страницы)
-      const link = await window.PolarisDownload.link(v.items[index].id);
-      if (V !== v || v.seq !== seq) return;
-      v.img.dataset.seq = String(seq);
-      v.img.src = link.url;
+      if (v.kind === 'video') {
+        // ссылка на несколько часов с поддержкой Range: плеер сам докачивает нужные куски и перематывает без полной загрузки
+        const link = await window.PolarisDownload.mediaLink(item.id);
+        if (V !== v || v.seq !== seq) return;
+        v.video.dataset.seq = String(seq);
+        v.video.src = link.url;
+        v.video.hidden = false;
+      } else {
+        // подписанная ссылка: картинку грузит сам браузер (потоком, без копии в памяти страницы)
+        const link = await window.PolarisDownload.link(item.id);
+        if (V !== v || v.seq !== seq) return;
+        v.img.dataset.seq = String(seq);
+        v.img.src = link.url;
+      }
     } catch (e) {
       if (V !== v || v.seq !== seq) return;
       v.el.classList.remove('is-loading');
-      setViewerStatus(errText(e), true);
+      setViewerStatus(errText(e), e.status !== 415);  // 415 — не воспроизводится: повтор не поможет, можно скачать
     }
+  }
+
+  function bindViewerVideo(v) {
+    const video = v.video;
+    const current = () => V === v && video.dataset.seq === String(v.seq);
+    video.addEventListener('loadedmetadata', () => {
+      if (!current()) return;
+      v.el.classList.remove('is-loading');
+      setViewerStatus('');
+      if (v.resumeAt > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(v.resumeAt, video.duration);
+      v.natural = [video.videoWidth ? `${video.videoWidth}×${video.videoHeight}` : '', fmtDuration(video.duration)].filter(Boolean).join(' · ');
+      paintViewer();
+    });
+    video.addEventListener('timeupdate', () => { if (current()) v.resumeAt = video.currentTime; });
+    video.addEventListener('error', () => {
+      if (!current() || !video.getAttribute('src')) return;
+      const code = video.error?.code;
+      v.resumeAt = video.currentTime || v.resumeAt;
+      video.pause();
+      video.hidden = true;
+      v.el.classList.remove('is-loading');
+      // 4 — формат/кодек не поддерживается этим плеером; остальное (сеть, истёкшая ссылка) лечится повтором
+      if (code === 4) setViewerStatus('Формат не поддерживается встроенным плеером — файл можно скачать');
+      else setViewerStatus('Не удалось воспроизвести видео', true);
+    });
   }
 
   function stepViewer(delta) {
     if (!V) return;
     const next = V.index + delta;
     if (next < 0 || next >= V.items.length) { bounceViewer(); return; }
-    showImage(next);
+    showItem(next);
   }
 
   function bounceViewer() {  // упёрлись в край: картинка слегка «подпрыгивает»
     const img = V?.img;
-    if (!img || V.scale > 1) return;
+    if (!img || V.kind !== 'image' || V.scale > 1) return;
     img.classList.remove('is-bounce');
     void img.offsetWidth;
     img.classList.add('is-bounce');
@@ -1169,7 +1238,7 @@ window.FilesModule = (() => {
     const dist = () => { const [a, b] = [...v.pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
     const mid = () => { const [a, b] = [...v.pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
     stage.addEventListener('pointerdown', (e) => {
-      if (v.img.hidden || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (v.kind !== 'image' || v.img.hidden || (e.pointerType === 'mouse' && e.button !== 0)) return;
       try { stage.setPointerCapture?.(e.pointerId); } catch (err) { /* нет активного указателя — продолжаем без захвата */ }
       v.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (v.pts.size === 2) {
@@ -1231,7 +1300,7 @@ window.FilesModule = (() => {
     stage.addEventListener('pointerup', finish);
     stage.addEventListener('pointercancel', finish);
     stage.addEventListener('wheel', (e) => {
-      if (v.img.hidden) return;
+      if (v.kind !== 'image' || v.img.hidden) return;
       e.preventDefault();
       zoomViewer(v.scale * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY, false);
     }, { passive: false });
@@ -1243,11 +1312,12 @@ window.FilesModule = (() => {
     const mine = V;
     if (!mine) return;
     V = null;
+    stopVideo(mine);
     mine.el.remove();
     document.removeEventListener('click', onChromeClick, true);
     document.removeEventListener('keydown', onViewerKey, true);
     chromeLeave(mine);
-    document.documentElement.classList.remove('fm-editing', 'fm-viewing');
+    document.documentElement.classList.remove('fm-editing', 'fm-viewing', 'fm-viewing-video');
     const vv = window.visualViewport;
     vv?.removeEventListener('resize', mine.fit);
     vv?.removeEventListener('scroll', mine.fit);
@@ -1257,7 +1327,7 @@ window.FilesModule = (() => {
   }
 
   function openFile(d) {
-    if (IMAGE.test(d.name)) openViewer(d.id);
+    if (isMedia(d.name)) openViewer(d.id);
     else openEditor(d.id, d.key, d.name, d.size, d.etag);
   }
 
