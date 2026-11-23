@@ -218,7 +218,55 @@ html.fm-editing .fm-toast { right: 16px; }  /* в редакторе кругл�
 html.fm-viewing .fm-toast { left: 16px; right: 16px; width: fit-content; margin: 0 auto; bottom: calc(74px + env(safe-area-inset-bottom, 0px)); max-width: calc(100vw - 32px); }
 @media (prefers-reduced-motion: reduce) { .fm-viewer-img.is-bounce { animation: none; } .fm-viewer.is-loading .fm-viewer-status span::after { animation: none; } }
 
-/* ─── видео в просмотре: плеер браузера сам запрашивает нужные куски файла (Range) ─── */
-.fm-viewer-video { max-width: 100%; max-height: 100%; background: #000; outline: none; }
-.fm-viewer-video[hidden] { display: none; }
-.fm-viewer.is-video .fm-viewer-stage { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }  /* плашка снизу не должна закрывать элементы управления плеера */
+/* ─── видео в просмотре: свой плеер; сам <video> запрашивает нужные куски файла (Range) ─── */
+.fm-player { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; background: #000; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.fm-player[hidden] { display: none; }
+.fm-viewer-video { width: 100%; height: 100%; object-fit: contain; background: #000; outline: none; }
+.fm-player-tap { position: absolute; inset: 0; z-index: 1; }
+.fm-viewer.is-idle .fm-player { cursor: none; }
+.fm-player-big { position: absolute; z-index: 2; left: 50%; top: 50%; width: 68px; height: 68px; margin: -34px 0 0 -34px; display: none; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: var(--primary); color: #07101a; cursor: pointer; box-shadow: var(--shadow); transition: transform 0.15s ease, opacity 0.2s ease; }
+.fm-player-big:active { transform: scale(0.94); }
+.fm-player.is-paused:not(.is-buffering) .fm-player-big { display: flex; }
+.fm-player-big svg { width: 30px; height: 30px; fill: currentColor; stroke: none; margin-left: 3px; }
+.fm-viewer.is-idle .fm-player-big { opacity: 0; pointer-events: none; }
+.fm-player-spinner { position: absolute; z-index: 2; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: var(--primary); opacity: 0; pointer-events: none; transition: opacity 0.15s ease; animation: fm-viewer-spin 0.8s linear infinite; }
+.fm-player.is-buffering .fm-player-spinner { opacity: 1; }
+.fm-player-skip { position: absolute; z-index: 2; top: 50%; margin-top: -20px; padding: 8px 14px; border-radius: 999px; background: rgba(21, 26, 38, 0.82); color: var(--text); font-size: var(--fs-sm); opacity: 0; pointer-events: none; }
+.fm-player-skip.is-back { left: 12%; }
+.fm-player-skip.is-fwd { right: 12%; }
+.fm-player-skip.is-on { animation: fm-skip 0.65s ease-out; }
+@keyframes fm-skip { 0% { opacity: 0; transform: scale(0.85); } 25% { opacity: 1; transform: scale(1); } 100% { opacity: 0; } }
+.fm-player-controls { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; padding: 36px 14px calc(10px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(to top, rgba(4, 6, 10, 0.92), rgba(4, 6, 10, 0)); transition: opacity 0.2s ease; }
+.fm-viewer.is-idle .fm-player-controls { opacity: 0; pointer-events: none; }
+.fm-seek { position: relative; height: 30px; display: flex; align-items: center; cursor: pointer; touch-action: none; outline: none; }
+.fm-seek-track { position: relative; width: 100%; height: 4px; border-radius: 3px; background: rgba(255, 255, 255, 0.22); transition: height 0.12s ease; }
+.fm-seek:hover .fm-seek-track, .fm-seek:focus-visible .fm-seek-track, .fm-player.is-scrubbing .fm-seek-track { height: 6px; }
+.fm-seek-buffer, .fm-seek-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; }
+.fm-seek-buffer { background: rgba(255, 255, 255, 0.36); }
+.fm-seek-fill { background: var(--primary); }
+.fm-seek-thumb { position: absolute; left: 0; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5); transition: transform 0.12s ease; }
+.fm-player.is-scrubbing .fm-seek-thumb { transform: scale(1.35); }
+.fm-seek-tip { position: absolute; bottom: 30px; left: 0; transform: translateX(-50%); padding: 3px 8px; border-radius: 8px; background: #151a26; border: 1px solid var(--border); color: var(--text); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; opacity: 0; pointer-events: none; transition: opacity 0.1s ease; }
+.fm-seek:hover .fm-seek-tip:not(:empty), .fm-player.is-scrubbing .fm-seek-tip { opacity: 1; }
+.fm-player-row { display: flex; align-items: center; gap: 8px; }
+.fm-pbtn { width: 42px; height: 42px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid transparent; border-radius: 50%; background: rgba(21, 26, 38, 0.72); color: var(--text); cursor: pointer; transition: background-color 0.15s ease, transform 0.12s ease; }
+.fm-pbtn:hover { background: rgba(40, 48, 68, 0.9); }
+.fm-pbtn:active { transform: scale(0.93); }
+.fm-pbtn.is-main { width: 46px; height: 46px; background: var(--primary); color: #07101a; }
+.fm-pbtn.is-main:hover { background: var(--primary); filter: brightness(1.08); }
+.fm-pbtn.is-text { width: auto; min-width: 46px; padding: 0 12px; border-radius: 999px; font: inherit; font-size: var(--fs-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+.fm-pbtn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.fm-pbtn.is-main svg { fill: currentColor; stroke: currentColor; stroke-width: 1.5; }
+.fm-ptime { color: var(--text); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 4px; }
+.fm-pspacer { flex: 1; }
+.fm-vol { width: 74px; accent-color: var(--primary); cursor: pointer; }
+@media (hover: none) { .fm-vol { display: none; } }  /* на телефоне громкость — кнопками телефона */
+.fm-player:fullscreen { background: #000; }
+.fm-player:-webkit-full-screen { background: #000; }
+.fm-viewer-status-actions { display: flex; gap: 10px; }
+.fm-viewer-nav, .fm-viewer-bar { z-index: 3; }
+.fm-viewer.is-video .fm-viewer-bar { top: 10px; bottom: auto; padding: 6px 14px; transition: opacity 0.2s ease; }  /* в видео внизу — управление плеера, поэтому плашка сверху */
+.fm-viewer.is-video .fm-viewer-dl { display: none; }  /* в видео скачивание — из списка файлов (или из сообщения о неподдерживаемом формате) */
+.fm-viewer.is-video.is-idle .fm-viewer-bar, .fm-viewer.is-video.is-idle .fm-viewer-nav { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .fm-player-spinner { animation: none; } .fm-player-skip.is-on { animation: none; } .fm-player-controls { transition: none; } }
+html.fm-viewing-video .fm-toast { bottom: auto; top: 130px; }  /* внизу — управление плеера */

@@ -31,6 +31,16 @@ window.FilesModule = (() => {
   const ICON_CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>';
   const ICON_IMAGE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="m4 18 5-5 4 4 3-3 4 4"></path></svg>';
   const ICON_VIDEO = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m10.5 9.5 4 2.5-4 2.5z"></path></svg>';
+  const PLAYER_ICONS = {
+    play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"></path></svg>',
+    pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"></path></svg>',
+    volume: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"></path><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"></path></svg>',
+    muted: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"></path><path d="m16 9.5 5 5M21 9.5l-5 5"></path></svg>',
+    full: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>',
+    exit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"></path></svg>',
+  };
+  const PLAYER_KEY = 'polaris_player';   // громкость, «без звука» и скорость запоминаются между просмотрами
+  const RATES = [0.5, 1, 1.25, 1.5, 2];
   const ICON_PREV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"></path></svg>';
   const ICON_NEXT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"></path></svg>';
   const ICON_FILE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M14 3v5h5"></path></svg>';
@@ -995,7 +1005,29 @@ window.FilesModule = (() => {
     el.innerHTML = `
       <div class="fm-viewer-stage">
         <img class="fm-viewer-img" alt="" draggable="false" hidden />
-        <video class="fm-viewer-video" controls playsinline preload="metadata" hidden></video>
+        <div class="fm-player is-paused" hidden>
+          <video class="fm-viewer-video" playsinline preload="metadata"></video>
+          <div class="fm-player-tap"></div>
+          <div class="fm-player-skip is-back" aria-hidden="true">−10 с</div>
+          <div class="fm-player-skip is-fwd" aria-hidden="true">+10 с</div>
+          <div class="fm-player-spinner" aria-hidden="true"></div>
+          <button type="button" class="fm-player-big" data-fmp="toggle" aria-label="Воспроизвести">${PLAYER_ICONS.play}</button>
+          <div class="fm-player-controls">
+            <div class="fm-seek" role="slider" tabindex="0" aria-label="Перемотка" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+              <div class="fm-seek-track"><div class="fm-seek-buffer"></div><div class="fm-seek-fill"></div></div>
+              <div class="fm-seek-thumb"></div><div class="fm-seek-tip"></div>
+            </div>
+            <div class="fm-player-row">
+              <button type="button" class="fm-pbtn is-main" data-fmp="toggle" aria-label="Воспроизвести">${PLAYER_ICONS.play}</button>
+              <span class="fm-ptime">0:00 / 0:00</span>
+              <span class="fm-pspacer"></span>
+              <button type="button" class="fm-pbtn" data-fmp="mute" aria-label="Выключить звук">${PLAYER_ICONS.volume}</button>
+              <input type="range" class="fm-vol" min="0" max="1" step="0.05" value="1" aria-label="Громкость" />
+              <button type="button" class="fm-pbtn is-text" data-fmp="rate" aria-label="Скорость воспроизведения">1×</button>
+              <button type="button" class="fm-pbtn" data-fmp="fullscreen" aria-label="Во весь экран">${PLAYER_ICONS.full}</button>
+            </div>
+          </div>
+        </div>
         <div class="fm-viewer-status" role="status"></div>
       </div>
       <button type="button" class="fm-viewer-nav is-prev" data-fmv="prev" aria-label="Предыдущее фото">${ICON_PREV}</button>
@@ -1006,7 +1038,7 @@ window.FilesModule = (() => {
       </div>`;
     const fit = makeFit(el);
     const vv = window.visualViewport;
-    V = { el, stage: el.querySelector('.fm-viewer-stage'), img: el.querySelector('.fm-viewer-img'), video: el.querySelector('.fm-viewer-video'), kind: 'image', resumeAt: 0, items, index, name: items[index].name,
+    V = { el, stage: el.querySelector('.fm-viewer-stage'), img: el.querySelector('.fm-viewer-img'), video: el.querySelector('.fm-viewer-video'), player: el.querySelector('.fm-player'), kind: 'image', resumeAt: 0, items, index, name: items[index].name,
           seq: 0, scale: 1, tx: 0, ty: 0, pts: new Map(), fit, lastTap: null, gesture: null };
     const mine = V;
     el.addEventListener('click', (e) => {
@@ -1033,6 +1065,7 @@ window.FilesModule = (() => {
       setViewerStatus('Не удалось загрузить фото', true);
     });
     bindViewerVideo(mine);
+    bindPlayer(mine);
     document.body.appendChild(el);
     const root = document.documentElement;
     root.classList.add('fm-editing', 'fm-viewing');
@@ -1056,26 +1089,29 @@ window.FilesModule = (() => {
     const k = e.key;
     let handled = true;
     const video = V.kind === 'video';
-    if (k === 'Escape') closeViewer();
+    if (k === 'Escape') { if (document.fullscreenElement) document.exitFullscreen(); else closeViewer(); }
     else if (k === 'PageUp') stepViewer(-1);
     else if (k === 'PageDown') stepViewer(1);
-    else if ((k === 'ArrowLeft' || k === 'ArrowRight') && video && !e.shiftKey) {  // в видео стрелки — перемотка, Shift+стрелка — соседний файл
-      V.video.currentTime = Math.max(0, Math.min(V.video.duration || Infinity, V.video.currentTime + (k === 'ArrowLeft' ? -5 : 5)));
-    } else if (k === 'ArrowLeft') stepViewer(-1);
+    else if ((k === 'ArrowLeft' || k === 'ArrowRight') && video && !e.shiftKey) { seekBy(V, k === 'ArrowLeft' ? -5 : 5); showControls(V); }  // в видео стрелки — перемотка, Shift+стрелка — соседний файл
+    else if (k === 'ArrowLeft') stepViewer(-1);
     else if (k === 'ArrowRight') stepViewer(1);
-    else if (k === ' ' && video && document.activeElement !== V.video && !document.activeElement?.closest?.('button')) {
-      if (V.video.paused) V.video.play().catch(() => {}); else V.video.pause();
-    } else if (!video && (k === '+' || k === '=')) zoomViewer(V.scale * 1.4);
+    else if (video && (k === ' ' || k.toLowerCase() === 'k') && !document.activeElement?.closest?.('button, input')) togglePlay(V);
+    else if (video && k.toLowerCase() === 'm') { V.video.muted = !V.video.muted; showControls(V); }
+    else if (video && k.toLowerCase() === 'f') toggleFullscreen(V);
+    else if (video && (k === 'ArrowUp' || k === 'ArrowDown')) { setVolume(V, V.video.volume + (k === 'ArrowUp' ? 0.1 : -0.1)); showControls(V); }
+    else if (!video && (k === '+' || k === '=')) zoomViewer(V.scale * 1.4);
     else if (!video && k === '-') zoomViewer(V.scale / 1.4);
     else if (!video && k === '0') resetViewerZoom();
     else handled = k === '/' || ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'k');  // глобальный поиск увёл бы из просмотра
     if (handled) { e.preventDefault(); e.stopPropagation(); }
   }
 
-  function setViewerStatus(text, retry = false) {
+  function setViewerStatus(text, retry = false, download = false) {
     const box = V?.el.querySelector('.fm-viewer-status');
     if (!box) return;
-    box.innerHTML = text ? `<span>${escapeHTML(text)}</span>${retry ? '<button type="button" class="tk-btn" data-fmv="retry">Повторить</button>' : ''}` : '';
+    box.innerHTML = text
+      ? `<span>${escapeHTML(text)}</span><span class="fm-viewer-status-actions">${retry ? '<button type="button" class="tk-btn" data-fmv="retry">Повторить</button>' : ''}${download ? '<button type="button" class="tk-btn" data-fmv="download">Скачать</button>' : ''}</span>`
+      : '';
     box.hidden = !text;
   }
 
@@ -1101,8 +1137,13 @@ window.FilesModule = (() => {
   function stopVideo(v) {
     // освободить сетевое соединение и слот скачивания на сервере: без этого плеер продолжал бы буферизовать
     v.video.pause();
+    if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+    cancelAnimationFrame(v.raf);
+    clearTimeout(v.idleTimer);
     if (v.video.getAttribute('src')) { v.video.removeAttribute('src'); v.video.load(); }
-    v.video.hidden = true;
+    v.player.hidden = true;
+    v.el.classList.remove('is-idle');
+    v.player.classList.remove('is-buffering', 'is-scrubbing');
   }
 
   const fmtDuration = (sec) => {
@@ -1138,7 +1179,9 @@ window.FilesModule = (() => {
         if (V !== v || v.seq !== seq) return;
         v.video.dataset.seq = String(seq);
         v.video.src = link.url;
-        v.video.hidden = false;
+        applyPlayerPrefs(v);
+        v.player.hidden = false;
+        updatePlayerUI(v);
       } else {
         // подписанная ссылка: картинку грузит сам браузер (потоком, без копии в памяти страницы)
         const link = await window.PolarisDownload.link(item.id);
@@ -1149,8 +1192,212 @@ window.FilesModule = (() => {
     } catch (e) {
       if (V !== v || v.seq !== seq) return;
       v.el.classList.remove('is-loading');
-      setViewerStatus(errText(e), e.status !== 415);  // 415 — не воспроизводится: повтор не поможет, можно скачать
+      setViewerStatus(errText(e), e.status !== 415, v.kind === 'video' && e.status === 415);  // 415 — не воспроизводится: повтор не поможет, можно скачать
     }
+  }
+
+
+  /* ─── свой плеер: перемотка с буфером, пауза, звук, скорость, полный экран ─── */
+  const fmtClock = (sec) => {
+    if (!Number.isFinite(sec) || sec < 0) sec = 0;
+    const t = Math.floor(sec), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), r = t % 60;
+    return h ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`;
+  };
+
+  function playerPrefs() {
+    try { return { volume: 1, muted: false, rate: 1, ...JSON.parse(localStorage.getItem(PLAYER_KEY) || '{}') }; } catch (e) { return { volume: 1, muted: false, rate: 1 }; }
+  }
+
+  function savePlayerPrefs(v) {
+    try { localStorage.setItem(PLAYER_KEY, JSON.stringify({ volume: v.video.volume, muted: v.video.muted, rate: v.video.playbackRate })); } catch (e) { /* хранилище недоступно — настройки просто не запомнятся */ }
+  }
+
+  function applyPlayerPrefs(v) {
+    const p = playerPrefs();
+    v.video.volume = Math.max(0, Math.min(1, Number(p.volume)));
+    v.video.muted = Boolean(p.muted);
+    v.video.defaultPlaybackRate = RATES.includes(Number(p.rate)) ? Number(p.rate) : 1;
+    v.video.playbackRate = v.video.defaultPlaybackRate;
+  }
+
+  function updatePlayerUI(v) {
+    if (!v || !v.ui) return;
+    const { video, ui } = v;
+    const dur = Number.isFinite(video.duration) ? video.duration : 0;
+    const ratio = dur > 0 ? (v.scrubRatio ?? video.currentTime / dur) : 0;
+    const pct = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
+    ui.fill.style.width = pct;
+    ui.thumb.style.left = pct;
+    ui.time.textContent = `${fmtClock(dur > 0 ? ratio * dur : video.currentTime)} / ${fmtClock(dur)}`;
+    let bufferedEnd = 0;
+    for (let i = 0; i < video.buffered.length; i += 1) {
+      if (video.buffered.start(i) <= video.currentTime + 0.5 && video.buffered.end(i) > bufferedEnd) bufferedEnd = video.buffered.end(i);
+    }
+    ui.buffer.style.width = dur > 0 ? `${Math.min(1, bufferedEnd / dur) * 100}%` : '0%';
+    const playing = !video.paused;
+    v.player.classList.toggle('is-paused', !playing);
+    const playLabel = playing ? 'Пауза' : (video.ended ? 'Смотреть снова' : 'Воспроизвести');
+    ui.playBtns.forEach((b) => { b.innerHTML = b.classList.contains('fm-player-big') ? PLAYER_ICONS.play : (playing ? PLAYER_ICONS.pause : PLAYER_ICONS.play); b.setAttribute('aria-label', playLabel); });
+    const silent = video.muted || video.volume === 0;
+    ui.mute.innerHTML = silent ? PLAYER_ICONS.muted : PLAYER_ICONS.volume;
+    ui.mute.setAttribute('aria-label', silent ? 'Включить звук' : 'Выключить звук');
+    ui.vol.value = String(video.muted ? 0 : video.volume);
+    ui.rate.textContent = `${video.playbackRate}×`;
+    const full = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    ui.fs.innerHTML = full ? PLAYER_ICONS.exit : PLAYER_ICONS.full;
+    ui.fs.setAttribute('aria-label', full ? 'Выйти из полноэкранного режима' : 'Во весь экран');
+    ui.seek.setAttribute('aria-valuemax', String(Math.round(dur)));
+    ui.seek.setAttribute('aria-valuenow', String(Math.round(video.currentTime)));
+    ui.seek.setAttribute('aria-valuetext', `${fmtClock(video.currentTime)} из ${fmtClock(dur)}`);
+  }
+
+  function showControls(v) {
+    if (!v) return;
+    v.el.classList.remove('is-idle');
+    clearTimeout(v.idleTimer);
+    if (v.kind === 'video' && !v.video.paused && !v.scrubbing) {
+      // во время просмотра элементы управления прячутся, как в привычных плеерах; касание или движение мыши возвращает их
+      v.idleTimer = setTimeout(() => { if (V === v && !v.video.paused && !v.scrubbing && !v.overControls) v.el.classList.add('is-idle'); }, 2800);
+    }
+  }
+
+  function togglePlay(v) {
+    if (!v || v.player.hidden) return;
+    if (v.video.paused) {
+      if (v.video.ended) v.video.currentTime = 0;
+      v.video.play().catch(() => {});
+    } else v.video.pause();
+    updatePlayerUI(v);  // сразу, не дожидаясь событий плеера: иначе кнопки на миг показывают старое состояние
+    showControls(v);
+  }
+
+  function seekBy(v, delta, side) {
+    const video = v.video;
+    if (!Number.isFinite(video.duration)) return;
+    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + delta));
+    updatePlayerUI(v);
+    if (side) {  // двойное касание: короткая подсказка «−10 с / +10 с»
+      const hint = v.player.querySelector(side === 'back' ? '.is-back' : '.is-fwd');
+      hint.classList.remove('is-on');
+      void hint.offsetWidth;
+      hint.classList.add('is-on');
+    }
+  }
+
+  function setVolume(v, value) {
+    v.video.volume = Math.max(0, Math.min(1, value));
+    if (v.video.volume > 0) v.video.muted = false;
+  }
+
+  function toggleFullscreen(v) {
+    const doc = document;
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) { (doc.exitFullscreen || doc.webkitExitFullscreen).call(doc); return; }
+    const el = v.player;
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else if (v.video.webkitEnterFullscreen) v.video.webkitEnterFullscreen();  // iPhone: только системный полноэкранный режим
+  }
+
+  function bindPlayer(v) {
+    const q = (sel) => v.player.querySelector(sel);
+    const ui = v.ui = {
+      fill: q('.fm-seek-fill'), buffer: q('.fm-seek-buffer'), thumb: q('.fm-seek-thumb'), tip: q('.fm-seek-tip'), seek: q('.fm-seek'),
+      time: q('.fm-ptime'), mute: q('[data-fmp=mute]'), vol: q('.fm-vol'), rate: q('[data-fmp=rate]'), fs: q('[data-fmp=fullscreen]'),
+      playBtns: [...v.player.querySelectorAll('[data-fmp=toggle]')], controls: q('.fm-player-controls'), tap: q('.fm-player-tap'),
+    };
+    const video = v.video;
+    const live = () => V === v;
+    const loop = () => { if (!live() || video.paused) return; updatePlayerUI(v); v.raf = requestAnimationFrame(loop); };
+
+    // состояние плеера → интерфейс
+    video.addEventListener('play', () => { if (!live()) return; cancelAnimationFrame(v.raf); v.raf = requestAnimationFrame(loop); updatePlayerUI(v); showControls(v); });
+    ['pause', 'ended', 'seeked', 'volumechange', 'ratechange', 'durationchange', 'progress'].forEach((t) => video.addEventListener(t, () => { if (live()) updatePlayerUI(v); }));
+    ['pause', 'ended'].forEach((t) => video.addEventListener(t, () => { if (live()) showControls(v); }));
+    ['volumechange', 'ratechange'].forEach((t) => video.addEventListener(t, () => { if (live() && !v.player.hidden && v.video.getAttribute('src')) savePlayerPrefs(v); }));
+    ['waiting', 'stalled', 'seeking'].forEach((t) => video.addEventListener(t, () => { if (live() && (!video.paused || t === 'seeking')) v.player.classList.add('is-buffering'); }));
+    ['playing', 'canplay', 'seeked', 'pause'].forEach((t) => video.addEventListener(t, () => { if (live()) v.player.classList.remove('is-buffering'); }));
+    document.addEventListener('fullscreenchange', () => { if (live()) updatePlayerUI(v); });
+
+    // кнопки
+    v.player.addEventListener('click', (e) => {
+      const action = e.target.closest('[data-fmp]')?.dataset.fmp;
+      if (!action) return;
+      if (action === 'toggle') togglePlay(v);
+      else if (action === 'mute') { video.muted = !video.muted; if (!video.muted && video.volume === 0) video.volume = 0.5; updatePlayerUI(v); showControls(v); }
+      else if (action === 'rate') { video.playbackRate = RATES[(RATES.indexOf(video.playbackRate) + 1) % RATES.length]; updatePlayerUI(v); savePlayerPrefs(v); showControls(v); }
+      else if (action === 'fullscreen') { toggleFullscreen(v); showControls(v); }
+    });
+    ui.vol.addEventListener('input', () => { setVolume(v, Number(ui.vol.value)); updatePlayerUI(v); savePlayerPrefs(v); showControls(v); });
+
+    // полоса перемотки: во время перетаскивания видео не дёргаем — перематываем один раз при отпускании (один Range-запрос)
+    const ratioAt = (x) => { const r = ui.seek.getBoundingClientRect(); return Math.max(0, Math.min(1, (x - r.left) / r.width)); };
+    const tipAt = (ratio) => {
+      const dur = Number.isFinite(video.duration) ? video.duration : 0;
+      ui.tip.textContent = fmtClock(ratio * dur);
+      ui.tip.style.left = `${ratio * 100}%`;
+    };
+    ui.seek.addEventListener('pointerdown', (e) => {
+      if (!Number.isFinite(video.duration) || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      try { ui.seek.setPointerCapture(e.pointerId); } catch (err) { /* нет активного указателя */ }
+      v.scrubbing = true;
+      v.scrubRatio = ratioAt(e.clientX);
+      v.player.classList.add('is-scrubbing');
+      tipAt(v.scrubRatio);
+      updatePlayerUI(v);
+      showControls(v);
+    });
+    ui.seek.addEventListener('pointermove', (e) => {
+      if (!Number.isFinite(video.duration)) return;
+      const ratio = ratioAt(e.clientX);
+      tipAt(ratio);
+      if (v.scrubbing) { v.scrubRatio = ratio; updatePlayerUI(v); }
+    });
+    const endScrub = (e) => {
+      if (!v.scrubbing) return;
+      const ratio = e.type === 'pointercancel' ? null : ratioAt(e.clientX);
+      v.scrubbing = false;
+      v.scrubRatio = null;
+      v.player.classList.remove('is-scrubbing');
+      if (ratio !== null && Number.isFinite(video.duration)) video.currentTime = ratio * video.duration;
+      updatePlayerUI(v);
+      showControls(v);
+    };
+    ui.seek.addEventListener('pointerup', endScrub);
+    ui.seek.addEventListener('pointercancel', endScrub);
+
+    // касания по самому видео: мышь — клик играет/ставит паузу, двойной клик — во весь экран;
+    // палец — касание показывает/прячет управление, двойное по краям — ±10 с, по центру — пауза
+    ui.tap.addEventListener('pointerup', (e) => {
+      v.lastPointerType = e.pointerType;
+      if (e.pointerType === 'mouse') { if (e.button === 0) togglePlay(v); return; }
+      const now = Date.now();
+      const last = v.lastPlayerTap;
+      if (last && now - last.t < 320 && Math.abs(e.clientX - last.x) < 50) {
+        v.lastPlayerTap = null;
+        clearTimeout(v.tapTimer);
+        const rect = ui.tap.getBoundingClientRect();
+        const zone = (e.clientX - rect.left) / rect.width;
+        if (zone < 0.33) seekBy(v, -10, 'back'); else if (zone > 0.67) seekBy(v, 10, 'fwd'); else togglePlay(v);
+        showControls(v);
+        return;
+      }
+      v.lastPlayerTap = { t: now, x: e.clientX };
+      clearTimeout(v.tapTimer);
+      v.tapTimer = setTimeout(() => {
+        if (!live()) return;
+        if (v.el.classList.contains('is-idle') || video.paused) showControls(v);
+        else { clearTimeout(v.idleTimer); v.el.classList.add('is-idle'); }
+      }, 320);
+    });
+    // двойное касание пальцем тоже даёт dblclick, но у него свой смысл (±10 с / пауза): полный экран — только по двойному клику мыши
+    ui.tap.addEventListener('dblclick', () => { if (v.lastPointerType === 'mouse') toggleFullscreen(v); });
+    // пока мышь над панелью, она не прячется
+    ui.controls.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { v.overControls = true; showControls(v); } });
+    ui.controls.addEventListener('pointerleave', () => { v.overControls = false; showControls(v); });
+    ui.seek.addEventListener('pointerleave', () => { ui.tip.textContent = ''; });
+    v.el.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' && v.kind === 'video') showControls(v); });
+    // касание по самому видео обрабатывает обработчик выше (показать/спрятать); остальные касания просто продлевают показ
+    v.el.addEventListener('pointerdown', (e) => { if (v.kind === 'video' && !e.target.closest('.fm-player-tap')) showControls(v); });
   }
 
   function bindViewerVideo(v) {
@@ -1163,6 +1410,7 @@ window.FilesModule = (() => {
       if (v.resumeAt > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(v.resumeAt, video.duration);
       v.natural = [video.videoWidth ? `${video.videoWidth}×${video.videoHeight}` : '', fmtDuration(video.duration)].filter(Boolean).join(' · ');
       paintViewer();
+      updatePlayerUI(v);
     });
     video.addEventListener('timeupdate', () => { if (current()) v.resumeAt = video.currentTime; });
     video.addEventListener('error', () => {
@@ -1170,10 +1418,10 @@ window.FilesModule = (() => {
       const code = video.error?.code;
       v.resumeAt = video.currentTime || v.resumeAt;
       video.pause();
-      video.hidden = true;
+      v.player.hidden = true;
       v.el.classList.remove('is-loading');
       // 4 — формат/кодек не поддерживается этим плеером; остальное (сеть, истёкшая ссылка) лечится повтором
-      if (code === 4) setViewerStatus('Формат не поддерживается встроенным плеером — файл можно скачать');
+      if (code === 4) setViewerStatus('Формат не поддерживается встроенным плеером — файл можно скачать', false, true);
       else setViewerStatus('Не удалось воспроизвести видео', true);
     });
   }
@@ -1313,6 +1561,7 @@ window.FilesModule = (() => {
     if (!mine) return;
     V = null;
     stopVideo(mine);
+    clearTimeout(mine.tapTimer);
     mine.el.remove();
     document.removeEventListener('click', onChromeClick, true);
     document.removeEventListener('keydown', onViewerKey, true);
